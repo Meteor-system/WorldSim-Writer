@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import AnyHttpUrl, Field
+from pydantic import AnyHttpUrl, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +15,13 @@ class Settings(BaseSettings):
     llm_model: str = Field(alias='LLM_MODEL')
     llm_timeout_seconds: int = Field(default=60, alias='LLM_TIMEOUT_SECONDS')
     frontend_origin: str = Field(default='http://localhost:5173', alias='FRONTEND_ORIGIN')
+
+    @field_validator('secret_key')
+    @classmethod
+    def reject_placeholder_secret(cls, value: str) -> str:
+        if value == 'change-this-local-secret':
+            raise ValueError('SECRET_KEY must be changed from the example value')
+        return value
 
 
 @lru_cache
