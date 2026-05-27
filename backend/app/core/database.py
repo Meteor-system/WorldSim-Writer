@@ -20,3 +20,12 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+def import_models() -> None:
+    import app.auth.models  # noqa: F401
+    import app.character.models  # noqa: F401
+    import app.event.models  # noqa: F401
+    import app.foreshadow.models  # noqa: F401
+    import app.narrative.models  # noqa: F401
+    import app.world.models  # noqa: F401
