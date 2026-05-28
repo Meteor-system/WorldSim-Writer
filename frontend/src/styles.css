@@ -1,0 +1,192 @@
+@import "tailwindcss";
+
+:root {
+  color: #352414;
+  background: #efe1c6;
+  font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", Georgia, serif;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at 18% 12%, rgb(255 250 232 / 72%), transparent 30%),
+    radial-gradient(circle at 82% 8%, rgb(199 154 86 / 22%), transparent 28%),
+    linear-gradient(135deg, #f8eed6 0%, #ecd6ad 48%, #d6b37b 100%);
+  color: #352414;
+}
+
+body::before {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  opacity: 0.18;
+  background-image:
+    linear-gradient(90deg, rgb(97 62 24 / 22%) 1px, transparent 1px),
+    linear-gradient(rgb(97 62 24 / 16%) 1px, transparent 1px);
+  background-size: 46px 46px;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.book-app {
+  min-height: 100vh;
+  padding: 32px 20px;
+  background: transparent;
+}
+
+.paper-panel,
+.book-spread,
+.book-card {
+  position: relative;
+  border: 1px solid rgb(128 83 34 / 28%);
+  background:
+    linear-gradient(90deg, rgb(125 82 37 / 9%), transparent 10%, transparent 90%, rgb(125 82 37 / 8%)),
+    linear-gradient(180deg, #fff8e8 0%, #f6e8ca 100%);
+  box-shadow: 0 24px 80px rgb(83 53 18 / 20%), inset 0 0 32px rgb(123 78 27 / 8%);
+}
+
+.paper-panel {
+  border-radius: 30px;
+}
+
+.book-spread {
+  border-radius: 34px;
+}
+
+.book-spread::before {
+  position: absolute;
+  top: 24px;
+  bottom: 24px;
+  left: 50%;
+  width: 1px;
+  pointer-events: none;
+  content: "";
+  background: linear-gradient(180deg, transparent, rgb(96 60 22 / 26%), transparent);
+}
+
+.book-card {
+  border-radius: 22px;
+}
+
+.chapter-kicker {
+  color: #8f6230;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.ink-muted {
+  color: #7b6042;
+}
+
+.paper-input {
+  width: 100%;
+  border: 1px solid rgb(120 76 30 / 24%);
+  border-radius: 14px;
+  background: rgb(255 250 235 / 76%);
+  padding: 12px 14px;
+  color: #352414;
+  outline: none;
+  box-shadow: inset 0 1px 8px rgb(116 78 36 / 10%);
+}
+
+.paper-input:focus {
+  border-color: #9d6123;
+  box-shadow: 0 0 0 3px rgb(157 97 35 / 18%), inset 0 1px 8px rgb(116 78 36 / 10%);
+}
+
+.primary-button,
+.secondary-button,
+.ghost-button {
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-weight: 700;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+.primary-button {
+  border: 1px solid #7c4516;
+  background: linear-gradient(180deg, #b36d2b, #8c4e1b);
+  color: #fff8e8;
+  box-shadow: 0 8px 22px rgb(104 58 20 / 24%);
+}
+
+.secondary-button {
+  border: 1px solid rgb(126 80 31 / 42%);
+  background: rgb(255 249 231 / 60%);
+  color: #4a321e;
+}
+
+.ghost-button {
+  color: #80501f;
+}
+
+.primary-button:hover,
+.secondary-button:hover,
+.ghost-button:hover {
+  transform: translateY(-1px);
+}
+
+.primary-button:focus-visible,
+.secondary-button:focus-visible,
+.ghost-button:focus-visible {
+  outline: 3px solid #5f3a12;
+  outline-offset: 3px;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary-button,
+  .secondary-button,
+  .ghost-button {
+    transition: none;
+  }
+
+  .primary-button:hover,
+  .secondary-button:hover,
+  .ghost-button:hover {
+    transform: none;
+  }
+}
+
+.paper-error {
+  border: 1px solid rgb(145 47 31 / 28%);
+  border-radius: 14px;
+  background: #f7d6c8;
+  color: #7c1f16;
+  padding: 10px 12px;
+}
+
+.paper-success {
+  border-bottom: 1px solid rgb(86 111 45 / 20%);
+  background: #dfe8bd;
+  color: #435922;
+}
+
+.manuscript {
+  line-height: 1.9;
+  color: #3f2b19;
+}
+
+@media (max-width: 768px) {
+  .book-app {
+    padding: 18px 12px;
+  }
+
+  .book-spread::before {
+    display: none;
+  }
+}

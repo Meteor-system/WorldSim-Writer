@@ -4,28 +4,47 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current repository state
 
-This repository is currently in the requirements and architecture design phase. The only project artifact is [WorldSim-Writer.md](WorldSim-Writer.md), a detailed Chinese product and technical specification for the WorldSim-Writer platform.
+This repository now contains the first runnable WorldSim-Writer MVP loop:
 
-There is not yet any runnable application code, package manifest, database schema, tests, deployment config, or executable prototype in this repository. Treat described capabilities as design targets, not implemented behavior.
+- FastAPI backend in [backend/](backend/) with SQLAlchemy models, Alembic migration, JWT auth, sample world APIs, OpenAI-compatible LLM client, chapter draft creation, approval, rejection, and world-state update tests.
+- React/Vite/Tailwind frontend in [frontend/](frontend/) with login/register, sample-world creation, world overview, studio draft generation, and approval UI.
+- Product and architecture source material remains [WorldSim-Writer.md](WorldSim-Writer.md).
 
 ## Commands
 
-No build, lint, test, or run commands exist yet because the repository does not contain source code or project manifests.
+Run backend commands from [backend/](backend/) inside the project conda environment:
 
-When implementation begins, add the actual commands here after the relevant tooling is committed. The architecture spec currently recommends:
+```bash
+conda activate worldsim
+pip install -e '.[dev]'
+alembic upgrade head
+uvicorn app.main:app --reload
+pytest
+pytest tests/test_narrative_approval.py -v
+```
 
-- Backend: Python FastAPI monolith
-- Database: PostgreSQL
-- Frontend: React + TailwindCSS
-- MVP integration: local Obsidian export
+In this shell, `conda run` is often more reliable than `conda activate`:
 
-Do not invent commands before the corresponding files exist.
+```bash
+PYTHONIOENCODING=utf-8 conda run -n worldsim bash -lc 'cd "D:/Code/Python/WorldSim-Writer/backend" && PYTHONIOENCODING=utf-8 pytest -v'
+```
+
+Run frontend commands from [frontend/](frontend/):
+
+```bash
+npm install
+npm run dev
+npm run build
+npm run test
+```
+
+For local MVP acceptance, run the backend at `http://localhost:8000` and the frontend at `http://localhost:5173`.
 
 ## Source of truth
 
 Use [WorldSim-Writer.md](WorldSim-Writer.md) as the authoritative product and architecture specification. It defines:
 
-- Current project status and MVP boundaries
+- MVP boundaries
 - Product goals and target users
 - Domain modules and state machines
 - Recommended technical architecture
@@ -47,15 +66,53 @@ WorldSim-Writer is intended to be a long-form narrative operating system, not a 
 
 The design principle is state-driven generation: world state, character state, event history, and the Truth Canon constrain chapter output.
 
+## Implemented MVP backend structure
+
+The backend is a FastAPI monolith with code-level domain separation:
+
+- [backend/app/main.py](backend/app/main.py) creates the FastAPI app, CORS middleware, and health endpoint.
+- [backend/app/core/](backend/app/core/) contains settings, database session wiring, password hashing, and JWT helpers.
+- [backend/app/api/](backend/app/api/) contains shared dependencies and top-level router composition.
+- [backend/app/auth/](backend/app/auth/) contains user model, schemas, service, and auth routes.
+- [backend/app/world/](backend/app/world/) contains world model, built-in sample template, world service, overview schema, and world routes.
+- [backend/app/character/](backend/app/character/) contains character and relation models and response schemas.
+- [backend/app/foreshadow/](backend/app/foreshadow/) contains foreshadow model and response schema.
+- [backend/app/event/](backend/app/event/) contains append-only event log model and response schema.
+- [backend/app/llm/](backend/app/llm/) contains OpenAI-compatible Chat Completions client and structured response validation.
+- [backend/app/narrative/](backend/app/narrative/) contains chapter and draft models, draft-generation service, approval transaction, and narrative routes.
+- [backend/alembic/](backend/alembic/) contains the initial schema migration.
+- [backend/tests/](backend/tests/) covers health/config, metadata registration, auth, sample world, LLM parsing/client behavior, and narrative approval.
+
+## Implemented MVP frontend structure
+
+The frontend is a Vite React app:
+
+- [frontend/src/App.tsx](frontend/src/App.tsx) coordinates auth, world overview, and studio state.
+- [frontend/src/api/](frontend/src/api/) contains the fetch wrapper and API response types.
+- [frontend/src/auth/AuthPage.tsx](frontend/src/auth/AuthPage.tsx) handles login/register.
+- [frontend/src/world/WorldPage.tsx](frontend/src/world/WorldPage.tsx) loads or creates the sample world and displays current projection state.
+- [frontend/src/studio/StudioPage.tsx](frontend/src/studio/StudioPage.tsx) generates drafts, displays review context, and approves chapters.
+- [frontend/tests/App.test.tsx](frontend/tests/App.test.tsx) covers the unauthenticated smoke path.
+
+## State and consistency model
+
+The current MVP implements these consistency rules:
+
+- Chapter draft generation writes `Chapter` and `ChapterDraft`, but does not update formal world state.
+- External model output is parsed and validated before being stored as proposed changes.
+- Proposed character and foreshadow IDs must belong to the current world.
+- Chapter approval checks `source_world_version` against `world.world_version` and returns `WORLD_VERSION_MISMATCH` on stale drafts.
+- Chapter approval updates chapter approval fields, character goals/status, foreshadow status/description note, increments `world_version`, and writes a `CHAPTER_APPROVED` event in one database commit.
+- Rejection changes only chapter review status and does not update world state.
+
 ## MVP scope
 
-The MVP should focus on the stable long-form writing loop:
+The MVP should continue to focus on the stable long-form writing loop. The implemented local loop covers auth, sample world creation, draft generation, approval, world-version updates, character updates, foreshadow updates, and event logging. Remaining MVP target areas include:
 
-- Genre template creation and Truth Canon freeze
-- Basic character and relationship management
+- Genre template creation and Truth Canon freeze beyond the built-in sample template
+- Basic character and relationship management beyond read-only overview display
 - Three-stage chapter generation: Showrunner, Director, Critics
-- Review workflow where approved chapters update state
-- Foreshadow ledger
+- Foreshadow ledger beyond the current overview display
 - Basic Obsidian export
 - Single-app consistency around world state, event logs, and projections
 
@@ -68,108 +125,26 @@ The MVP explicitly should not include:
 - Complex branch-world management beyond basic snapshot design reservations
 - Premature microservice, graph database, or vector database architecture
 
-## Recommended implementation architecture
-
-The spec recommends starting with a simple monolith:
-
-- FastAPI as the only backend application
-- PostgreSQL as the primary database
-- Lightweight in-process or simple background tasks for MVP simulations
-- React + TailwindCSS frontend
-- Static or 2D map UI for MVP
-- Code-level domain separation without independent service deployment
-
-The backend should preserve these domain boundaries in code even inside a monolith:
-
-- `world`: world setup, genre templates, Truth Canon, lifecycle status
-- `character`: characters, relationships, factions, destiny markers
-- `simulation`: map tiles, resources, damage, monthly simulation
-- `narrative`: chapter planning, drafting, review, approval workflows
-- `memory`: short/mid/long-term summaries, retrieval context, compression
-- `integration`: Obsidian export, sync logs, external assets
-
 Only introduce Redis, Neo4j, standalone vector stores, service splits, or complex monitoring after a real bottleneck exists.
-
-## State and consistency model
-
-The system’s formal source of truth should be:
-
-- Event Log: append-only structured records of accepted world changes
-- Current State Projection: query-optimized state derived from event logs
-- Draft Cache: temporary review-state chapters and candidate events that do not modify the formal world
-
-Important rules from the spec:
-
-- Chapter draft generation must not write formal world state.
-- Rewrites and polishing only update draft/cache data.
-- Chapter approval must be a single atomic transaction.
-- Approval must write the final chapter, structured events, projections, memory/index markers, and version changes together.
-- Every formal write needs version checks, idempotency via commit IDs, audit metadata, and rollback via new events rather than history deletion.
-- If a draft’s `base_world_version` no longer matches the current world version, force a realignment flow instead of overwriting current state.
-
-## Key domain objects
-
-The spec’s first implementation should stabilize these objects before expanding feature depth:
-
-- World
-- Truth Canon
-- Character
-- Faction
-- Tile
-- Chapter
-- Chapter Draft
-- Foreshadow
-- Event Log
-- Snapshot
-- Sync Log
-- Tags and object tag mappings
-
-Prefer consistent English identifiers in code and APIs, such as `world_id`, `chapter_id`, `event_id`, `world_version`, `source_world_version`, and `base_world_version`.
-
-## API design direction
-
-The spec drafts REST-style endpoints around world-scoped resources. Core endpoint groups include:
-
-- World management: create world, fetch world overview, update config, freeze canon
-- Character and faction management
-- Chapter draft, rewrite, polish, approve, and reject workflows
-- Foreshadow ledger and event history
-- Snapshots and branch creation
-- Monthly simulation
-- Obsidian export and sync logs
-- Global search, bulk actions, and repair tools
-
-Response shape should follow the documented `success`, `data`, `meta`, `error_code`, `message`, `details`, and `retryable` conventions.
-
-## Frontend product surfaces
-
-The intended MVP UI should prioritize workflow screens over visual effects:
-
-- Onboarding page: genre selection, rhythm selection, sample world entry, first chapter generation
-- World home: progress, recent events, risks, pending foreshadows
-- Studio / creation desk: chapter task input, context summary, drafts, diffs, review hints, approve/reject
-- Character library: profiles, relationships, destiny flags, history
-- Basic map page: map overview, tile detail, risk areas, filters
-- Foreshadow ledger: status, urgency, source chapters, related characters
-- History library: chapter timeline, snapshots, branch records
-- Tools workspace: search, batch edits, repair, export, sync logs
 
 ## Security and safety constraints
 
-Implement security from the first runnable version rather than deferring it:
+Current implemented safeguards:
 
 - No anonymous formal writes.
-- Use at least `owner`, `editor`, and `viewer` roles for MVP.
 - Store model keys, sync tokens, and database credentials outside business tables and outside the repo.
 - Frontend must never receive high-privilege model API keys.
-- External model output must be validated before any state write.
+- External model output is validated before chapter approval can write state.
+
+Target safeguards for the remaining MVP and later surfaces:
+
 - Obsidian export must be limited to explicitly configured allowed directories and safe file types.
 - Sync conflicts must never auto-overwrite either side.
 - Audit login, permission changes, chapter approvals, manual corrections, rollback, delete, sync config changes, and exports.
 
 ## Testing and acceptance direction
 
-Once code exists, tests should cover the critical stateful writing loop rather than only isolated helpers:
+Tests should cover the critical stateful writing loop rather than only isolated helpers:
 
 - Unit tests for rule validation, state transitions, foreshadow updates, snapshots, and pure domain logic
 - Integration tests for chapter generation -> review -> approval -> event log -> projection updates
@@ -181,5 +156,5 @@ Once code exists, tests should cover the critical stateful writing loop rather t
 - Read [WorldSim-Writer.md](WorldSim-Writer.md) before making product or architecture decisions.
 - Keep recommendations scoped to the MVP unless the user explicitly asks about P1/P2 or final-state capabilities.
 - Prefer tightening specs, schemas, contracts, state machines, and acceptance criteria before adding new feature ideas.
-- Do not describe the system as implemented until source code and verification exist.
-- When adding the first real code, update this file with the actual commands and source layout.
+- Do not commit `.env`, secrets, credentials, `frontend/node_modules`, or `frontend/dist`.
+- Do not push changes unless the user explicitly asks.
