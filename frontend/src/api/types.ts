@@ -12,6 +12,26 @@ export type Character = {
   current_goals: string[];
 };
 
+export type CharacterCreate = {
+  name: string;
+  role_type: string;
+  status?: string;
+  public_profile?: Record<string, unknown>;
+  hidden_traits?: Record<string, unknown>;
+  destiny_flag?: string;
+  current_goals?: string[];
+};
+
+export type CharacterUpdate = {
+  name?: string;
+  role_type?: string;
+  status?: string;
+  public_profile?: Record<string, unknown>;
+  hidden_traits?: Record<string, unknown>;
+  destiny_flag?: string;
+  current_goals?: string[];
+};
+
 export type Foreshadow = {
   id: number;
   title: string;
@@ -21,6 +41,28 @@ export type Foreshadow = {
   urgency_level: number;
   related_character_ids: number[];
   expected_resolution_window: string | null;
+};
+
+export type ForeshadowCreate = {
+  source_chapter_id?: number;
+  title: string;
+  description: string;
+  foreshadow_type: string;
+  status?: string;
+  urgency_level?: number;
+  related_character_ids?: number[];
+  expected_resolution_window?: string;
+};
+
+export type ForeshadowUpdate = {
+  source_chapter_id?: number;
+  title?: string;
+  description?: string;
+  foreshadow_type?: string;
+  status?: string;
+  urgency_level?: number;
+  related_character_ids?: number[];
+  expected_resolution_window?: string;
 };
 
 export type EventLog = {
@@ -58,4 +100,5 @@ export type DraftResponse = {
   review_hints: string[];
   proposed_changes: Record<string, unknown>;
   source_world_version: number;
+  rejection_feedback?: string;
 };
