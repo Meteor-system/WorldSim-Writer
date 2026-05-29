@@ -1,10 +1,15 @@
 import type {
+  BeatCard,
+  ChapterPipelineResponse,
   Character,
   CharacterCreate,
   CharacterUpdate,
+  CritiqueResponse,
+  DraftResponse,
   Foreshadow,
   ForeshadowCreate,
   ForeshadowUpdate,
+  OutlineResponse,
   WorldCreateRequest,
 } from './types';
 
@@ -48,6 +53,36 @@ export function createWorld(data: WorldCreateRequest) {
   return apiRequest<{ id: number }>('/worlds', {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+/* ── Narrative pipeline ── */
+
+export function createChapter(worldId: number, data: { chapter_goal: string; title?: string }) {
+  return apiRequest<ChapterPipelineResponse>(`/worlds/${worldId}/chapters`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function generateOutline(chapterId: number, data: { chapter_context?: string } = {}) {
+  return apiRequest<OutlineResponse>(`/chapters/${chapterId}/outline`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function writeChapter(chapterId: number, data: { outline_beats?: BeatCard[] } = {}) {
+  return apiRequest<DraftResponse>(`/chapters/${chapterId}/write`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function critiqueChapter(chapterId: number) {
+  return apiRequest<CritiqueResponse>(`/chapters/${chapterId}/critique`, {
+    method: 'POST',
+    body: '{}',
   });
 }
 

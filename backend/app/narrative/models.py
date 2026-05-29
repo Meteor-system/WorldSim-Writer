@@ -24,6 +24,10 @@ class Chapter(Base):
     approved_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     base_world_version: Mapped[int] = mapped_column(Integer, nullable=False)
     approved_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    chapter_goal: Mapped[str | None] = mapped_column(Text, nullable=True)
+    outline_beats: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    outline_context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    critique_report: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
     world: Mapped['World'] = relationship('World', back_populates='chapters')
     drafts: Mapped[list['ChapterDraft']] = relationship('ChapterDraft', back_populates='chapter', cascade='all, delete-orphan')

@@ -133,6 +133,56 @@ export type WorldOverview = {
   recent_events: EventLog[];
 };
 
+export type BeatCard = {
+  beat_id: string;
+  summary: string;
+  pov_character: string | null;
+  location: string | null;
+  emotional_arc: string;
+  key_dialogue_hints: string[];
+};
+
+export type ChapterPipelineResponse = {
+  id: number;
+  world_id: number;
+  title: string;
+  status: string;
+  draft_version: number;
+  approved_version: number | null;
+  base_world_version: number;
+  approved_content: string | null;
+  chapter_goal: string | null;
+  outline_beats: BeatCard[];
+  outline_context: Record<string, unknown>;
+  critique_report: Record<string, unknown>;
+};
+
+export type OutlineResponse = {
+  chapter_id: number;
+  outline_beats: BeatCard[];
+  outline_context: Record<string, unknown>;
+  status: string;
+};
+
+export type CritiqueIssue = {
+  category: string;
+  severity: string;
+  message: string;
+};
+
+export type CritiqueReport = {
+  score: number;
+  issues: CritiqueIssue[];
+  suggestions: string[];
+  consistency_check: Record<string, unknown>;
+};
+
+export type CritiqueResponse = {
+  chapter_id: number;
+  critique_report: CritiqueReport;
+  status: string;
+};
+
 export type DraftResponse = {
   chapter_id: number;
   draft_id: number;
@@ -142,5 +192,10 @@ export type DraftResponse = {
   review_hints: string[];
   proposed_changes: Record<string, unknown>;
   source_world_version: number;
+  status?: string;
+  approved_content?: string | null;
   rejection_feedback?: string;
+  outline_beats?: BeatCard[];
+  outline_context?: Record<string, unknown>;
+  critique_report?: CritiqueReport;
 };
