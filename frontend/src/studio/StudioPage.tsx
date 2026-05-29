@@ -4,10 +4,14 @@ import {
   createChapter as createChapterRequest,
   critiqueChapter,
   generateOutline,
+  getApprovalPreview,
+  getDraftDiff,
+  reviseParagraph,
+  stashDraft,
   suggestGoal,
   writeChapter,
 } from '../api/client';
-import type { BeatCard, ChapterPipelineResponse, CritiqueReport, DraftResponse, WorldOverview } from '../api/types';
+import type { ApprovalPreviewResponse, BeatCard, ChapterPipelineResponse, CritiqueReport, DraftDiffResponse, DraftResponse, WorldOverview } from '../api/types';
 
 type Props = { world: WorldOverview; onBack: () => void; onApproved: (world: WorldOverview) => void };
 
@@ -28,6 +32,9 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
   const [outlineBeats, setOutlineBeats] = useState<BeatCard[]>([]);
   const [outlineContext, setOutlineContext] = useState<Record<string, unknown>>({});
   const [draft, setDraft] = useState<DraftResponse | null>(null);
+  const [draftVersions, setDraftVersions] = useState<number[]>([]);
+  const [draftDiff, setDraftDiff] = useState<DraftDiffResponse | null>(null);
+  const [approvalPreview, setApprovalPreview] = useState<ApprovalPreviewResponse | null>(null);
   const [critique, setCritique] = useState<CritiqueReport | null>(null);
   const [working, setWorking] = useState(false);
   const [suggestingGoal, setSuggestingGoal] = useState(false);
@@ -51,6 +58,29 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
   useEffect(() => {
     if (draft) draftTitleRef.current?.focus();
   }, [draft]);
+
+  function paragraphList(content: string): string[] {
+    return content.split('\n\n').map((paragraph) => paragraph.trim()).filter(Boolean);
+  }
+
+  async function refreshReviewStudioPanels(nextDraft: DraftResponse) {
+    setDraftVersions((versions) => Array.from(new Set([...versions, nextDraft.draft_version])).sort((a, b) => a - b));
+    try {
+      const preview = await getApprovalPreview(nextDraft.chapter_id);
+      setApprovalPreview(preview);
+    } catch {
+      setApprovalPreview(null);
+    }
+    if (nextDraft.parent_draft_version) {
+      try {
+        setDraftDiff(await getDraftDiff(nextDraft.chapter_id, nextDraft.parent_draft_version, nextDraft.draft_version));
+      } catch {
+        setDraftDiff(null);
+      }
+    } else {
+      setDraftDiff(null);
+    }
+  }
 
   async function handleSuggestGoal() {
     setSuggestingGoal(true);
@@ -111,6 +141,8 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
     try {
       const nextDraft = await writeChapter(chapter.id, { outline_beats: outlineBeats });
       setDraft(nextDraft);
+      setDraftVersions([nextDraft.draft_version]);
+      await refreshReviewStudioPanels(nextDraft);
       setCritique(null);
       setEditMode(false);
       setEditContent('');
@@ -202,11 +234,44 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
         body: JSON.stringify({ content: editContent }),
       });
       setDraft(updated);
+      await refreshReviewStudioPanels(updated);
       setEditMode(false);
       setEditContent('');
       setCritique(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存编辑失败');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function saveStash() {
+    if (!draft) return;
+    setWorking(true);
+    setError('');
+    try {
+      const updated = await stashDraft(draft.chapter_id, { note: '暂存当前草稿' });
+      setDraft(updated);
+      await refreshReviewStudioPanels(updated);
+      setCritique(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '暂存草稿失败');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function reviseDraftParagraph(index: number, mode: 'rewrite' | 'polish') {
+    if (!draft) return;
+    setWorking(true);
+    setError('');
+    try {
+      const updated = await reviseParagraph(draft.chapter_id, { paragraph_index: index, mode });
+      setDraft(updated);
+      await refreshReviewStudioPanels(updated);
+      setCritique(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '段落修订失败');
     } finally {
       setWorking(false);
     }
@@ -316,6 +381,16 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
               <div>
                 <p className="chapter-kicker">Writer Draft</p>
                 <h2 ref={draftTitleRef} tabIndex={-1} className="mt-2 text-3xl font-black text-[#34210f]">{draft.title}</h2>
+                <div className="mt-4 flex flex-wrap items-end gap-3">
+                  <label className="block">
+                    <span className="text-sm font-bold text-[#5e3b1c]">草稿版本</span>
+                    <select className="paper-input mt-1" aria-label="草稿版本" value={draft.draft_version} onChange={() => undefined}>
+                      {draftVersions.map((version) => <option key={version} value={version}>v{version}</option>)}
+                    </select>
+                  </label>
+                  <button className="secondary-button" disabled={working} onClick={saveStash}>暂存当前草稿</button>
+                  {draft.change_summary && <p className="manuscript text-sm">最近修改：{draft.change_summary}</p>}
+                </div>
               </div>
               {draft.rejection_feedback && (
                 <div className="rounded-2xl border-2 border-red-400 bg-red-50 p-4">
@@ -334,10 +409,55 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
               ) : (
                 <p className="manuscript whitespace-pre-wrap text-lg">{draft.content}</p>
               )}
+              {!editMode && (
+                <section className="space-y-3 rounded-2xl bg-white/35 p-4">
+                  <h3 className="font-black text-[#3b2511]">段落级修订</h3>
+                  {paragraphList(draft.content).map((paragraph, index) => (
+                    <div key={`${index}-${paragraph.slice(0, 12)}`} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
+                      <p className="manuscript text-sm">第 {index + 1} 段：{paragraph.slice(0, 70)}</p>
+                      <div className="mt-2 flex gap-2">
+                        <button className="secondary-button" disabled={working} onClick={() => reviseDraftParagraph(index, 'rewrite')}>重写本段</button>
+                        <button className="secondary-button" disabled={working} onClick={() => reviseDraftParagraph(index, 'polish')}>润色本段</button>
+                      </div>
+                    </div>
+                  ))}
+                </section>
+              )}
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl bg-white/35 p-4"><h3 className="font-black text-[#3b2511]">上下文摘要</h3><p className="manuscript mt-2">{draft.context_summary}</p></div>
                 <div className="rounded-2xl bg-white/35 p-4"><h3 className="font-black text-[#3b2511]">审核提示</h3>{draft.review_hints.map((hint) => <p key={hint} className="manuscript mt-2">{hint}</p>)}</div>
               </div>
+              <section className="space-y-3 rounded-2xl bg-white/35 p-4">
+                <h3 className="font-black text-[#3b2511]">版本差异</h3>
+                {draftDiff ? (
+                  <div className="space-y-1">
+                    <p className="manuscript text-sm">v{draftDiff.from_version} → v{draftDiff.to_version}</p>
+                    {draftDiff.diff_lines.map((line, index) => (
+                      <p
+                        key={`${line.type}-${index}`}
+                        className={line.type === 'added' ? 'rounded bg-green-100 px-2 py-1 text-green-900' : line.type === 'removed' ? 'rounded bg-red-100 px-2 py-1 text-red-900 line-through' : 'manuscript'}
+                      >
+                        {line.text}
+                      </p>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="manuscript text-sm">当前草稿暂无上一版差异。</p>
+                )}
+              </section>
+              {approvalPreview && (
+                <section className="space-y-3 rounded-2xl border border-amber-900/15 bg-amber-50/45 p-4">
+                  <h3 className="font-black text-[#3b2511]">通过后将提交</h3>
+                  <p className="manuscript">世界版本：{approvalPreview.world_version_before} → {approvalPreview.world_version_after}</p>
+                  {approvalPreview.version_conflict && <p className="paper-error">世界版本已变化，请重新生成草稿。</p>}
+                  {approvalPreview.character_changes.map((change) => (
+                    <p key={`character-${change.character_id}`} className="manuscript text-sm">角色：{change.name} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</p>
+                  ))}
+                  {approvalPreview.foreshadow_changes.map((change) => (
+                    <p key={`foreshadow-${change.foreshadow_id}`} className="manuscript text-sm">伏笔：{change.title} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</p>
+                  ))}
+                </section>
+              )}
               {draft.proposed_changes && (Object.keys(draft.proposed_changes).length > 0) && (
                 <div className="space-y-3">
                   <h3 className="font-black text-[#3b2511]">📋 世界状态变化</h3>

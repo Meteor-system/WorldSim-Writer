@@ -46,5 +46,8 @@ class ChapterDraft(Base):
     proposed_changes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     source_world_version: Mapped[int] = mapped_column(Integer, nullable=False)
     rejection_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    change_type: Mapped[str] = mapped_column(String(40), nullable=False, default='generated')
+    change_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    parent_draft_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     chapter: Mapped['Chapter'] = relationship('Chapter', back_populates='drafts')

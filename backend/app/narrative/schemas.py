@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 from app.llm.schemas import BeatCard
@@ -23,12 +25,16 @@ class WriteRequest(BaseModel):
 class DraftResponse(BaseModel):
     chapter_id: int
     draft_id: int
+    draft_version: int
     title: str
     content: str
     context_summary: str
     review_hints: list[str]
     proposed_changes: dict
     source_world_version: int
+    change_type: str
+    change_summary: str | None = None
+    parent_draft_version: int | None = None
     status: str | None = None
     approved_content: str | None = None
     rejection_feedback: str | None = None
@@ -43,6 +49,17 @@ class RejectRequest(BaseModel):
 
 class EditDraftRequest(BaseModel):
     content: str = Field(min_length=10)
+    change_summary: str | None = None
+
+
+class StashDraftRequest(BaseModel):
+    note: str | None = None
+
+
+class ParagraphDraftRequest(BaseModel):
+    paragraph_index: int = Field(ge=0)
+    mode: Literal['rewrite', 'polish']
+    instruction: str | None = None
 
 
 class ChapterPipelineResponse(BaseModel):

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_user
@@ -14,7 +14,9 @@ from app.narrative.schemas import (
     EditDraftRequest,
     OutlineRequest,
     OutlineResponse,
+    ParagraphDraftRequest,
     RejectRequest,
+    StashDraftRequest,
     WriteRequest,
 )
 from app.narrative.service import (
@@ -24,7 +26,11 @@ from app.narrative.service import (
     critique_chapter,
     edit_chapter_draft,
     generate_chapter_outline,
+    get_approval_preview,
+    get_draft_diff,
     reject_chapter,
+    revise_chapter_paragraph,
+    stash_chapter_draft,
     write_chapter_from_outline,
 )
 
@@ -112,4 +118,55 @@ def edit_draft(
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> DraftResponse:
-    return DraftResponse.model_validate(edit_chapter_draft(db, current_user, chapter_id, payload.content))
+    return DraftResponse.model_validate(
+        edit_chapter_draft(db, current_user, chapter_id, payload.content, payload.change_summary)
+    )
+
+
+@router.get('/chapters/{chapter_id}/drafts/diff')
+def draft_diff(
+    chapter_id: int,
+    from_version: int = Query(alias='from'),
+    to_version: int = Query(alias='to'),
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return get_draft_diff(db, current_user, chapter_id, from_version, to_version)
+
+
+@router.get('/chapters/{chapter_id}/approval-preview')
+def approval_preview(
+    chapter_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return get_approval_preview(db, current_user, chapter_id)
+
+
+@router.post('/chapters/{chapter_id}/draft/stash', response_model=DraftResponse)
+def stash_draft(
+    chapter_id: int,
+    payload: StashDraftRequest | None = None,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> DraftResponse:
+    return DraftResponse.model_validate(stash_chapter_draft(db, current_user, chapter_id, payload.note if payload else None))
+
+
+@router.post('/chapters/{chapter_id}/draft/paragraph', response_model=DraftResponse)
+def revise_paragraph(
+    chapter_id: int,
+    payload: ParagraphDraftRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> DraftResponse:
+    return DraftResponse.model_validate(
+        revise_chapter_paragraph(
+            db,
+            current_user,
+            chapter_id,
+            payload.paragraph_index,
+            payload.mode,
+            payload.instruction,
+        )
+    )

@@ -1,3 +1,4 @@
+import difflib
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -74,12 +75,16 @@ def _draft_payload(chapter: Chapter, draft: ChapterDraft) -> dict:
     return {
         'chapter_id': chapter.id,
         'draft_id': draft.id,
+        'draft_version': draft.draft_version,
         'title': chapter.title,
         'content': draft.content,
         'context_summary': draft.context_summary,
         'review_hints': draft.review_hints,
         'proposed_changes': draft.proposed_changes,
         'source_world_version': draft.source_world_version,
+        'change_type': draft.change_type,
+        'change_summary': draft.change_summary,
+        'parent_draft_version': draft.parent_draft_version,
         'status': chapter.status,
         'approved_content': chapter.approved_content,
         'rejection_feedback': draft.rejection_feedback,
@@ -163,6 +168,37 @@ def build_generation_messages(
             ),
         },
     ]
+
+
+def _create_draft_version(
+    db: Session,
+    chapter: Chapter,
+    previous_draft: ChapterDraft,
+    content: str,
+    change_type: str,
+    change_summary: str | None = None,
+) -> ChapterDraft:
+    next_version = chapter.draft_version + 1
+    draft = ChapterDraft(
+        chapter_id=chapter.id,
+        draft_version=next_version,
+        content=content,
+        context_summary=previous_draft.context_summary,
+        review_hints=previous_draft.review_hints,
+        proposed_changes=previous_draft.proposed_changes,
+        source_world_version=previous_draft.source_world_version,
+        rejection_feedback=None,
+        change_type=change_type,
+        change_summary=change_summary,
+        parent_draft_version=previous_draft.draft_version,
+    )
+    chapter.draft_version = next_version
+    db.add(draft)
+    return draft
+
+
+def _split_paragraphs(content: str) -> list[str]:
+    return [paragraph.strip() for paragraph in content.split('\n\n')]
 
 
 def build_critique_messages(
@@ -400,18 +436,197 @@ def reject_chapter(db: Session, user: User, chapter_id: int, feedback: str) -> d
     return _draft_payload(chapter, draft)
 
 
-def edit_chapter_draft(db: Session, user: User, chapter_id: int, new_content: str) -> dict:
+def edit_chapter_draft(
+    db: Session,
+    user: User,
+    chapter_id: int,
+    new_content: str,
+    change_summary: str | None = None,
+) -> dict:
     chapter = _require_owned_chapter(db, user, chapter_id)
     if chapter.status == 'approved':
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
-    draft.content = new_content
+    new_draft = _create_draft_version(
+        db,
+        chapter,
+        draft,
+        new_content,
+        'manual_edit',
+        change_summary or '手动编辑正文',
+    )
     db.commit()
     db.refresh(chapter)
-    db.refresh(draft)
-    return _draft_payload(chapter, draft)
+    db.refresh(new_draft)
+    return _draft_payload(chapter, new_draft)
+
+
+def stash_chapter_draft(db: Session, user: User, chapter_id: int, note: str | None = None) -> dict:
+    chapter = _require_owned_chapter(db, user, chapter_id)
+    if chapter.status == 'approved':
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
+    draft = _latest_draft(db, chapter)
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    new_draft = _create_draft_version(
+        db,
+        chapter,
+        draft,
+        draft.content,
+        'stash',
+        note or '暂存当前草稿',
+    )
+    db.commit()
+    db.refresh(chapter)
+    db.refresh(new_draft)
+    return _draft_payload(chapter, new_draft)
+
+
+def get_draft_diff(db: Session, user: User, chapter_id: int, from_version: int, to_version: int) -> dict:
+    chapter = _require_owned_chapter(db, user, chapter_id)
+    from_draft = db.scalar(
+        select(ChapterDraft).where(ChapterDraft.chapter_id == chapter.id).where(ChapterDraft.draft_version == from_version)
+    )
+    to_draft = db.scalar(
+        select(ChapterDraft).where(ChapterDraft.chapter_id == chapter.id).where(ChapterDraft.draft_version == to_version)
+    )
+    if from_draft is None or to_draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+
+    diff_lines = []
+    for line in difflib.ndiff(from_draft.content.splitlines(), to_draft.content.splitlines()):
+        if line.startswith('- '):
+            diff_lines.append({'type': 'removed', 'text': line[2:]})
+        elif line.startswith('+ '):
+            diff_lines.append({'type': 'added', 'text': line[2:]})
+        elif line.startswith('  '):
+            diff_lines.append({'type': 'unchanged', 'text': line[2:]})
+    return {
+        'chapter_id': chapter.id,
+        'from_version': from_version,
+        'to_version': to_version,
+        'from_content': from_draft.content,
+        'to_content': to_draft.content,
+        'diff_lines': diff_lines,
+    }
+
+
+def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
+    chapter = _require_owned_chapter(db, user, chapter_id)
+    draft = _latest_draft(db, chapter)
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    world = db.get(World, chapter.world_id)
+    assert world is not None
+    version_conflict = draft.source_world_version != world.world_version
+
+    character_changes = []
+    for change in draft.proposed_changes.get('characters', []):
+        character = db.get(Character, change.get('character_id'))
+        if character is None or character.world_id != world.id:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+        before = character_projection(character)
+        after = before | {key: change[key] for key in ('status', 'current_goals') if key in change}
+        character_changes.append(
+            {
+                'character_id': character.id,
+                'name': character.name,
+                'before': before,
+                'after': after,
+            }
+        )
+
+    foreshadow_changes = []
+    for change in draft.proposed_changes.get('foreshadows', []):
+        foreshadow = db.get(Foreshadow, change.get('foreshadow_id'))
+        if foreshadow is None or foreshadow.world_id != world.id or 'status' not in change:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+        before = foreshadow_projection(foreshadow)
+        after = before | {'status': change['status']}
+        if change.get('description_note'):
+            after['description'] = f"{foreshadow.description}\n审核备注：{change['description_note']}"
+        foreshadow_changes.append(
+            {
+                'foreshadow_id': foreshadow.id,
+                'title': foreshadow.title,
+                'before': before,
+                'after': after,
+            }
+        )
+
+    return {
+        'chapter_id': chapter.id,
+        'draft_version': draft.draft_version,
+        'source_world_version': draft.source_world_version,
+        'current_world_version': world.world_version,
+        'will_increment_world_version': not version_conflict,
+        'world_version_before': world.world_version,
+        'world_version_after': world.world_version + 1 if not version_conflict else world.world_version,
+        'version_conflict': version_conflict,
+        'character_changes': character_changes,
+        'foreshadow_changes': foreshadow_changes,
+        'warnings': ['WORLD_VERSION_MISMATCH'] if version_conflict else [],
+    }
+
+
+def revise_chapter_paragraph(
+    db: Session,
+    user: User,
+    chapter_id: int,
+    paragraph_index: int,
+    mode: str,
+    instruction: str | None = None,
+    llm_client: LLMClient | None = None,
+) -> dict:
+    chapter = _require_owned_chapter(db, user, chapter_id)
+    if chapter.status == 'approved':
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
+    draft = _latest_draft(db, chapter)
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    paragraphs = _split_paragraphs(draft.content)
+    if paragraph_index >= len(paragraphs):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='INVALID_PARAGRAPH_INDEX')
+
+    world = db.get(World, chapter.world_id)
+    assert world is not None
+    selected = paragraphs[paragraph_index]
+    messages = [
+        {
+            'role': 'system',
+            'content': '你是 WorldSim-Writer 的段落修订助手。只返回被修订后的单段文本。',
+        },
+        {
+            'role': 'user',
+            'content': (
+                f'世界设定：{world.truth_canon}\n'
+                f'章节标题：{chapter.title}\n'
+                f'修订模式：{mode}\n'
+                f'用户指令：{instruction or "无"}\n'
+                f'待修订段落：{selected}'
+            ),
+        },
+    ]
+    client = _model_client(llm_client)
+    try:
+        revision = client.revise_paragraph(messages)
+    except (TimeoutError, ValueError, RuntimeError) as exc:
+        raise _map_model_error(exc) from exc
+
+    paragraphs[paragraph_index] = revision.paragraph
+    content = '\n\n'.join(paragraphs)
+    change_type = 'paragraph_rewrite' if mode == 'rewrite' else 'paragraph_polish'
+    action = '重写' if mode == 'rewrite' else '润色'
+    summary = f'{action}第 {paragraph_index + 1} 段'
+    if getattr(revision, 'revision_note', None):
+        summary = f'{summary}：{revision.revision_note}'
+    new_draft = _create_draft_version(db, chapter, draft, content, change_type, summary)
+    db.commit()
+    db.refresh(chapter)
+    db.refresh(new_draft)
+    return _draft_payload(chapter, new_draft)
 
 
 def approve_chapter(db: Session, user: User, chapter_id: int) -> Chapter:
