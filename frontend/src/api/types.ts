@@ -255,16 +255,59 @@ export type CritiqueResponse = {
 export type DraftResponse = {
   chapter_id: number;
   draft_id: number;
+  draft_version: number;
   title: string;
   content: string;
   context_summary: string;
   review_hints: string[];
   proposed_changes: Record<string, unknown>;
   source_world_version: number;
+  change_type: string;
+  change_summary: string | null;
+  parent_draft_version: number | null;
   status?: string;
   approved_content?: string | null;
   rejection_feedback?: string;
   outline_beats?: BeatCard[];
   outline_context?: Record<string, unknown>;
   critique_report?: CritiqueReport;
+};
+
+export type ParagraphReviseRequest = {
+  paragraph_index: number;
+  mode: 'rewrite' | 'polish';
+  instruction?: string;
+};
+
+export type DraftDiffLine = {
+  type: 'added' | 'removed' | 'unchanged';
+  text: string;
+};
+
+export type DraftDiffResponse = {
+  chapter_id: number;
+  from_version: number;
+  to_version: number;
+  from_content: string;
+  to_content: string;
+  diff_lines: DraftDiffLine[];
+};
+
+export type ApprovalPreviewChange = {
+  before: Record<string, unknown>;
+  after: Record<string, unknown>;
+};
+
+export type ApprovalPreviewResponse = {
+  chapter_id: number;
+  draft_version: number;
+  source_world_version: number;
+  current_world_version: number;
+  will_increment_world_version: boolean;
+  world_version_before: number;
+  world_version_after: number;
+  version_conflict: boolean;
+  warnings: string[];
+  character_changes: Array<ApprovalPreviewChange & { character_id: number; name: string }>;
+  foreshadow_changes: Array<ApprovalPreviewChange & { foreshadow_id: number; title: string }>;
 };

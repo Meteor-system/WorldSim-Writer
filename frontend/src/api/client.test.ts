@@ -4,7 +4,11 @@ import {
   deleteCharacter,
   deleteForeshadow,
   deleteRelation,
+  getApprovalPreview,
+  getDraftDiff,
   getRelations,
+  reviseParagraph,
+  stashDraft,
   updateRelation,
 } from './client';
 
@@ -93,5 +97,44 @@ describe('relation API helpers', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8000/relations/9?edit_reason=%E5%88%A0%E9%99%A4%E5%85%B3%E7%B3%BB%E5%A4%87%E6%B3%A8', expect.objectContaining({ method: 'DELETE' }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8000/characters/3?edit_reason=%E5%88%A0%E9%99%A4%E8%A7%92%E8%89%B2%E5%A4%87%E6%B3%A8', expect.objectContaining({ method: 'DELETE' }));
     expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://localhost:8000/foreshadows/4?edit_reason=%E5%88%A0%E9%99%A4%E4%BC%8F%E7%AC%94%E5%A4%87%E6%B3%A8', expect.objectContaining({ method: 'DELETE' }));
+  });
+});
+
+describe('draft versioning API helpers', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('calls draft stash, paragraph revision, diff, and approval preview endpoints', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ draft_version: 2 }))
+      .mockResolvedValueOnce(jsonResponse({ draft_version: 3 }))
+      .mockResolvedValueOnce(jsonResponse({ diff_lines: [] }))
+      .mockResolvedValueOnce(jsonResponse({ version_conflict: false }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await stashDraft(11, { note: '暂存当前草稿' });
+    await reviseParagraph(11, { paragraph_index: 1, mode: 'rewrite', instruction: '增强悬念' });
+    await getDraftDiff(11, 1, 3);
+    await getApprovalPreview(11);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:8000/chapters/11/draft/stash',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ note: '暂存当前草稿' }) }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:8000/chapters/11/draft/paragraph',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ paragraph_index: 1, mode: 'rewrite', instruction: '增强悬念' }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8000/chapters/11/drafts/diff?from=1&to=3', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://localhost:8000/chapters/11/approval-preview', expect.any(Object));
   });
 });

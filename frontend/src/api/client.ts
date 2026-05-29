@@ -1,4 +1,5 @@
 import type {
+  ApprovalPreviewResponse,
   BeatCard,
   ChapterPipelineResponse,
   Character,
@@ -8,6 +9,7 @@ import type {
   CharacterRelationUpdate,
   CharacterUpdate,
   CritiqueResponse,
+  DraftDiffResponse,
   DraftResponse,
   EventLog,
   Foreshadow,
@@ -16,6 +18,7 @@ import type {
   ForeshadowStatus,
   ForeshadowUpdate,
   OutlineResponse,
+  ParagraphReviseRequest,
   StaleForeshadow,
   StoryArcResponse,
   WorldCreateRequest,
@@ -108,6 +111,29 @@ export function writeChapter(chapterId: number, data: { outline_beats?: BeatCard
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+export function stashDraft(chapterId: number, data: { note?: string } = {}) {
+  return apiRequest<DraftResponse>(`/chapters/${chapterId}/draft/stash`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function reviseParagraph(chapterId: number, data: ParagraphReviseRequest) {
+  return apiRequest<DraftResponse>(`/chapters/${chapterId}/draft/paragraph`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function getDraftDiff(chapterId: number, fromVersion: number, toVersion: number) {
+  const search = new URLSearchParams({ from: String(fromVersion), to: String(toVersion) });
+  return apiRequest<DraftDiffResponse>(`/chapters/${chapterId}/drafts/diff?${search.toString()}`);
+}
+
+export function getApprovalPreview(chapterId: number) {
+  return apiRequest<ApprovalPreviewResponse>(`/chapters/${chapterId}/approval-preview`);
 }
 
 export function critiqueChapter(chapterId: number) {
