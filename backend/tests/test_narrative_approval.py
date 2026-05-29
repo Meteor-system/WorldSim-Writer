@@ -28,6 +28,17 @@ def register_and_create_world(client):
     return token, world['id']
 
 
+def test_generation_prompt_includes_expired_foreshadow_status(client, db_session):
+    token, world_id = register_and_create_world(client)
+    world = db_session.get(World, world_id)
+    characters, foreshadows = narrative_service._load_world_context(db_session, world)
+
+    messages = narrative_service.build_generation_messages(world, characters, foreshadows, '推进玉佩线索')
+
+    assert 'advanced|resolved|expired' in messages[0]['content']
+
+
+
 def test_create_draft_with_fake_llm(client, monkeypatch):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())

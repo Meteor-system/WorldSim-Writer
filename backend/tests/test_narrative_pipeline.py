@@ -70,7 +70,7 @@ def fake_generation() -> ChapterGeneration:
         review_hints=['确认沈微霜动机是否一致', '确认玉佩伏笔是否推进'],
         proposed_character_changes=[ProposedCharacterChange(character_id=1, current_goals=['追查城主府叛乱'])],
         proposed_foreshadow_changes=[
-            ProposedForeshadowChange(foreshadow_id=1, status='triggered', description_note='玉佩线索被推进')
+            ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='玉佩线索被推进')
         ],
     )
 
@@ -106,7 +106,7 @@ class PipelineLLMClient:
                 review_hints=['确认逼问是否符合林砚性格'],
                 proposed_character_changes=[ProposedCharacterChange(character_id=1, current_goals=['追查城主府叛乱'])],
                 proposed_foreshadow_changes=[
-                    ProposedForeshadowChange(foreshadow_id=1, status='triggered', description_note='玉佩线索被推进')
+                    ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='玉佩线索被推进')
                 ],
             )
         return fake_generation()
@@ -229,7 +229,7 @@ def test_pipeline_approve_preserves_existing_world_update_invariant(client, monk
     assert approve_response.status_code == 200
     assert after['world_version'] == 2
     assert after['characters'][0]['current_goals'] == ['追查城主府叛乱']
-    assert after['foreshadows'][0]['status'] == 'triggered'
+    assert after['foreshadows'][0]['status'] == 'advanced'
     assert after['recent_events'][0]['event_type'] == 'chapter_approved'
 
 

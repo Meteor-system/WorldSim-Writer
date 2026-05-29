@@ -33,7 +33,7 @@ class FakeLLMClient:
             review_hints=['确认沈微霜动机是否一致'],
             proposed_character_changes=[ProposedCharacterChange(character_id=1, current_goals=['追查城主府叛乱'])],
             proposed_foreshadow_changes=[
-                ProposedForeshadowChange(foreshadow_id=1, status='triggered', description_note='玉佩线索被推进')
+                ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='玉佩线索被推进')
             ],
         )
 
@@ -81,9 +81,9 @@ def test_approve_writes_granular_events_and_projection_snapshots(client, db_sess
 
     assert world_after.world_version == 2
     assert character.current_goals == ['追查城主府叛乱']
-    assert foreshadow.status == 'triggered'
+    assert foreshadow.status == 'advanced'
     assert world_after.current_characters[0]['current_goals'] == ['追查城主府叛乱']
-    assert world_after.current_foreshadows[0]['status'] == 'triggered'
+    assert world_after.current_foreshadows[0]['status'] == 'advanced'
     assert [event.event_type for event in events] == [
         'character_change',
         'foreshadow_change',
@@ -98,7 +98,7 @@ def test_approve_writes_granular_events_and_projection_snapshots(client, db_sess
     assert character_event.payload['after']['current_goals'] == ['追查城主府叛乱']
     foreshadow_event = events[1]
     assert foreshadow_event.payload['before']['status'] == 'planted'
-    assert foreshadow_event.payload['after']['status'] == 'triggered'
+    assert foreshadow_event.payload['after']['status'] == 'advanced'
     assert events[-1].payload['chapter_id'] == draft['chapter_id']
 
 
@@ -108,7 +108,7 @@ def test_approve_rolls_back_when_any_projection_change_is_invalid(client, db_ses
     draft = db_session.get(ChapterDraft, draft_payload['draft_id'])
     draft.proposed_changes = {
         'characters': [{'character_id': 1, 'current_goals': ['不应落库的目标']}],
-        'foreshadows': [{'foreshadow_id': 9999, 'status': 'triggered', 'description_note': '非法伏笔'}],
+        'foreshadows': [{'foreshadow_id': 9999, 'status': 'advanced', 'description_note': '非法伏笔'}],
     }
     db_session.commit()
 

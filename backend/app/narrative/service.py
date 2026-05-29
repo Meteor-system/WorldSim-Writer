@@ -147,7 +147,7 @@ def build_generation_messages(
          '{"title": "章节标题", "draft_content": "正文内容", "context_summary": "摘要", '
          '"review_hints": ["提示1", "提示2"], '
          '"proposed_character_changes": [{"character_id": 整数, "status": "新状态", "current_goals": ["目标1"]}], '
-         '"proposed_foreshadow_changes": [{"foreshadow_id": 整数, "status": "advanced|resolved|planted", "description_note": "备注"}]}。'
+         '"proposed_foreshadow_changes": [{"foreshadow_id": 整数, "status": "advanced|resolved|expired", "description_note": "备注"}]}。'
          '\nproposed_character_changes 和 proposed_foreshadow_changes 可以为空数组 []，'
          '但如果包含元素则必须严格包含上述必填字段。'},
         {
