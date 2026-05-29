@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
 
 
 class BeatCard(BaseModel):
@@ -19,6 +19,31 @@ class ChapterOutline(BaseModel):
     pov_suggestion: str | None = None
     pacing: str
     role_skill_targets: list[str]
+
+
+class StoryArcChapter(BaseModel):
+    chapter_number: int = Field(ge=1, le=10)
+    title: str
+    summary: str
+    core_conflict: str
+    pov_suggestion: str
+    foreshadow_hints: list[str] = Field(default_factory=list)
+
+    @field_validator('title', 'summary', 'core_conflict', 'pov_suggestion')
+    @classmethod
+    def validate_required_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError('must not be blank')
+        return stripped
+
+    @field_validator('foreshadow_hints')
+    @classmethod
+    def validate_foreshadow_hints(cls, value: list[str]) -> list[str]:
+        hints = [hint.strip() for hint in value if hint.strip()]
+        if len(hints) != len(value):
+            raise ValueError('foreshadow hints must not be blank')
+        return hints
 
 
 class CritiqueIssue(BaseModel):
@@ -75,6 +100,25 @@ def parse_chapter_outline(raw_text: str) -> ChapterOutline:
         payload = _load_json(raw_text)
         return ChapterOutline.model_validate(payload)
     except ValidationError as exc:
+        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+
+
+def _validate_story_arc(chapters: list[StoryArcChapter]) -> list[StoryArcChapter]:
+    if len(chapters) != 10:
+        raise ValueError('MODEL_RESPONSE_INVALID')
+    if [chapter.chapter_number for chapter in chapters] != list(range(1, 11)):
+        raise ValueError('MODEL_RESPONSE_INVALID')
+    return chapters
+
+
+def parse_story_arc(raw_text: str) -> list[StoryArcChapter]:
+    try:
+        payload = _load_json(raw_text)
+        if not isinstance(payload, list):
+            raise ValueError('MODEL_RESPONSE_INVALID')
+        chapters = TypeAdapter(list[StoryArcChapter]).validate_python(payload)
+        return _validate_story_arc(chapters)
+    except (ValidationError, ValueError) as exc:
         raise ValueError('MODEL_RESPONSE_INVALID') from exc
 
 

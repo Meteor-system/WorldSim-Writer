@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { apiRequest, createWorld } from '../api/client';
-import type { WorldCreateRequest, WorldOverview } from '../api/types';
+import { apiRequest, createWorld, generateStoryArc } from '../api/client';
+import type { StoryArcChapter, WorldCreateRequest, WorldOverview } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { WorldCreationForm } from './WorldCreationForm';
@@ -15,11 +15,40 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'foreshadows', label: '伏笔账本' },
 ];
 
+function StoryArcCard({ chapter }: { chapter: StoryArcChapter }) {
+  return (
+    <article className="rounded-2xl border border-amber-900/15 bg-white/35 p-4">
+      <p className="chapter-kicker">第 {chapter.chapter_number} 章</p>
+      <h3 className="mt-2 text-xl font-black text-[#34210f]">{chapter.title}</h3>
+      <p className="manuscript mt-3">{chapter.summary}</p>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="rounded-2xl bg-amber-50/60 p-3">
+          <p className="text-sm font-bold text-[#5e3b1c]">核心冲突</p>
+          <p className="manuscript mt-1">{chapter.core_conflict}</p>
+        </div>
+        <div className="rounded-2xl bg-amber-50/60 p-3">
+          <p className="text-sm font-bold text-[#5e3b1c]">POV 建议</p>
+          <p className="manuscript mt-1">{chapter.pov_suggestion}</p>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {chapter.foreshadow_hints.length === 0 && <span className="ink-muted text-sm">无指定伏笔</span>}
+        {chapter.foreshadow_hints.map((hint) => (
+          <span key={hint} className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c]">
+            {hint}
+          </span>
+        ))}
+      </div>
+    </article>
+  );
+}
+
 export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [world, setWorld] = useState<WorldOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [arcLoading, setArcLoading] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -49,6 +78,20 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setError(err instanceof Error ? err.message : '创建世界失败');
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function runStoryArcPlanner() {
+    if (!world) return;
+    setArcLoading(true);
+    setError('');
+    try {
+      const response = await generateStoryArc(world.id);
+      setWorld({ ...world, story_arc: response.story_arc });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成故事大纲失败');
+    } finally {
+      setArcLoading(false);
     }
   }
 
@@ -123,9 +166,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   {error}
                 </p>
               )}
-              <button className="primary-button mt-8" onClick={() => onEnterStudio(world)}>
-                进入创作台
-              </button>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <button className="primary-button" onClick={() => onEnterStudio(world)}>
+                  进入创作台
+                </button>
+                <button className="secondary-button" disabled={arcLoading} onClick={runStoryArcPlanner}>
+                  {arcLoading ? '规划中...' : world.story_arc.length ? '重新生成故事大纲' : '生成故事大纲'}
+                </button>
+              </div>
             </div>
             <div className="space-y-4">
               <article className="book-card p-5">
@@ -161,6 +209,24 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 </div>
               </article>
             </div>
+            <section className="book-card p-5 md:col-span-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="chapter-kicker">Story Arc Planner</p>
+                  <h2 className="mt-2 text-2xl font-black text-[#34210f]">前 10 章故事弧线</h2>
+                </div>
+                <p className="ink-muted text-sm">下一章目标会按已批准章节数自动带入创作台。</p>
+              </div>
+              {world.story_arc.length === 0 ? (
+                <p className="manuscript mt-4">还没有故事弧线。生成后会自动为创作台填入下一章目标。</p>
+              ) : (
+                <div className="mt-5 grid gap-4">
+                  {world.story_arc.map((chapter) => (
+                    <StoryArcCard key={chapter.chapter_number} chapter={chapter} />
+                  ))}
+                </div>
+              )}
+            </section>
           </div>
         )}
 

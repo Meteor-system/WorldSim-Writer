@@ -14,6 +14,7 @@ import type {
   ForeshadowUpdate,
   OutlineResponse,
   StaleForeshadow,
+  StoryArcResponse,
   WorldCreateRequest,
 } from './types';
 
@@ -67,6 +68,13 @@ export function getWorldEvents(worldId: number, params: { event_type?: string; l
   if (params.offset !== undefined) search.set('offset', String(params.offset));
   const query = search.toString();
   return apiRequest<{ items: EventLog[]; total: number; limit: number; offset: number }>(`/worlds/${worldId}/events${query ? `?${query}` : ''}`);
+}
+
+export function generateStoryArc(worldId: number) {
+  return apiRequest<StoryArcResponse>(`/worlds/${worldId}/story-arc`, {
+    method: 'POST',
+    body: '{}',
+  });
 }
 
 /* ── Narrative pipeline ── */

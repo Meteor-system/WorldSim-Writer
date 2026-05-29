@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.character.schemas import CharacterRelationResponse, CharacterResponse
 from app.event.schemas import EventLogListResponse, EventLogResponse
 from app.foreshadow.schemas import ForeshadowResponse
+from app.llm.schemas import StoryArcChapter
 
 
 def _strip_required(value: str) -> str:
@@ -91,8 +92,15 @@ class WorldResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class StoryArcResponse(BaseModel):
+    world_id: int
+    story_arc: list[StoryArcChapter]
+
+
 class WorldOverviewResponse(WorldResponse):
     characters: list[CharacterResponse]
     relations: list[CharacterRelationResponse]
     foreshadows: list[ForeshadowResponse]
     recent_events: list[EventLogResponse]
+    story_arc: list[StoryArcChapter]
+    approved_chapter_count: int

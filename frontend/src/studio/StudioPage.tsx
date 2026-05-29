@@ -22,7 +22,7 @@ function textToDialogue(value: string): string[] {
 }
 
 export function StudioPage({ world, onBack, onApproved }: Props) {
-  const [goal, setGoal] = useState('推进裂纹玉佩线索，并让林砚发现城主府叛乱传闻的新证据。');
+  const [goal, setGoal] = useState('');
   const [chapter, setChapter] = useState<ChapterPipelineResponse | null>(null);
   const [outlineBeats, setOutlineBeats] = useState<BeatCard[]>([]);
   const [outlineContext, setOutlineContext] = useState<Record<string, unknown>>({});
@@ -38,6 +38,13 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
   useEffect(() => {
     titleRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (chapter || goal.trim().length > 0) return;
+    const nextChapterNumber = world.approved_chapter_count + 1;
+    const nextArcChapter = world.story_arc.find((item) => item.chapter_number === nextChapterNumber);
+    if (nextArcChapter) setGoal(nextArcChapter.summary);
+  }, [chapter, goal, world.approved_chapter_count, world.story_arc]);
 
   useEffect(() => {
     if (draft) draftTitleRef.current?.focus();
@@ -212,6 +219,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
             <h2 className="font-black text-[#3b2511]">当前上下文</h2>
             <p className="mt-3 ink-muted">世界版本：{world.world_version}</p>
             <p className="mt-2 ink-muted">POV：{world.characters[0]?.name ?? '未设置'}</p>
+            <p className="mt-2 ink-muted">故事大纲进度：下一章第 {world.approved_chapter_count + 1} 章</p>
           </div>
           <div className="book-card p-5">
             <h3 className="font-black text-[#3b2511]">紧迫伏笔</h3>

@@ -137,6 +137,20 @@ export type EventLog = {
   created_at: string;
 };
 
+export type StoryArcChapter = {
+  chapter_number: number;
+  title: string;
+  summary: string;
+  core_conflict: string;
+  pov_suggestion: string;
+  foreshadow_hints: string[];
+};
+
+export type StoryArcResponse = {
+  world_id: number;
+  story_arc: StoryArcChapter[];
+};
+
 export type WorldOverview = {
   id: number;
   title: string;
@@ -152,6 +166,8 @@ export type WorldOverview = {
   relations: Array<Record<string, unknown>>;
   foreshadows: Foreshadow[];
   recent_events: EventLog[];
+  story_arc: StoryArcChapter[];
+  approved_chapter_count: number;
 };
 
 export type BeatCard = {

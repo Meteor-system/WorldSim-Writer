@@ -6,6 +6,7 @@ from app.auth.models import User
 from app.character.models import Character, CharacterRelation
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow, ForeshadowEvent
+from app.narrative.models import Chapter
 from app.world.models import World
 from app.world.schemas import WorldCreateRequest
 from app.world.templates import SAMPLE_WORLD
@@ -165,6 +166,12 @@ def require_owned_world(db: Session, user: User, world_id: int) -> World:
     return world
 
 
+def count_approved_chapters(db: Session, world_id: int) -> int:
+    return db.scalar(
+        select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id).where(Chapter.status == 'approved')
+    ) or 0
+
+
 def get_world_overview(db: Session, user: User, world_id: int) -> dict:
     world = require_owned_world(db, user, world_id)
     characters = list(db.scalars(select(Character).where(Character.world_id == world.id).order_by(Character.id)))
@@ -186,6 +193,8 @@ def get_world_overview(db: Session, user: User, world_id: int) -> dict:
         'relations': relations,
         'foreshadows': foreshadows,
         'recent_events': recent_events,
+        'story_arc': world.story_arc,
+        'approved_chapter_count': count_approved_chapters(db, world.id),
     }
 
 
