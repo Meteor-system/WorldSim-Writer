@@ -33,6 +33,15 @@ def create_chapter(db_session, world_id):
     return chapter.id
 
 
+def test_foreshadow_event_model_is_registered(db_session):
+    from app.foreshadow.models import ForeshadowEvent
+
+    with db_session.bind.connect() as connection:
+        table_names = set(db_session.bind.dialect.get_table_names(connection))
+    assert 'foreshadow_events' in table_names
+    assert ForeshadowEvent.__tablename__ == 'foreshadow_events'
+
+
 def test_foreshadow_crud_lifecycle(client, db_session):
     token = register(client)
     world_id = create_world(client, token)
