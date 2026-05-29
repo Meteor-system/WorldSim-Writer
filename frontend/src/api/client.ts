@@ -9,8 +9,11 @@ import type {
   EventLog,
   Foreshadow,
   ForeshadowCreate,
+  ForeshadowEvent,
+  ForeshadowStatus,
   ForeshadowUpdate,
   OutlineResponse,
+  StaleForeshadow,
   WorldCreateRequest,
 } from './types';
 
@@ -133,8 +136,19 @@ export function createForeshadow(worldId: number, data: ForeshadowCreate) {
   });
 }
 
-export function getForeshadows(worldId: number) {
-  return apiRequest<Foreshadow[]>(`/worlds/${worldId}/foreshadows`);
+export function getForeshadows(worldId: number, params: { status?: ForeshadowStatus[] } = {}) {
+  const search = new URLSearchParams();
+  if (params.status?.length) search.set('status', params.status.join(','));
+  const query = search.toString();
+  return apiRequest<Foreshadow[]>(`/worlds/${worldId}/foreshadows${query ? `?${query}` : ''}`);
+}
+
+export function getForeshadowTimeline(foreshadowId: number) {
+  return apiRequest<ForeshadowEvent[]>(`/foreshadows/${foreshadowId}/timeline`);
+}
+
+export function getStaleForeshadows(worldId: number) {
+  return apiRequest<StaleForeshadow[]>(`/worlds/${worldId}/foreshadows/stale`);
 }
 
 export function getForeshadow(foreshadowId: number) {

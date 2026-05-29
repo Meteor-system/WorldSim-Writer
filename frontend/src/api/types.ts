@@ -32,12 +32,15 @@ export type CharacterUpdate = {
   current_goals?: string[];
 };
 
+export type ForeshadowStatus = 'planted' | 'advanced' | 'resolved' | 'expired';
+
 export type Foreshadow = {
   id: number;
+  source_chapter_id: number | null;
   title: string;
   description: string;
   foreshadow_type: string;
-  status: string;
+  status: ForeshadowStatus;
   urgency_level: number;
   related_character_ids: number[];
   expected_resolution_window: string | null;
@@ -48,7 +51,7 @@ export type ForeshadowCreate = {
   title: string;
   description: string;
   foreshadow_type: string;
-  status?: string;
+  status?: ForeshadowStatus;
   urgency_level?: number;
   related_character_ids?: number[];
   expected_resolution_window?: string;
@@ -59,10 +62,24 @@ export type ForeshadowUpdate = {
   title?: string;
   description?: string;
   foreshadow_type?: string;
-  status?: string;
+  status?: ForeshadowStatus;
   urgency_level?: number;
   related_character_ids?: number[];
   expected_resolution_window?: string;
+};
+
+export type ForeshadowEvent = {
+  event_type: ForeshadowStatus;
+  chapter_id: number | null;
+  chapter_title: string | null;
+  note: string | null;
+  created_at: string;
+};
+
+export type StaleForeshadow = {
+  foreshadow: Foreshadow;
+  chapters_since_planted: number;
+  alert_level: 'warning' | 'critical';
 };
 
 export type StarterCharacterCreate = {
