@@ -4,8 +4,10 @@ import {
   deleteCharacter,
   deleteForeshadow,
   deleteRelation,
+  generateCharacterArcReport,
   generateCriticReport,
   getApprovalPreview,
+  getCharacterArcReport,
   getCriticReport,
   getDraftDiff,
   getRelations,
@@ -184,5 +186,23 @@ describe('draft versioning API helpers', () => {
     );
     expect(report.overall_score).toBe(84);
     expect(report.issues[0]).toMatchObject({ severity: 'medium', dimension: 'character_voice', message: '沈微霜台词可以更克制。' });
+  });
+
+  it('calls character arc report generate and fetch endpoints', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ summary: '角色弧线推进清晰。' }))
+      .mockResolvedValueOnce(jsonResponse({ summary: '角色弧线推进清晰。' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await generateCharacterArcReport(11);
+    await getCharacterArcReport(11);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:8000/chapters/11/character-arc-report',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8000/chapters/11/character-arc-report', expect.any(Object));
   });
 });

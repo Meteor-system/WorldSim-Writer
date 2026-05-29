@@ -3,6 +3,7 @@ import type {
   BeatCard,
   ChapterPipelineResponse,
   Character,
+  CharacterArcReportResponse,
   CharacterCreate,
   CharacterRelation,
   CharacterRelationCreate,
@@ -191,6 +192,17 @@ export async function generateCriticReport(chapterId: number) {
 
 export function getCriticReport(chapterId: number) {
   return apiRequest<CriticReportResponse>(`/chapters/${chapterId}/critic-report`);
+}
+
+export function generateCharacterArcReport(chapterId: number) {
+  return apiRequest<CharacterArcReportResponse>(`/chapters/${chapterId}/character-arc-report`, {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export function getCharacterArcReport(chapterId: number) {
+  return apiRequest<CharacterArcReportResponse>(`/chapters/${chapterId}/character-arc-report`);
 }
 
 export function critiqueChapter(chapterId: number) {

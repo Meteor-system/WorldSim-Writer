@@ -274,6 +274,66 @@ export type CriticReportResponse = {
   created_at: string;
 };
 
+export type CharacterPresenceLevel = 'absent' | 'mentioned' | 'supporting' | 'major';
+export type CharacterArcStage = 'setup' | 'pressure' | 'choice' | 'consequence' | 'growth' | 'regression' | 'resolution' | 'unknown';
+export type ContinuityRisk = 'none' | 'low' | 'medium' | 'high';
+export type ProgressionHintType = 'character' | 'relationship' | 'foreshadow' | 'plot';
+export type ProgressionPriority = 'low' | 'medium' | 'high';
+
+export type CharacterArcEntry = {
+  character_id: number;
+  name: string;
+  role_type: string | null;
+  current_status: string | null;
+  current_goals: string[];
+  presence_level: CharacterPresenceLevel;
+  arc_stage: CharacterArcStage;
+  chapter_function: string;
+  observed_shift: string;
+  proposed_state_change: Record<string, unknown> | null;
+  continuity_risk: ContinuityRisk;
+  risk_reason: string | null;
+  suggested_revision: string | null;
+  next_chapter_setup: string | null;
+};
+
+export type RelationshipProgressionNote = {
+  source_character_id: number;
+  target_character_id: number;
+  source_name: string;
+  target_name: string;
+  relation_type: string;
+  current_intensity: number | null;
+  visibility: string | null;
+  chapter_shift: string;
+  progression_hint: string;
+  risk_level: ContinuityRisk;
+  risk_reason: string | null;
+};
+
+export type ChapterProgressionHint = {
+  hint_type: ProgressionHintType;
+  priority: ProgressionPriority;
+  title: string;
+  rationale: string;
+  suggested_next_beat: string;
+  related_character_ids: number[];
+  related_foreshadow_ids: number[];
+  can_seed_next_chapter_goal: boolean;
+};
+
+export type CharacterArcReportResponse = {
+  chapter_id: number;
+  draft_version: number;
+  current_draft_version: number;
+  is_stale: boolean;
+  summary: string;
+  character_arcs: CharacterArcEntry[];
+  relationship_notes: RelationshipProgressionNote[];
+  progression_hints: ChapterProgressionHint[];
+  created_at: string;
+};
+
 export type CritiqueResponse = {
   chapter_id: number;
   critique_report: CritiqueReport;

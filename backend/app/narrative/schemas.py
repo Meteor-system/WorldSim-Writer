@@ -105,6 +105,18 @@ class CriticReportResponse(BaseModel):
     created_at: str
 
 
+class CharacterArcReportResponse(BaseModel):
+    chapter_id: int
+    draft_version: int
+    current_draft_version: int
+    is_stale: bool
+    summary: str
+    character_arcs: list[dict]
+    relationship_notes: list[dict]
+    progression_hints: list[dict]
+    created_at: str
+
+
 class ChapterResponse(BaseModel):
     id: int
     world_id: int
