@@ -8,6 +8,7 @@ import type {
   CharacterRelationCreate,
   CharacterRelationUpdate,
   CharacterUpdate,
+  CriticIssue,
   CriticReportResponse,
   CritiqueResponse,
   DraftDiffResponse,
@@ -26,6 +27,8 @@ import type {
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
+
+type ApiError = Error & { status?: number };
 
 function formatApiError(body: string): string {
   if (!body) return '请求失败';
@@ -54,7 +57,11 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
   const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  if (!response.ok) throw new Error(formatApiError(await response.text()));
+  if (!response.ok) {
+    const error = new Error(formatApiError(await response.text())) as ApiError;
+    error.status = response.status;
+    throw error;
+  }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
@@ -137,11 +144,49 @@ export function getApprovalPreview(chapterId: number) {
   return apiRequest<ApprovalPreviewResponse>(`/chapters/${chapterId}/approval-preview`);
 }
 
-export function generateCriticReport(chapterId: number) {
-  return apiRequest<CriticReportResponse>(`/chapters/${chapterId}/critic-report`, {
-    method: 'POST',
-    body: '{}',
+function legacyCritiqueToCriticReport(chapterId: number, response: CritiqueResponse): CriticReportResponse {
+  const issues: CriticIssue[] = response.critique_report.issues.map((issue) => {
+    const severity: CriticIssue['severity'] = issue.severity === 'high' || issue.severity === 'medium' || issue.severity === 'low' ? issue.severity : 'medium';
+    return {
+      severity,
+      dimension: issue.category,
+      message: issue.message,
+      paragraph_index: null,
+      suggested_action: null,
+    };
   });
+  return {
+    chapter_id: chapterId,
+    draft_version: 0,
+    current_draft_version: 0,
+    is_stale: false,
+    overall_score: response.critique_report.score,
+    summary: response.critique_report.suggestions[0] ?? 'Critic 报告已生成。',
+    dimensions: {
+      legacy_critique: {
+        score: response.critique_report.score,
+        summary: '来自兼容 critique endpoint 的报告。',
+        issues,
+        suggestions: response.critique_report.suggestions,
+      },
+    },
+    issues,
+    suggestions: response.critique_report.suggestions,
+    created_at: new Date().toISOString(),
+  };
+}
+
+export async function generateCriticReport(chapterId: number) {
+  try {
+    return await apiRequest<CriticReportResponse>(`/chapters/${chapterId}/critic-report`, {
+      method: 'POST',
+      body: '{}',
+    });
+  } catch (error) {
+    if ((error as ApiError).status !== 404) throw error;
+    const legacy = await critiqueChapter(chapterId);
+    return legacyCritiqueToCriticReport(chapterId, legacy);
+  }
 }
 
 export function getCriticReport(chapterId: number) {
