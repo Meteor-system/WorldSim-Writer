@@ -71,11 +71,24 @@ def foreshadow_projection(foreshadow: Foreshadow) -> dict:
     }
 
 
+def relation_projection(relation: CharacterRelation) -> dict:
+    return {
+        'id': relation.id,
+        'source_character_id': relation.source_character_id,
+        'target_character_id': relation.target_character_id,
+        'relation_type': relation.relation_type,
+        'intensity': relation.intensity,
+        'visibility': relation.visibility,
+    }
+
+
 def refresh_world_projection(db: Session, world: World) -> None:
     characters = list(db.scalars(select(Character).where(Character.world_id == world.id).order_by(Character.id)))
     foreshadows = list(db.scalars(select(Foreshadow).where(Foreshadow.world_id == world.id).order_by(Foreshadow.id)))
+    relations = list(db.scalars(select(CharacterRelation).where(CharacterRelation.world_id == world.id).order_by(CharacterRelation.id)))
     world.current_characters = [character_projection(character) for character in characters]
     world.current_foreshadows = [foreshadow_projection(foreshadow) for foreshadow in foreshadows]
+    world.current_relations = [relation_projection(relation) for relation in relations]
 
 
 def create_world_from_template(db: Session, user: User, data: WorldCreateRequest) -> World:
@@ -189,6 +202,7 @@ def get_world_overview(db: Session, user: User, world_id: int) -> dict:
         'tone_profile': world.tone_profile,
         'current_characters': world.current_characters,
         'current_foreshadows': world.current_foreshadows,
+        'current_relations': world.current_relations,
         'characters': characters,
         'relations': relations,
         'foreshadows': foreshadows,

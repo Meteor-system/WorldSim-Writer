@@ -88,6 +88,7 @@ class WorldResponse(BaseModel):
     tone_profile: dict
     current_characters: list[dict[str, Any]] = Field(default_factory=list)
     current_foreshadows: list[dict[str, Any]] = Field(default_factory=list)
+    current_relations: list[dict[str, Any]] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
