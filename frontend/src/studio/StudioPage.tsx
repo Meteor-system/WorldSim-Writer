@@ -338,7 +338,45 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
                 <div className="rounded-2xl bg-white/35 p-4"><h3 className="font-black text-[#3b2511]">上下文摘要</h3><p className="manuscript mt-2">{draft.context_summary}</p></div>
                 <div className="rounded-2xl bg-white/35 p-4"><h3 className="font-black text-[#3b2511]">审核提示</h3>{draft.review_hints.map((hint) => <p key={hint} className="manuscript mt-2">{hint}</p>)}</div>
               </div>
-              <pre className="overflow-auto rounded-2xl border border-amber-900/15 bg-[#2d1d10] p-4 text-sm text-[#f8ead0]">{JSON.stringify(draft.proposed_changes, null, 2)}</pre>
+              {draft.proposed_changes && (Object.keys(draft.proposed_changes).length > 0) && (
+                <div className="space-y-3">
+                  <h3 className="font-black text-[#3b2511]">📋 世界状态变化</h3>
+                  {/* Character updates */}
+                  {Array.isArray((draft.proposed_changes as any).characters) && (draft.proposed_changes as any).characters.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-bold text-[#5e3b1c]">🎭 角色变化</h4>
+                      {(draft.proposed_changes as any).characters.map((c: any, i: number) => {
+                        const charName = world.characters?.find((ch: any) => ch.id === c.character_id)?.name ?? `角色#${c.character_id}`;
+                        return (
+                          <div key={i} className="rounded-xl bg-amber-50/60 p-3">
+                            <p className="font-bold text-[#3b2511]">{charName} <span className="text-xs font-normal text-amber-700">({c.status})</span></p>
+                            {c.current_goals && c.current_goals.length > 0 && (
+                              <ul className="mt-1 list-inside list-disc text-sm text-[#4a321e]">
+                                {c.current_goals.map((g: string, gi: number) => <li key={gi}>{g}</li>)}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {/* Foreshadow updates */}
+                  {Array.isArray((draft.proposed_changes as any).foreshadows) && (draft.proposed_changes as any).foreshadows.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-bold text-[#5e3b1c]">🔮 伏笔推进</h4>
+                      {(draft.proposed_changes as any).foreshadows.map((f: any, i: number) => {
+                        const fsName = world.foreshadows?.find((fs: any) => fs.id === f.foreshadow_id)?.title ?? `伏笔#${f.foreshadow_id}`;
+                        return (
+                          <div key={i} className="rounded-xl bg-purple-50/60 p-3">
+                            <p className="font-bold text-[#3b2511]">{fsName} <span className="text-xs font-normal text-purple-700">({f.status})</span></p>
+                            {f.description_note && <p className="manuscript mt-1 text-sm text-[#4a321e]">{f.description_note}</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </article>
           )}
 
@@ -360,7 +398,43 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
                   {critique.suggestions.map((suggestion) => <p key={suggestion} className="manuscript mt-2">{suggestion}</p>)}
                 </div>
               </div>
-              <pre className="overflow-auto rounded-2xl border border-amber-900/15 bg-[#2d1d10] p-4 text-sm text-[#f8ead0]">{JSON.stringify(critique.consistency_check, null, 2)}</pre>
+              {critique.consistency_check && Object.keys(critique.consistency_check).length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="font-black text-[#3b2511]">🔍 一致性检查</h3>
+                  {Array.isArray((critique.consistency_check as any).characters) && (critique.consistency_check as any).characters.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-bold text-[#5e3b1c]">🎭 角色状态</h4>
+                      {(critique.consistency_check as any).characters.map((c: any, i: number) => {
+                        const charName = world.characters?.find((ch: any) => ch.id === c.character_id)?.name ?? `角色#${c.character_id}`;
+                        return (
+                          <div key={i} className="rounded-xl bg-amber-50/60 p-3">
+                            <p className="font-bold text-[#3b2511]">{charName} <span className="text-xs font-normal text-amber-700">({c.status})</span></p>
+                            {c.current_goals && c.current_goals.length > 0 && (
+                              <ul className="mt-1 list-inside list-disc text-sm text-[#4a321e]">
+                                {c.current_goals.map((g: string, gi: number) => <li key={gi}>{g}</li>)}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {Array.isArray((critique.consistency_check as any).foreshadows) && (critique.consistency_check as any).foreshadows.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-bold text-[#5e3b1c]">🔮 伏笔状态</h4>
+                      {(critique.consistency_check as any).foreshadows.map((f: any, i: number) => {
+                        const fsName = world.foreshadows?.find((fs: any) => fs.id === f.foreshadow_id)?.title ?? `伏笔#${f.foreshadow_id}`;
+                        return (
+                          <div key={i} className="rounded-xl bg-purple-50/60 p-3">
+                            <p className="font-bold text-[#3b2511]">{fsName} <span className="text-xs font-normal text-purple-700">({f.status})</span></p>
+                            {f.description_note && <p className="manuscript mt-1 text-sm text-[#4a321e]">{f.description_note}</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
           )}
 
