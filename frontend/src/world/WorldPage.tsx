@@ -15,6 +15,57 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'foreshadows', label: '伏笔账本' },
 ];
 
+function describeEvent(event: { event_type: string; payload: Record<string, unknown> }, world: WorldOverview): string {
+  const payload = event.payload as Record<string, any>;
+  const chapterTitle = payload.chapter_title
+    ? `《${payload.chapter_title}》`
+    : payload.chapter_id
+      ? `第${payload.chapter_id}章`
+      : '';
+
+  switch (event.event_type) {
+    case 'chapter_approved':
+      return `✅ ${chapterTitle} 通过审核，正式纳入故事`;
+    case 'character_change': {
+      const char = world.current_characters?.find((c) => c.id === payload.object_id);
+      const charName = char?.name ?? payload.object_id ?? '某角色';
+      const change = payload.change as string;
+      if (change === 'created') return `🎭 新角色「${charName}」登场`;
+      if (change === 'updated') {
+        const after = payload.after as Record<string, any>;
+        const before = payload.before as Record<string, any>;
+        if (after?.current_goals && before?.current_goals) {
+          return `🎭 ${charName} 的目标更新为：${after.current_goals.join('、')}`;
+        }
+        return `🎭 ${charName} 的状态发生了变化`;
+      }
+      return `🎭 ${charName} 发生了变化`;
+    }
+    case 'foreshadow_change': {
+      const fs = world.current_foreshadows?.find((f) => f.id === payload.object_id);
+      const fsName = fs?.title ?? payload.object_id ?? '某伏笔';
+      const change = payload.change as string;
+      if (change === 'created') return `🔮 埋下伏笔「${fsName}」`;
+      if (change === 'updated') {
+        const after = payload.after as Record<string, any>;
+        if (after?.status) {
+          const statusMap: Record<string, string> = {
+            planted: '已埋下', advanced: '推进中', partially_resolved: '部分揭晓',
+            fully_resolved: '已揭晓', abandoned: '已废弃',
+          };
+          return `🔮 伏笔「${fsName}」${statusMap[after.status] ?? after.status}`;
+        }
+        return `🔮 伏笔「${fsName}」发生了变化`;
+      }
+      return `🔮 伏笔「${fsName}」发生了变化`;
+    }
+    case 'world_version_increment':
+      return `📖 世界版本更新至 v${payload.world_version_after ?? event.event_type}`;
+    default:
+      return `${event.event_type}`;
+  }
+}
+
 function StoryArcCard({ chapter }: { chapter: StoryArcChapter }) {
   return (
     <article className="rounded-2xl border border-amber-900/15 bg-white/35 p-4">
@@ -201,9 +252,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 <div className="mt-3 space-y-2 ink-muted">
                   {world.recent_events.length === 0 && <p>还没有正式写入的章节事件。</p>}
                   {world.recent_events.map((event) => (
-                    <p key={event.id}>
-                      {event.event_type}: {event.world_version_before} →{' '}
-                      {event.world_version_after}
+                    <p key={event.id} className="manuscript">
+                      {describeEvent(event, world)}
                     </p>
                   ))}
                 </div>
