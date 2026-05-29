@@ -1,6 +1,6 @@
 # WorldSim-Writer
 
-WorldSim-Writer is a long-form narrative creation system. The current MVP runs a local loop: register or log in, create the built-in sample world, generate a chapter draft through an OpenAI-compatible Chat Completions API, approve the draft, and see world state updates.
+WorldSim-Writer is a long-form narrative creation system. The current MVP runs a local loop: register or log in, create a world from an editable genre template, generate a chapter draft through an OpenAI-compatible Chat Completions API, approve the draft, and see world state updates.
 
 ## Local setup
 
@@ -47,7 +47,7 @@ Manual MVP check:
 
 1. Open the frontend at `http://localhost:5173`.
 2. Register or log in.
-3. Create the built-in sample world.
+3. Create a world from an editable genre template.
 4. Enter the studio.
 5. Generate a chapter draft.
 6. Approve the draft.

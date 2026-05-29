@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     llm_api_key: str = Field(alias='LLM_API_KEY')
     llm_model: str = Field(alias='LLM_MODEL')
     llm_timeout_seconds: int = Field(default=60, alias='LLM_TIMEOUT_SECONDS')
+    llm_mock: bool = Field(default=False, alias='LLM_MOCK')
     frontend_origin: str = Field(default='http://localhost:5173', alias='FRONTEND_ORIGIN')
 
     @field_validator('secret_key')

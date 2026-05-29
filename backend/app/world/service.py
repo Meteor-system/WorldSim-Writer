@@ -7,59 +7,106 @@ from app.character.models import Character, CharacterRelation
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow
 from app.world.models import World
+from app.world.schemas import WorldCreateRequest
 from app.world.templates import SAMPLE_WORLD
 
 
-def create_sample_world(db: Session, user: User) -> World:
+def _sample_world_request() -> WorldCreateRequest:
+    return WorldCreateRequest.model_validate(
+        {
+            'title': SAMPLE_WORLD['title'],
+            'genre_template': SAMPLE_WORLD['genre_template'],
+            'truth_canon': SAMPLE_WORLD['truth_canon'],
+            'tone_profile': SAMPLE_WORLD['tone_profile'],
+            'starter_assets': {
+                'characters': SAMPLE_WORLD['characters'],
+                'relations': SAMPLE_WORLD['relations'],
+                'foreshadows': SAMPLE_WORLD['foreshadows'],
+            },
+        }
+    )
+
+
+def _validate_character_index(index: int, character_count: int) -> None:
+    if index < 0 or index >= character_count:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='INVALID_CHARACTER_INDEX')
+
+
+def _validate_starter_asset_indexes(data: WorldCreateRequest) -> None:
+    character_count = len(data.starter_assets.characters)
+    for relation in data.starter_assets.relations:
+        _validate_character_index(relation.source_index, character_count)
+        _validate_character_index(relation.target_index, character_count)
+    for foreshadow in data.starter_assets.foreshadows:
+        for index in foreshadow.related_character_indexes or []:
+            _validate_character_index(index, character_count)
+
+
+def create_world_from_template(db: Session, user: User, data: WorldCreateRequest) -> World:
+    _validate_starter_asset_indexes(data)
+
     world = World(
         owner_id=user.id,
-        title=SAMPLE_WORLD['title'],
-        genre_template=SAMPLE_WORLD['genre_template'],
-        truth_canon=SAMPLE_WORLD['truth_canon'],
+        title=data.title,
+        genre_template=data.genre_template,
+        truth_canon=data.truth_canon,
         truth_canon_version=1,
         world_version=1,
         status='active',
-        tone_profile=SAMPLE_WORLD['tone_profile'],
+        tone_profile=data.tone_profile,
     )
     db.add(world)
     db.flush()
 
     characters: list[Character] = []
-    for item in SAMPLE_WORLD['characters']:
-        character = Character(world_id=world.id, **item)
+    for item in data.starter_assets.characters:
+        character = Character(
+            world_id=world.id,
+            name=item.name,
+            role_type=item.role_type,
+            status=item.status if item.status is not None else 'active',
+            public_profile=item.public_profile if item.public_profile is not None else {},
+            hidden_traits=item.hidden_traits if item.hidden_traits is not None else {},
+            destiny_flag=item.destiny_flag,
+            current_goals=item.current_goals if item.current_goals is not None else [],
+        )
         db.add(character)
         characters.append(character)
     db.flush()
 
-    for item in SAMPLE_WORLD['relations']:
+    for item in data.starter_assets.relations:
         db.add(
             CharacterRelation(
                 world_id=world.id,
-                source_character_id=characters[item['source_index']].id,
-                target_character_id=characters[item['target_index']].id,
-                relation_type=item['relation_type'],
-                intensity=item['intensity'],
-                visibility=item['visibility'],
+                source_character_id=characters[item.source_index].id,
+                target_character_id=characters[item.target_index].id,
+                relation_type=item.relation_type,
+                intensity=item.intensity,
+                visibility=item.visibility,
             )
         )
 
-    for item in SAMPLE_WORLD['foreshadows']:
+    for item in data.starter_assets.foreshadows:
         db.add(
             Foreshadow(
                 world_id=world.id,
-                title=item['title'],
-                description=item['description'],
-                foreshadow_type=item['foreshadow_type'],
-                status=item['status'],
-                urgency_level=item['urgency_level'],
-                related_character_ids=[characters[index].id for index in item['related_character_indexes']],
-                expected_resolution_window=item['expected_resolution_window'],
+                title=item.title,
+                description=item.description,
+                foreshadow_type=item.foreshadow_type,
+                status=item.status if item.status is not None else 'planted',
+                urgency_level=item.urgency_level if item.urgency_level is not None else 1,
+                related_character_ids=[characters[index].id for index in item.related_character_indexes or []],
+                expected_resolution_window=item.expected_resolution_window,
             )
         )
 
     db.commit()
     db.refresh(world)
     return world
+
+
+def create_sample_world(db: Session, user: User) -> World:
+    return create_world_from_template(db, user, _sample_world_request())
 
 
 def list_user_worlds(db: Session, user: User) -> list[World]:

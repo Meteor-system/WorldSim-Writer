@@ -65,6 +65,48 @@ export type ForeshadowUpdate = {
   expected_resolution_window?: string;
 };
 
+export type StarterCharacterCreate = {
+  name: string;
+  role_type: string;
+  status?: string;
+  public_profile?: Record<string, unknown>;
+  hidden_traits?: Record<string, unknown>;
+  destiny_flag?: string;
+  current_goals?: string[];
+};
+
+export type StarterRelationCreate = {
+  source_index: number;
+  target_index: number;
+  relation_type: string;
+  intensity?: number;
+  visibility?: string;
+};
+
+export type StarterForeshadowCreate = {
+  title: string;
+  description: string;
+  foreshadow_type: string;
+  status?: string;
+  urgency_level?: number;
+  related_character_indexes?: number[];
+  expected_resolution_window?: string;
+};
+
+export type StarterAssetsCreate = {
+  characters: StarterCharacterCreate[];
+  relations?: StarterRelationCreate[];
+  foreshadows?: StarterForeshadowCreate[];
+};
+
+export type WorldCreateRequest = {
+  title: string;
+  genre_template: string;
+  truth_canon: string;
+  tone_profile?: Record<string, unknown>;
+  starter_assets: StarterAssetsCreate;
+};
+
 export type EventLog = {
   id: number;
   event_type: string;

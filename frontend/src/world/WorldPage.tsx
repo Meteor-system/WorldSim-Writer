@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { apiRequest } from '../api/client';
-import type { WorldOverview } from '../api/types';
+import { apiRequest, createWorld } from '../api/client';
+import type { WorldCreateRequest, WorldOverview } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
+import { WorldCreationForm } from './WorldCreationForm';
 
 type Props = { onEnterStudio: (world: WorldOverview) => void; autoFocusTitle?: boolean };
 
@@ -17,6 +18,7 @@ const TABS: { key: Tab; label: string }[] = [
 export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [world, setWorld] = useState<WorldOverview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -37,19 +39,16 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     }
   }
 
-  async function createWorld() {
-    setLoading(true);
+  async function submitWorld(payload: WorldCreateRequest) {
+    setCreating(true);
     setError('');
     try {
-      const created = await apiRequest<{ id: number }>('/worlds/from-template', {
-        method: 'POST',
-        body: '{}',
-      });
+      const created = await createWorld(payload);
       setWorld(await apiRequest<WorldOverview>(`/worlds/${created.id}/overview`));
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建世界失败');
     } finally {
-      setLoading(false);
+      setCreating(false);
     }
   }
 
@@ -70,26 +69,15 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
 
   if (!world) {
     return (
-      <section className="mx-auto max-w-3xl px-6 py-12 text-center">
-        <p className="chapter-kicker">Empty Manuscript</p>
-        <h1
-          ref={titleRef}
-          tabIndex={-1}
-          className="mt-3 text-4xl font-black text-[#34210f]"
-        >
-          还没有世界
-        </h1>
-        <p className="manuscript mx-auto mt-4 max-w-xl">
-          创建内置示例世界，让"青岚城风云"成为这本书的第一页。
-        </p>
+      <section>
         {error && (
-          <p className="paper-error mt-5 text-left" role="alert">
-            {error}
-          </p>
+          <div className="mx-auto mt-8 max-w-5xl px-6">
+            <p className="paper-error text-left" role="alert">
+              {error}
+            </p>
+          </div>
         )}
-        <button className="primary-button mt-8" onClick={createWorld}>
-          创建"青岚城风云"
-        </button>
+        <WorldCreationForm creating={creating} onCreate={submitWorld} />
       </section>
     );
   }

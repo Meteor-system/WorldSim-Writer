@@ -5,6 +5,7 @@ import type {
   Foreshadow,
   ForeshadowCreate,
   ForeshadowUpdate,
+  WorldCreateRequest,
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -39,6 +40,15 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   if (!response.ok) throw new Error(formatApiError(await response.text()));
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
+}
+
+/* ── Worlds ── */
+
+export function createWorld(data: WorldCreateRequest) {
+  return apiRequest<{ id: number }>('/worlds', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 /* ── Characters ── */
