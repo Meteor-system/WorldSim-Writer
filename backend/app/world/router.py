@@ -5,7 +5,7 @@ from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
 from app.event.schemas import EventLogListResponse
-from app.world.schemas import WorldCreateRequest, WorldOverviewResponse, WorldResponse
+from app.world.schemas import StoryArcResponse, WorldCreateRequest, WorldOverviewResponse, WorldResponse
 from app.world.service import (
     create_sample_world,
     create_world_from_template,
@@ -14,6 +14,7 @@ from app.world.service import (
     list_world_events,
     require_owned_world,
 )
+from app.world.story_arc import generate_story_arc, suggest_chapter_goal
 
 router = APIRouter(prefix='/worlds', tags=['worlds'])
 
@@ -45,6 +46,24 @@ def get_world(world_id: int, current_user: User = Depends(require_user), db: Ses
 @router.get('/{world_id}/overview', response_model=WorldOverviewResponse)
 def overview(world_id: int, current_user: User = Depends(require_user), db: Session = Depends(get_db)) -> WorldOverviewResponse:
     return WorldOverviewResponse.model_validate(get_world_overview(db, current_user, world_id))
+
+
+@router.post('/{world_id}/story-arc', response_model=StoryArcResponse)
+def story_arc(
+    world_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> StoryArcResponse:
+    return StoryArcResponse.model_validate(generate_story_arc(db, current_user, world_id))
+
+
+@router.post('/{world_id}/suggest-goal')
+def suggest_goal(
+    world_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return suggest_chapter_goal(db, current_user, world_id)
 
 
 @router.get('/{world_id}/events', response_model=EventLogListResponse)

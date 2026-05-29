@@ -4,6 +4,7 @@ import {
   createChapter as createChapterRequest,
   critiqueChapter,
   generateOutline,
+  suggestGoal,
   writeChapter,
 } from '../api/client';
 import type { BeatCard, ChapterPipelineResponse, CritiqueReport, DraftResponse, WorldOverview } from '../api/types';
@@ -22,13 +23,14 @@ function textToDialogue(value: string): string[] {
 }
 
 export function StudioPage({ world, onBack, onApproved }: Props) {
-  const [goal, setGoal] = useState('推进裂纹玉佩线索，并让林砚发现城主府叛乱传闻的新证据。');
+  const [goal, setGoal] = useState('');
   const [chapter, setChapter] = useState<ChapterPipelineResponse | null>(null);
   const [outlineBeats, setOutlineBeats] = useState<BeatCard[]>([]);
   const [outlineContext, setOutlineContext] = useState<Record<string, unknown>>({});
   const [draft, setDraft] = useState<DraftResponse | null>(null);
   const [critique, setCritique] = useState<CritiqueReport | null>(null);
   const [working, setWorking] = useState(false);
+  const [suggestingGoal, setSuggestingGoal] = useState(false);
   const [error, setError] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [editContent, setEditContent] = useState('');
@@ -40,8 +42,28 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
   }, []);
 
   useEffect(() => {
+    if (chapter || goal.trim().length > 0) return;
+    const nextChapterNumber = world.approved_chapter_count + 1;
+    const nextArcChapter = world.story_arc.find((item) => item.chapter_number === nextChapterNumber);
+    if (nextArcChapter) setGoal(nextArcChapter.summary);
+  }, [chapter, goal, world.approved_chapter_count, world.story_arc]);
+
+  useEffect(() => {
     if (draft) draftTitleRef.current?.focus();
   }, [draft]);
+
+  async function handleSuggestGoal() {
+    setSuggestingGoal(true);
+    setError('');
+    try {
+      const result = await suggestGoal(world.id);
+      setGoal(result.goal);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成章节目标失败');
+    } finally {
+      setSuggestingGoal(false);
+    }
+  }
 
   async function createChapterSession() {
     setWorking(true);
@@ -212,6 +234,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
             <h2 className="font-black text-[#3b2511]">当前上下文</h2>
             <p className="mt-3 ink-muted">世界版本：{world.world_version}</p>
             <p className="mt-2 ink-muted">POV：{world.characters[0]?.name ?? '未设置'}</p>
+            <p className="mt-2 ink-muted">故事大纲进度：下一章第 {world.approved_chapter_count + 1} 章</p>
           </div>
           <div className="book-card p-5">
             <h3 className="font-black text-[#3b2511]">紧迫伏笔</h3>
@@ -222,8 +245,18 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
         </aside>
         <div className="space-y-5">
           <div className="book-card p-5">
-            <label className="mb-2 block text-sm font-bold text-[#5e3b1c]" htmlFor="chapter-goal">章节目标</label>
-            <textarea id="chapter-goal" className="paper-input min-h-28" value={goal} onChange={(event) => setGoal(event.target.value)} aria-label="章节目标" disabled={Boolean(chapter)} />
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-sm font-bold text-[#5e3b1c]" htmlFor="chapter-goal">章节目标</label>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-700/25 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-40"
+                disabled={suggestingGoal || Boolean(chapter)}
+                onClick={handleSuggestGoal}
+                title="AI 根据世界设定、故事大纲、角色和伏笔自动生成章节目标"
+              >
+                {suggestingGoal ? '⏳ 生成中…' : '✨ 自动生成'}
+              </button>
+            </div>
+            <textarea id="chapter-goal" className="paper-input min-h-28" value={goal} onChange={(event) => setGoal(event.target.value)} aria-label="章节目标" disabled={Boolean(chapter)} placeholder="输入本章要讲什么故事……或者点击「✨ 自动生成」让 AI 帮你写" />
             <div className="mt-4 flex flex-wrap gap-3">
               <button className="primary-button" disabled={working || Boolean(chapter)} onClick={createChapterSession}>{chapter ? '章节已创建' : '创建章节'}</button>
               <button className="secondary-button" disabled={working || !chapter} onClick={runOutliner}>生成大纲</button>
@@ -305,7 +338,45 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
                 <div className="rounded-2xl bg-white/35 p-4"><h3 className="font-black text-[#3b2511]">上下文摘要</h3><p className="manuscript mt-2">{draft.context_summary}</p></div>
                 <div className="rounded-2xl bg-white/35 p-4"><h3 className="font-black text-[#3b2511]">审核提示</h3>{draft.review_hints.map((hint) => <p key={hint} className="manuscript mt-2">{hint}</p>)}</div>
               </div>
-              <pre className="overflow-auto rounded-2xl border border-amber-900/15 bg-[#2d1d10] p-4 text-sm text-[#f8ead0]">{JSON.stringify(draft.proposed_changes, null, 2)}</pre>
+              {draft.proposed_changes && (Object.keys(draft.proposed_changes).length > 0) && (
+                <div className="space-y-3">
+                  <h3 className="font-black text-[#3b2511]">📋 世界状态变化</h3>
+                  {/* Character updates */}
+                  {Array.isArray((draft.proposed_changes as any).characters) && (draft.proposed_changes as any).characters.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-bold text-[#5e3b1c]">🎭 角色变化</h4>
+                      {(draft.proposed_changes as any).characters.map((c: any, i: number) => {
+                        const charName = world.characters?.find((ch: any) => ch.id === c.character_id)?.name ?? `角色#${c.character_id}`;
+                        return (
+                          <div key={i} className="rounded-xl bg-amber-50/60 p-3">
+                            <p className="font-bold text-[#3b2511]">{charName} <span className="text-xs font-normal text-amber-700">({c.status})</span></p>
+                            {c.current_goals && c.current_goals.length > 0 && (
+                              <ul className="mt-1 list-inside list-disc text-sm text-[#4a321e]">
+                                {c.current_goals.map((g: string, gi: number) => <li key={gi}>{g}</li>)}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {/* Foreshadow updates */}
+                  {Array.isArray((draft.proposed_changes as any).foreshadows) && (draft.proposed_changes as any).foreshadows.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-bold text-[#5e3b1c]">🔮 伏笔推进</h4>
+                      {(draft.proposed_changes as any).foreshadows.map((f: any, i: number) => {
+                        const fsName = world.foreshadows?.find((fs: any) => fs.id === f.foreshadow_id)?.title ?? `伏笔#${f.foreshadow_id}`;
+                        return (
+                          <div key={i} className="rounded-xl bg-purple-50/60 p-3">
+                            <p className="font-bold text-[#3b2511]">{fsName} <span className="text-xs font-normal text-purple-700">({f.status})</span></p>
+                            {f.description_note && <p className="manuscript mt-1 text-sm text-[#4a321e]">{f.description_note}</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </article>
           )}
 
@@ -327,7 +398,43 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
                   {critique.suggestions.map((suggestion) => <p key={suggestion} className="manuscript mt-2">{suggestion}</p>)}
                 </div>
               </div>
-              <pre className="overflow-auto rounded-2xl border border-amber-900/15 bg-[#2d1d10] p-4 text-sm text-[#f8ead0]">{JSON.stringify(critique.consistency_check, null, 2)}</pre>
+              {critique.consistency_check && Object.keys(critique.consistency_check).length > 0 && (
+                <div className="space-y-3">
+                  <h3 className="font-black text-[#3b2511]">🔍 一致性检查</h3>
+                  {Array.isArray((critique.consistency_check as any).characters) && (critique.consistency_check as any).characters.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-bold text-[#5e3b1c]">🎭 角色状态</h4>
+                      {(critique.consistency_check as any).characters.map((c: any, i: number) => {
+                        const charName = world.characters?.find((ch: any) => ch.id === c.character_id)?.name ?? `角色#${c.character_id}`;
+                        return (
+                          <div key={i} className="rounded-xl bg-amber-50/60 p-3">
+                            <p className="font-bold text-[#3b2511]">{charName} <span className="text-xs font-normal text-amber-700">({c.status})</span></p>
+                            {c.current_goals && c.current_goals.length > 0 && (
+                              <ul className="mt-1 list-inside list-disc text-sm text-[#4a321e]">
+                                {c.current_goals.map((g: string, gi: number) => <li key={gi}>{g}</li>)}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {Array.isArray((critique.consistency_check as any).foreshadows) && (critique.consistency_check as any).foreshadows.length > 0 && (
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-bold text-[#5e3b1c]">🔮 伏笔状态</h4>
+                      {(critique.consistency_check as any).foreshadows.map((f: any, i: number) => {
+                        const fsName = world.foreshadows?.find((fs: any) => fs.id === f.foreshadow_id)?.title ?? `伏笔#${f.foreshadow_id}`;
+                        return (
+                          <div key={i} className="rounded-xl bg-purple-50/60 p-3">
+                            <p className="font-bold text-[#3b2511]">{fsName} <span className="text-xs font-normal text-purple-700">({f.status})</span></p>
+                            {f.description_note && <p className="manuscript mt-1 text-sm text-[#4a321e]">{f.description_note}</p>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </section>
           )}
 

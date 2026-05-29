@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = '0005_add_foreshadow_events'
-down_revision: str | None = '0004_add_state_consistency_foundation'
+down_revision: str | None = '0004'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

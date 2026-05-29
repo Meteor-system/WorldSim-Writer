@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_user
@@ -60,7 +60,8 @@ def update(
 @router.delete('/characters/{character_id}', status_code=204)
 def delete(
     character_id: int,
+    edit_reason: str | None = Query(default=None),
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> None:
-    delete_character(db, current_user, character_id)
+    delete_character(db, current_user, character_id, edit_reason)

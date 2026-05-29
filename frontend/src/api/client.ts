@@ -3,6 +3,9 @@ import type {
   ChapterPipelineResponse,
   Character,
   CharacterCreate,
+  CharacterRelation,
+  CharacterRelationCreate,
+  CharacterRelationUpdate,
   CharacterUpdate,
   CritiqueResponse,
   DraftResponse,
@@ -14,6 +17,7 @@ import type {
   ForeshadowUpdate,
   OutlineResponse,
   StaleForeshadow,
+  StoryArcResponse,
   WorldCreateRequest,
 } from './types';
 
@@ -67,6 +71,20 @@ export function getWorldEvents(worldId: number, params: { event_type?: string; l
   if (params.offset !== undefined) search.set('offset', String(params.offset));
   const query = search.toString();
   return apiRequest<{ items: EventLog[]; total: number; limit: number; offset: number }>(`/worlds/${worldId}/events${query ? `?${query}` : ''}`);
+}
+
+export function generateStoryArc(worldId: number) {
+  return apiRequest<StoryArcResponse>(`/worlds/${worldId}/story-arc`, {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export function suggestGoal(worldId: number) {
+  return apiRequest<{ goal: string }>(`/worlds/${worldId}/suggest-goal`, {
+    method: 'POST',
+    body: '{}',
+  });
 }
 
 /* ── Narrative pipeline ── */
@@ -123,8 +141,38 @@ export function updateCharacter(characterId: number, data: CharacterUpdate) {
   });
 }
 
-export function deleteCharacter(characterId: number) {
-  return apiRequest<unknown>(`/characters/${characterId}`, { method: 'DELETE' });
+export function deleteCharacter(characterId: number, editReason?: string) {
+  const query = editReason ? `?${new URLSearchParams({ edit_reason: editReason }).toString()}` : '';
+  return apiRequest<unknown>(`/characters/${characterId}${query}`, { method: 'DELETE' });
+}
+
+/* ── Relations ── */
+
+export function createRelation(worldId: number, data: CharacterRelationCreate) {
+  return apiRequest<CharacterRelation>(`/worlds/${worldId}/relations`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function getRelations(worldId: number) {
+  return apiRequest<CharacterRelation[]>(`/worlds/${worldId}/relations`);
+}
+
+export function getRelation(relationId: number) {
+  return apiRequest<CharacterRelation>(`/relations/${relationId}`);
+}
+
+export function updateRelation(relationId: number, data: CharacterRelationUpdate) {
+  return apiRequest<CharacterRelation>(`/relations/${relationId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+}
+
+export function deleteRelation(relationId: number, editReason?: string) {
+  const query = editReason ? `?${new URLSearchParams({ edit_reason: editReason }).toString()}` : '';
+  return apiRequest<unknown>(`/relations/${relationId}${query}`, { method: 'DELETE' });
 }
 
 /* ── Foreshadows ── */
@@ -162,6 +210,7 @@ export function updateForeshadow(foreshadowId: number, data: ForeshadowUpdate) {
   });
 }
 
-export function deleteForeshadow(foreshadowId: number) {
-  return apiRequest<unknown>(`/foreshadows/${foreshadowId}`, { method: 'DELETE' });
+export function deleteForeshadow(foreshadowId: number, editReason?: string) {
+  const query = editReason ? `?${new URLSearchParams({ edit_reason: editReason }).toString()}` : '';
+  return apiRequest<unknown>(`/foreshadows/${foreshadowId}${query}`, { method: 'DELETE' });
 }

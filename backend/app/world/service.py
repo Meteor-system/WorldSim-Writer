@@ -6,6 +6,7 @@ from app.auth.models import User
 from app.character.models import Character, CharacterRelation
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow, ForeshadowEvent
+from app.narrative.models import Chapter
 from app.world.models import World
 from app.world.schemas import WorldCreateRequest
 from app.world.templates import SAMPLE_WORLD
@@ -70,11 +71,24 @@ def foreshadow_projection(foreshadow: Foreshadow) -> dict:
     }
 
 
+def relation_projection(relation: CharacterRelation) -> dict:
+    return {
+        'id': relation.id,
+        'source_character_id': relation.source_character_id,
+        'target_character_id': relation.target_character_id,
+        'relation_type': relation.relation_type,
+        'intensity': relation.intensity,
+        'visibility': relation.visibility,
+    }
+
+
 def refresh_world_projection(db: Session, world: World) -> None:
     characters = list(db.scalars(select(Character).where(Character.world_id == world.id).order_by(Character.id)))
     foreshadows = list(db.scalars(select(Foreshadow).where(Foreshadow.world_id == world.id).order_by(Foreshadow.id)))
+    relations = list(db.scalars(select(CharacterRelation).where(CharacterRelation.world_id == world.id).order_by(CharacterRelation.id)))
     world.current_characters = [character_projection(character) for character in characters]
     world.current_foreshadows = [foreshadow_projection(foreshadow) for foreshadow in foreshadows]
+    world.current_relations = [relation_projection(relation) for relation in relations]
 
 
 def create_world_from_template(db: Session, user: User, data: WorldCreateRequest) -> World:
@@ -165,6 +179,12 @@ def require_owned_world(db: Session, user: User, world_id: int) -> World:
     return world
 
 
+def count_approved_chapters(db: Session, world_id: int) -> int:
+    return db.scalar(
+        select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id).where(Chapter.status == 'approved')
+    ) or 0
+
+
 def get_world_overview(db: Session, user: User, world_id: int) -> dict:
     world = require_owned_world(db, user, world_id)
     characters = list(db.scalars(select(Character).where(Character.world_id == world.id).order_by(Character.id)))
@@ -182,10 +202,13 @@ def get_world_overview(db: Session, user: User, world_id: int) -> dict:
         'tone_profile': world.tone_profile,
         'current_characters': world.current_characters,
         'current_foreshadows': world.current_foreshadows,
+        'current_relations': world.current_relations,
         'characters': characters,
         'relations': relations,
         'foreshadows': foreshadows,
         'recent_events': recent_events,
+        'story_arc': world.story_arc,
+        'approved_chapter_count': count_approved_chapters(db, world.id),
     }
 
 

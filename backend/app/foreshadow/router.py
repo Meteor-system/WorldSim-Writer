@@ -96,7 +96,8 @@ def update(
 @router.delete('/foreshadows/{foreshadow_id}', status_code=204)
 def delete(
     foreshadow_id: int,
+    edit_reason: str | None = Query(default=None),
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> None:
-    delete_foreshadow(db, current_user, foreshadow_id)
+    delete_foreshadow(db, current_user, foreshadow_id, edit_reason)

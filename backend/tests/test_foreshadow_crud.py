@@ -1,3 +1,9 @@
+from sqlalchemy import select
+
+from app.event.models import EventLog
+from app.world.models import World
+
+
 def register(client, email='writer@example.com'):
     response = client.post('/auth/register', json={'email': email, 'password': 'strongpass123'})
     return response.json()['access_token']
@@ -10,6 +16,16 @@ def create_world(client, token):
 
 def auth(token):
     return {'Authorization': f'Bearer {token}'}
+
+
+def world_state(db_session, world_id):
+    db_session.expire_all()
+    return db_session.get(World, world_id)
+
+
+def world_events(db_session, world_id):
+    db_session.expire_all()
+    return list(db_session.scalars(select(EventLog).where(EventLog.world_id == world_id).order_by(EventLog.id)))
 
 
 def first_character_id(client, token, world_id):
@@ -262,7 +278,103 @@ def test_foreshadow_crud_lifecycle(client, db_session):
     assert missing_response.json()['detail'] == 'NOT_FOUND'
 
 
-def test_foreshadow_endpoints_require_login(client):
+def test_foreshadow_create_increments_world_version_refreshes_projection_and_writes_event(client, db_session):
+    token = register(client)
+    world_id = create_world(client, token)
+
+    response = client.post(
+        f'/worlds/{world_id}/foreshadows',
+        headers=auth(token),
+        json={
+            'title': '铜铃异响',
+            'description': '夜半铜铃无人自鸣。',
+            'foreshadow_type': 'plot',
+            'status': 'planted',
+            'urgency_level': 4,
+            'edit_reason': '补充伏笔线索',
+        },
+    )
+
+    assert response.status_code == 200
+    foreshadow = response.json()
+    world = world_state(db_session, world_id)
+    events = world_events(db_session, world_id)
+    assert world.world_version == 2
+    assert world.current_foreshadows[-1]['id'] == foreshadow['id']
+    assert world.current_foreshadows[-1]['title'] == '铜铃异响'
+    assert [event.event_type for event in events] == ['foreshadow_change', 'world_version_increment']
+    foreshadow_event = events[0]
+    assert foreshadow_event.source_type == 'manual_edit'
+    assert foreshadow_event.world_version_before == 1
+    assert foreshadow_event.world_version_after == 2
+    assert foreshadow_event.payload['action'] == 'created'
+    assert foreshadow_event.payload['object_type'] == 'foreshadow'
+    assert foreshadow_event.payload['object_id'] == foreshadow['id']
+    assert foreshadow_event.payload['before'] is None
+    assert foreshadow_event.payload['after']['title'] == '铜铃异响'
+    assert foreshadow_event.payload['edit_reason'] == '补充伏笔线索'
+
+
+def test_foreshadow_update_increments_world_version_refreshes_projection_and_writes_event(client, db_session):
+    token = register(client)
+    world_id = create_world(client, token)
+    foreshadow = create_foreshadow(client, token, world_id)
+
+    response = client.put(
+        f"/foreshadows/{foreshadow['id']}",
+        headers=auth(token),
+        json={'status': 'advanced', 'urgency_level': 5, 'edit_reason': '手动推进伏笔'},
+    )
+
+    assert response.status_code == 200
+    world = world_state(db_session, world_id)
+    events = world_events(db_session, world_id)
+    assert world.world_version == 3
+    updated_projection = next(item for item in world.current_foreshadows if item['id'] == foreshadow['id'])
+    assert updated_projection['status'] == 'advanced'
+    assert updated_projection['urgency_level'] == 5
+    foreshadow_event = events[-2]
+    assert foreshadow_event.event_type == 'foreshadow_change'
+    assert foreshadow_event.source_type == 'manual_edit'
+    assert foreshadow_event.world_version_before == 2
+    assert foreshadow_event.world_version_after == 3
+    assert foreshadow_event.payload['action'] == 'updated'
+    assert foreshadow_event.payload['object_id'] == foreshadow['id']
+    assert foreshadow_event.payload['before']['status'] == 'planted'
+    assert foreshadow_event.payload['after']['status'] == 'advanced'
+    assert foreshadow_event.payload['after']['urgency_level'] == 5
+    assert foreshadow_event.payload['edit_reason'] == '手动推进伏笔'
+    timeline = client.get(f"/foreshadows/{foreshadow['id']}/timeline", headers=auth(token)).json()
+    assert [item['event_type'] for item in timeline] == ['planted', 'advanced']
+
+
+def test_foreshadow_delete_increments_world_version_refreshes_projection_and_writes_event(client, db_session):
+    token = register(client)
+    world_id = create_world(client, token)
+    foreshadow = create_foreshadow(client, token, world_id)
+
+    response = client.delete(
+        f"/foreshadows/{foreshadow['id']}?edit_reason=删除废弃伏笔",
+        headers=auth(token),
+    )
+
+    assert response.status_code == 204
+    world = world_state(db_session, world_id)
+    events = world_events(db_session, world_id)
+    assert world.world_version == 3
+    assert foreshadow['id'] not in [item['id'] for item in world.current_foreshadows]
+    foreshadow_event = events[-2]
+    assert foreshadow_event.event_type == 'foreshadow_change'
+    assert foreshadow_event.source_type == 'manual_edit'
+    assert foreshadow_event.world_version_before == 2
+    assert foreshadow_event.world_version_after == 3
+    assert foreshadow_event.payload['action'] == 'deleted'
+    assert foreshadow_event.payload['object_id'] == foreshadow['id']
+    assert foreshadow_event.payload['before']['title'] == '铜铃异响'
+    assert foreshadow_event.payload['after'] is None
+    assert foreshadow_event.payload['edit_reason'] == '删除废弃伏笔'
+
+
     response = client.get('/worlds/1/foreshadows')
 
     assert response.status_code == 401

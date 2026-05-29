@@ -1,3 +1,5 @@
+import json
+
 import httpx
 
 from app.core.config import Settings, get_settings
@@ -5,9 +7,11 @@ from app.llm.schemas import (
     ChapterGeneration,
     ChapterOutline,
     CritiqueReport,
+    StoryArcChapter,
     parse_chapter_generation,
     parse_chapter_outline,
     parse_critique_report,
+    parse_story_arc,
 )
 
 
@@ -69,24 +73,109 @@ MOCK_CRITIQUE = {
     },
 }
 
+MOCK_STORY_ARC = [
+    {
+        "chapter_number": 1,
+        "title": "裂纹玉佩的召唤",
+        "summary": "林砚发现裂纹玉佩开始指向青岚城深处。城主府的异常灵力让他意识到灵脉危机并非自然衰退。",
+        "core_conflict": "林砚必须决定是否冒险调查城主府。",
+        "pov_suggestion": "林砚",
+        "foreshadow_hints": ["裂纹玉佩"],
+    },
+    {
+        "chapter_number": 2,
+        "title": "密道外的拦截",
+        "summary": "沈微霜在城主府外阻止林砚靠近密道。两人的对峙暴露她知道灵脉衰退的隐情。",
+        "core_conflict": "林砚必须判断沈微霜是敌是友。",
+        "pov_suggestion": "林砚",
+        "foreshadow_hints": ["城主府密道"],
+    },
+    {
+        "chapter_number": 3,
+        "title": "忘归书阁",
+        "summary": "雨夜中，林砚进入只在灵力紊乱时出现的忘归书阁。古书预言青岚灵脉将在三日后断绝。",
+        "core_conflict": "林砚必须接受预言并寻找可信盟友。",
+        "pov_suggestion": "林砚",
+        "foreshadow_hints": ["预言古书"],
+    },
+    {
+        "chapter_number": 4,
+        "title": "师门旧债",
+        "summary": "林砚发现师门旧案与城主府封印有关。继续追查可能让他背负叛徒后人的污名。",
+        "core_conflict": "林砚必须在个人名誉与真相之间取舍。",
+        "pov_suggestion": "林砚",
+        "foreshadow_hints": ["师门旧案"],
+    },
+    {
+        "chapter_number": 5,
+        "title": "灵井回声",
+        "summary": "地下灵井传来第二个人的脚步声，证明有人正在提前抽离灵脉。沈微霜被迫透露她一直在监视灵井。",
+        "core_conflict": "林砚与沈微霜必须短暂合作却无法互相信任。",
+        "pov_suggestion": "沈微霜",
+        "foreshadow_hints": ["灵井异响"],
+    },
+    {
+        "chapter_number": 6,
+        "title": "城主的空座",
+        "summary": "城主公开露面时表现得像被某种契约操控。林砚意识到真正的对手可能藏在城主身后。",
+        "core_conflict": "林砚必须揭穿操控者而不惊动城主府守卫。",
+        "pov_suggestion": "林砚",
+        "foreshadow_hints": ["城主府叛乱传闻"],
+    },
+    {
+        "chapter_number": 7,
+        "title": "玉佩中的名字",
+        "summary": "裂纹玉佩映出一个被抹去的名字，指向林砚家族与灵脉契约的源头。线索同时引来城主府追兵。",
+        "core_conflict": "林砚必须保护线索并面对自己的血脉身份。",
+        "pov_suggestion": "林砚",
+        "foreshadow_hints": ["裂纹玉佩", "血脉契约"],
+    },
+    {
+        "chapter_number": 8,
+        "title": "三日之限",
+        "summary": "预言中的最后一日到来，青岚城开始出现灵力枯竭。林砚必须选择先救城民还是先阻止幕后仪式。",
+        "core_conflict": "救人会错过仪式，阻止仪式会牺牲眼前城民。",
+        "pov_suggestion": "林砚",
+        "foreshadow_hints": ["三日倒计时"],
+    },
+    {
+        "chapter_number": 9,
+        "title": "地下封印",
+        "summary": "林砚与沈微霜进入地下封印核心，发现灵脉断绝是旧契约反噬。两人必须共同承担解除封印的代价。",
+        "core_conflict": "解除封印需要牺牲一段关键记忆。",
+        "pov_suggestion": "沈微霜",
+        "foreshadow_hints": ["地下封印", "血脉契约"],
+    },
+    {
+        "chapter_number": 10,
+        "title": "青岚新脉",
+        "summary": "林砚用玉佩重写契约，保住青岚城但改变了自己与灵脉的关系。旧伏笔得到回收，新危机在灵脉深处苏醒。",
+        "core_conflict": "胜利的代价让林砚成为新契约的承载者。",
+        "pov_suggestion": "林砚",
+        "foreshadow_hints": ["裂纹玉佩", "青岚灵脉"],
+    },
+]
+
 
 class LLMClient:
     def __init__(self, settings: Settings | None = None, mock: bool = False) -> None:
         self.settings = settings or get_settings()
         self.mock = mock
 
-    def _post_json(self, messages: list[dict[str, str]], temperature: float = 0.7) -> str:
+    def _post_json(self, messages: list[dict[str, str]], temperature: float = 0.7, json_object: bool = True) -> str:
         base_url = str(self.settings.llm_base_url).rstrip('/')
+        request_payload = {
+            'model': self.settings.llm_model,
+            'messages': messages,
+            'temperature': temperature,
+        }
+        if json_object:
+            request_payload['response_format'] = {'type': 'json_object'}
         try:
             response = httpx.post(
                 f'{base_url}/chat/completions',
                 headers={'Authorization': f'Bearer {self.settings.llm_api_key}'},
-                json={
-                    'model': self.settings.llm_model,
-                    'messages': messages,
-                    'temperature': temperature,
-                    'response_format': {'type': 'json_object'},
-                },
+                json=request_payload,
                 timeout=self.settings.llm_timeout_seconds,
             )
             response.raise_for_status()
@@ -108,6 +197,11 @@ class LLMClient:
         if not isinstance(content, str):
             raise ValueError('MODEL_RESPONSE_INVALID')
         return content
+
+    def generate_story_arc(self, messages: list[dict[str, str]]) -> list[StoryArcChapter]:
+        if self.mock:
+            return parse_story_arc(json.dumps(MOCK_STORY_ARC, ensure_ascii=False))
+        return parse_story_arc(self._post_json(messages, temperature=0.4, json_object=False))
 
     def generate_outline(self, messages: list[dict[str, str]]) -> ChapterOutline:
         if self.mock:
@@ -140,6 +234,16 @@ class LLMClient:
             ]
             return ChapterGeneration.model_validate(mock_data)
         return parse_chapter_generation(self._post_json(messages, temperature=0.7))
+
+    def suggest_goal(self, messages: list[dict[str, str]]) -> dict:
+        if self.mock:
+            return {'goal': '主角在旧工业区偶遇关键人物，通过一场意外对话揭开隐藏在身份背后的秘密，并决定下一步行动。'}
+        import json as _json
+        raw = self._post_json(messages, temperature=0.6)
+        parsed = _json.loads(raw)
+        if isinstance(parsed, dict) and 'goal' in parsed:
+            return {'goal': parsed['goal']}
+        return {'goal': raw}
 
     def critique_chapter(self, messages: list[dict[str, str]]) -> CritiqueReport:
         if self.mock:

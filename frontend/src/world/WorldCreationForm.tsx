@@ -335,7 +335,21 @@ export function WorldCreationForm({ creating, onCreate }: Props) {
               <select className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" value={relation.target_index} onChange={(event) => updateRelation(index, { target_index: Number(event.target.value) })}>
                 {form.starter_assets.characters.map((character, characterIndex) => <option key={characterIndex} value={characterIndex}>{character.name}</option>)}
               </select>
-              <input className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" value={relation.relation_type} onChange={(event) => updateRelation(index, { relation_type: event.target.value })} placeholder="关系类型" required />
+              <select className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" value={relation.relation_type} onChange={(event) => updateRelation(index, { relation_type: event.target.value })} required>
+                <option value="" disabled>选择关系类型</option>
+                <option value="mutual_suspicion">相互猜疑</option>
+                <option value="ally">盟友</option>
+                <option value="rival">对手/竞争</option>
+                <option value="mentor">师徒</option>
+                <option value="enemy">敌对</option>
+                <option value="friend">朋友</option>
+                <option value="family">亲属</option>
+                <option value="romantic">恋人</option>
+                <option value="stranger">陌生人</option>
+                <option value="alliance">同盟</option>
+                <option value="strained_alliance">貌合神离</option>
+                <option value="public_opponents">公开对立</option>
+              </select>
               <input className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" type="number" min={1} max={5} value={relation.intensity ?? 1} onChange={(event) => updateRelation(index, { intensity: Number(event.target.value) })} />
               <button type="button" className="text-sm font-bold text-red-700" onClick={() => removeRelation(index)}>删除</button>
             </article>

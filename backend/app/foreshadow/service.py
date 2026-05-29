@@ -7,7 +7,8 @@ from app.character.models import Character
 from app.foreshadow.models import Foreshadow, ForeshadowEvent
 from app.foreshadow.schemas import ForeshadowCreate, ForeshadowUpdate
 from app.narrative.models import Chapter
-from app.world.service import require_owned_world
+from app.world.governance import commit_manual_world_change, require_owned_world_for_update
+from app.world.service import foreshadow_projection, require_owned_world
 
 FORESHADOW_STATUSES = {'planted', 'advanced', 'resolved', 'expired'}
 VALID_STATUS_TRANSITIONS = {
@@ -92,7 +93,7 @@ def _validate_related_characters(db: Session, world_id: int, related_character_i
 
 
 def create_foreshadow(db: Session, user: User, world_id: int, data: ForeshadowCreate) -> Foreshadow:
-    require_owned_world(db, user, world_id)
+    world = require_owned_world_for_update(db, user, world_id)
     _validate_source_chapter(db, world_id, data.source_chapter_id)
     related_character_ids = _validate_related_characters(db, world_id, data.related_character_ids)
     foreshadow_status = data.status if data.status is not None else 'planted'
@@ -111,7 +112,17 @@ def create_foreshadow(db: Session, user: User, world_id: int, data: ForeshadowCr
     db.add(foreshadow)
     db.flush()
     add_foreshadow_event(db, foreshadow, foreshadow.status, chapter_id=foreshadow.source_chapter_id)
-    db.commit()
+    after = foreshadow_projection(foreshadow)
+    commit_manual_world_change(
+        db,
+        world,
+        object_type='foreshadow',
+        object_id=foreshadow.id,
+        action='created',
+        before=None,
+        after=after,
+        edit_reason=data.edit_reason,
+    )
     db.refresh(foreshadow)
     return foreshadow
 
@@ -162,7 +173,10 @@ def get_foreshadow_timeline(db: Session, user: User, foreshadow_id: int) -> list
 
 def update_foreshadow(db: Session, user: User, foreshadow_id: int, data: ForeshadowUpdate) -> Foreshadow:
     foreshadow = _require_owned_foreshadow(db, user, foreshadow_id)
+    world = require_owned_world_for_update(db, user, foreshadow.world_id)
+    before = foreshadow_projection(foreshadow)
     update_data = data.model_dump(exclude_unset=True)
+    edit_reason = update_data.pop('edit_reason', None)
     if 'source_chapter_id' in update_data:
         _validate_source_chapter(db, foreshadow.world_id, update_data['source_chapter_id'])
     if 'related_character_ids' in update_data:
@@ -176,7 +190,18 @@ def update_foreshadow(db: Session, user: User, foreshadow_id: int, data: Foresha
         setattr(foreshadow, field, value)
     if next_status is not None:
         apply_foreshadow_status_transition(db, foreshadow, next_status)
-    db.commit()
+    db.flush()
+    after = foreshadow_projection(foreshadow)
+    commit_manual_world_change(
+        db,
+        world,
+        object_type='foreshadow',
+        object_id=foreshadow.id,
+        action='updated',
+        before=before,
+        after=after,
+        edit_reason=edit_reason,
+    )
     db.refresh(foreshadow)
     return foreshadow
 
@@ -213,7 +238,19 @@ def get_stale_foreshadows(db: Session, user: User, world_id: int) -> list[dict]:
     return stale
 
 
-def delete_foreshadow(db: Session, user: User, foreshadow_id: int) -> None:
+def delete_foreshadow(db: Session, user: User, foreshadow_id: int, edit_reason: str | None = None) -> None:
     foreshadow = _require_owned_foreshadow(db, user, foreshadow_id)
+    world = require_owned_world_for_update(db, user, foreshadow.world_id)
+    before = foreshadow_projection(foreshadow)
     db.delete(foreshadow)
-    db.commit()
+    db.flush()
+    commit_manual_world_change(
+        db,
+        world,
+        object_type='foreshadow',
+        object_id=foreshadow_id,
+        action='deleted',
+        before=before,
+        after=None,
+        edit_reason=edit_reason,
+    )

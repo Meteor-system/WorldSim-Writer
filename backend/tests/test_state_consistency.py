@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.character.models import Character
+from app.character.models import Character, CharacterRelation
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow
 from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
@@ -59,6 +59,28 @@ def test_create_world_initializes_current_projection(client, db_session):
     assert world.current_characters[0]['current_goals'] == ['调查青岚城灵脉衰退']
     assert world.current_foreshadows[0]['title'] == '裂纹玉佩'
     assert world.current_foreshadows[0]['status'] == 'planted'
+    assert world.current_relations[0]['relation_type'] == 'uneasy_alliance'
+    assert world.current_relations[0]['intensity'] == 2
+
+
+def test_world_overview_returns_current_relations_projection(client, db_session):
+    token, world_id = register_and_create_world(client)
+    relation = db_session.scalar(select(CharacterRelation).where(CharacterRelation.world_id == world_id))
+
+    response = client.get(f'/worlds/{world_id}/overview', headers=auth(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['current_relations'] == [
+        {
+            'id': relation.id,
+            'source_character_id': relation.source_character_id,
+            'target_character_id': relation.target_character_id,
+            'relation_type': 'uneasy_alliance',
+            'intensity': 2,
+            'visibility': 'public',
+        }
+    ]
 
 
 def test_approve_writes_granular_events_and_projection_snapshots(client, db_session, monkeypatch):

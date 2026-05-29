@@ -31,6 +31,7 @@ type FormData = {
   status: string;
   destiny_flag: string;
   current_goals: string;
+  edit_reason: string;
 };
 
 const EMPTY_FORM: FormData = {
@@ -39,6 +40,7 @@ const EMPTY_FORM: FormData = {
   status: 'active',
   destiny_flag: '',
   current_goals: '',
+  edit_reason: '',
 };
 
 function formFromCharacter(c: Character): FormData {
@@ -48,6 +50,7 @@ function formFromCharacter(c: Character): FormData {
     status: c.status,
     destiny_flag: c.destiny_flag ?? '',
     current_goals: c.current_goals.join('、'),
+    edit_reason: '',
   };
 }
 
@@ -61,6 +64,7 @@ function formToPayload(f: FormData): CharacterCreate {
       .split(/[、,，]/)
       .map((s) => s.trim())
       .filter(Boolean),
+    edit_reason: f.edit_reason.trim() || undefined,
   };
 }
 
@@ -73,6 +77,7 @@ export function CharacterManager({ worldId, onChanged }: Props) {
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -132,8 +137,9 @@ export function CharacterManager({ worldId, onChanged }: Props) {
   async function handleDelete(id: number) {
     setError('');
     try {
-      await deleteCharacter(id);
+      await deleteCharacter(id, deleteReason.trim() || undefined);
       setConfirmDelete(null);
+      setDeleteReason('');
       await load();
       await onChanged?.();
     } catch (err) {
@@ -195,21 +201,29 @@ export function CharacterManager({ worldId, onChanged }: Props) {
                   编辑
                 </button>
                 {confirmDelete === c.id ? (
-                  <>
-                    <button
-                      className="rounded-full border border-red-800/40 bg-red-100 px-3 py-1.5 text-sm font-bold text-red-800"
-                      onClick={() => handleDelete(c.id)}
-                    >
-                      确认删除
-                    </button>
-                    <button className="ghost-button text-sm" onClick={() => setConfirmDelete(null)}>
-                      取消
-                    </button>
-                  </>
+                  <div className="w-full space-y-2">
+                    <input
+                      className="paper-input text-sm"
+                      value={deleteReason}
+                      placeholder="删除原因（可选）"
+                      onChange={(e) => setDeleteReason(e.target.value)}
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        className="rounded-full border border-red-800/40 bg-red-100 px-3 py-1.5 text-sm font-bold text-red-800"
+                        onClick={() => handleDelete(c.id)}
+                      >
+                        确认删除
+                      </button>
+                      <button className="ghost-button text-sm" onClick={() => { setConfirmDelete(null); setDeleteReason(''); }}>
+                        取消
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <button
                     className="ghost-button text-sm text-red-700/80"
-                    onClick={() => setConfirmDelete(c.id)}
+                    onClick={() => { setConfirmDelete(c.id); setDeleteReason(''); }}
                   >
                     删除
                   </button>
@@ -293,6 +307,16 @@ export function CharacterManager({ worldId, onChanged }: Props) {
                 value={form.current_goals}
                 placeholder="用顿号分隔多个目标"
                 onChange={(e) => setForm({ ...form, current_goals: e.target.value })}
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-[#4a321e]">修改原因（可选）</span>
+              <input
+                className="paper-input mt-1"
+                value={form.edit_reason}
+                placeholder="例如：修正设定、同步章节结果"
+                onChange={(e) => setForm({ ...form, edit_reason: e.target.value })}
               />
             </label>
 
