@@ -57,6 +57,35 @@ vi.mock('../api/client', () => ({
   })),
   writeChapter: vi.fn(async () => draftResponse),
   critiqueChapter: vi.fn(),
+  generateCriticReport: vi.fn(async () => ({
+    chapter_id: 11,
+    draft_version: 1,
+    current_draft_version: 1,
+    is_stale: false,
+    overall_score: 78,
+    summary: '章节冲突清晰，但第二段信息揭示偏快。',
+    dimensions: {
+      pacing: { score: 72, summary: '中段推进略快。', issues: [], suggestions: ['放慢第二段的信息揭示。'] },
+      tension: { score: 82, summary: '雨巷会面有悬念。', issues: [], suggestions: [] },
+      character_consistency: { score: 60, summary: '人物动机需要补强。', issues: [], suggestions: [] },
+      dialogue_quality: { score: 68, summary: '对白略直白。', issues: [], suggestions: [] },
+      structure: { score: 80, summary: '开端清晰。', issues: [], suggestions: [] },
+      world_continuity: { score: 90, summary: '未发现世界观冲突。', issues: [], suggestions: [] },
+      readability: { score: 76, summary: '可读性良好。', issues: [], suggestions: [] },
+    },
+    issues: [
+      {
+        severity: 'high',
+        dimension: 'character_consistency',
+        message: '林砚突然信任沈微霜，与当前谨慎状态冲突。',
+        paragraph_index: 0,
+        suggested_action: '重写相关段落，补足信任建立过程。',
+      },
+    ],
+    suggestions: ['优先修订第一段人物动机。'],
+    created_at: '2026-05-29T00:00:00Z',
+  })),
+  getCriticReport: vi.fn(),
   suggestGoal: vi.fn(),
   stashDraft: vi.fn(async () => ({ ...draftResponse, draft_version: 2, change_type: 'stash', change_summary: '暂存当前草稿', parent_draft_version: 1 })),
   reviseParagraph: vi.fn(async () => ({
@@ -134,5 +163,10 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('版本差异')).toBeInTheDocument();
     expect(screen.getByText('通过后将提交')).toBeInTheDocument();
     expect(screen.getByText('世界版本：1 → 2')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '生成 Critic 报告' }));
+    expect(await screen.findByText('总评分：78/100')).toBeInTheDocument();
+    expect(screen.getByText('Critic 发现高风险问题，建议修订后再批准。')).toBeInTheDocument();
+    expect(screen.getByText('林砚突然信任沈微霜，与当前谨慎状态冲突。')).toBeInTheDocument();
   });
 });

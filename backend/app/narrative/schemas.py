@@ -92,6 +92,19 @@ class CritiqueResponse(BaseModel):
     status: str
 
 
+class CriticReportResponse(BaseModel):
+    chapter_id: int
+    draft_version: int
+    current_draft_version: int
+    is_stale: bool
+    overall_score: int
+    summary: str
+    dimensions: dict
+    issues: list[dict]
+    suggestions: list[str]
+    created_at: str
+
+
 class ChapterResponse(BaseModel):
     id: int
     world_id: int

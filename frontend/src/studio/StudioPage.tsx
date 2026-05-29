@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
   createChapter as createChapterRequest,
-  critiqueChapter,
+  generateCriticReport,
   generateOutline,
   getApprovalPreview,
   getDraftDiff,
@@ -11,7 +11,8 @@ import {
   suggestGoal,
   writeChapter,
 } from '../api/client';
-import type { ApprovalPreviewResponse, BeatCard, ChapterPipelineResponse, CritiqueReport, DraftDiffResponse, DraftResponse, WorldOverview } from '../api/types';
+import type { ApprovalPreviewResponse, BeatCard, ChapterPipelineResponse, CriticReportResponse, DraftDiffResponse, DraftResponse, WorldOverview } from '../api/types';
+import { CriticReportPanel } from './CriticReportPanel';
 
 type Props = { world: WorldOverview; onBack: () => void; onApproved: (world: WorldOverview) => void };
 
@@ -35,7 +36,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
   const [draftVersions, setDraftVersions] = useState<number[]>([]);
   const [draftDiff, setDraftDiff] = useState<DraftDiffResponse | null>(null);
   const [approvalPreview, setApprovalPreview] = useState<ApprovalPreviewResponse | null>(null);
-  const [critique, setCritique] = useState<CritiqueReport | null>(null);
+  const [critique, setCritique] = useState<CriticReportResponse | null>(null);
   const [working, setWorking] = useState(false);
   const [suggestingGoal, setSuggestingGoal] = useState(false);
   const [error, setError] = useState('');
@@ -166,11 +167,11 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
     setWorking(true);
     setError('');
     try {
-      const response = await critiqueChapter(chapter.id);
-      setCritique(response.critique_report);
-      setChapter({ ...chapter, status: response.status, critique_report: response.critique_report });
+      const report = await generateCriticReport(chapter.id);
+      setCritique(report);
+      setChapter({ ...chapter, critique_report: report });
     } catch (err) {
-      setError(err instanceof Error ? err.message : '生成审核报告失败');
+      setError(err instanceof Error ? err.message : '生成 Critic 报告失败');
     } finally {
       setWorking(false);
     }
@@ -501,61 +502,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
           )}
 
           {critique && (
-            <section className="book-card space-y-4 p-5">
-              <div>
-                <p className="chapter-kicker">Critic Report</p>
-                <h2 className="text-2xl font-black text-[#34210f]">评分：{critique.score}/100</h2>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-2xl bg-white/35 p-4">
-                  <h3 className="font-black text-[#3b2511]">问题列表</h3>
-                  {critique.issues.map((issue, index) => (
-                    <p key={`${issue.category}-${index}`} className="manuscript mt-2">[{issue.severity}] {issue.category}：{issue.message}</p>
-                  ))}
-                </div>
-                <div className="rounded-2xl bg-white/35 p-4">
-                  <h3 className="font-black text-[#3b2511]">修改建议</h3>
-                  {critique.suggestions.map((suggestion) => <p key={suggestion} className="manuscript mt-2">{suggestion}</p>)}
-                </div>
-              </div>
-              {critique.consistency_check && Object.keys(critique.consistency_check).length > 0 && (
-                <div className="space-y-3">
-                  <h3 className="font-black text-[#3b2511]">🔍 一致性检查</h3>
-                  {Array.isArray((critique.consistency_check as any).characters) && (critique.consistency_check as any).characters.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-bold text-[#5e3b1c]">🎭 角色状态</h4>
-                      {(critique.consistency_check as any).characters.map((c: any, i: number) => {
-                        const charName = world.characters?.find((ch: any) => ch.id === c.character_id)?.name ?? `角色#${c.character_id}`;
-                        return (
-                          <div key={i} className="rounded-xl bg-amber-50/60 p-3">
-                            <p className="font-bold text-[#3b2511]">{charName} <span className="text-xs font-normal text-amber-700">({c.status})</span></p>
-                            {c.current_goals && c.current_goals.length > 0 && (
-                              <ul className="mt-1 list-inside list-disc text-sm text-[#4a321e]">
-                                {c.current_goals.map((g: string, gi: number) => <li key={gi}>{g}</li>)}
-                              </ul>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {Array.isArray((critique.consistency_check as any).foreshadows) && (critique.consistency_check as any).foreshadows.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-bold text-[#5e3b1c]">🔮 伏笔状态</h4>
-                      {(critique.consistency_check as any).foreshadows.map((f: any, i: number) => {
-                        const fsName = world.foreshadows?.find((fs: any) => fs.id === f.foreshadow_id)?.title ?? `伏笔#${f.foreshadow_id}`;
-                        return (
-                          <div key={i} className="rounded-xl bg-purple-50/60 p-3">
-                            <p className="font-bold text-[#3b2511]">{fsName} <span className="text-xs font-normal text-purple-700">({f.status})</span></p>
-                            {f.description_note && <p className="manuscript mt-1 text-sm text-[#4a321e]">{f.description_note}</p>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </section>
+            <CriticReportPanel report={critique} working={working} onReviseParagraph={reviseDraftParagraph} />
           )}
 
           {draft && (
