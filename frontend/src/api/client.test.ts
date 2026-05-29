@@ -4,7 +4,9 @@ import {
   deleteCharacter,
   deleteForeshadow,
   deleteRelation,
+  generateCriticReport,
   getApprovalPreview,
+  getCriticReport,
   getDraftDiff,
   getRelations,
   reviseParagraph,
@@ -136,5 +138,23 @@ describe('draft versioning API helpers', () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8000/chapters/11/drafts/diff?from=1&to=3', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://localhost:8000/chapters/11/approval-preview', expect.any(Object));
+  });
+
+  it('calls critic report generate and fetch endpoints', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ overall_score: 78 }))
+      .mockResolvedValueOnce(jsonResponse({ overall_score: 78 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await generateCriticReport(11);
+    await getCriticReport(11);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:8000/chapters/11/critic-report',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8000/chapters/11/critic-report', expect.any(Object));
   });
 });

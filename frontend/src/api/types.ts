@@ -246,6 +246,34 @@ export type CritiqueReport = {
   consistency_check: Record<string, unknown>;
 };
 
+export type CriticIssue = {
+  severity: 'low' | 'medium' | 'high';
+  dimension: string;
+  message: string;
+  paragraph_index: number | null;
+  suggested_action: string | null;
+};
+
+export type CriticDimension = {
+  score: number;
+  summary: string;
+  issues: CriticIssue[];
+  suggestions: string[];
+};
+
+export type CriticReportResponse = {
+  chapter_id: number;
+  draft_version: number;
+  current_draft_version: number;
+  is_stale: boolean;
+  overall_score: number;
+  summary: string;
+  dimensions: Record<string, CriticDimension>;
+  issues: CriticIssue[];
+  suggestions: string[];
+  created_at: string;
+};
+
 export type CritiqueResponse = {
   chapter_id: number;
   critique_report: CritiqueReport;

@@ -1,4 +1,5 @@
 import difflib
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -236,6 +237,81 @@ def build_critique_messages(
     ]
 
 
+CRITIC_DIMENSIONS = [
+    'pacing',
+    'tension',
+    'character_consistency',
+    'dialogue_quality',
+    'structure',
+    'world_continuity',
+    'readability',
+]
+
+
+def build_critic_report_messages(
+    world: World,
+    characters: list[Character],
+    foreshadows: list[Foreshadow],
+    chapter: Chapter,
+    draft: ChapterDraft,
+) -> list[dict[str, str]]:
+    character_lines = '\n'.join(
+        f'- {c.id}: {c.name}, role={c.role_type}, status={c.status}, goals={c.current_goals}, profile={c.public_profile}'
+        for c in characters
+    )
+    foreshadow_lines = '\n'.join(
+        f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}, description={f.description}'
+        for f in foreshadows
+    )
+    return [
+        {
+            'role': 'system',
+            'content': (
+                '你是 WorldSim-Writer 的文学与结构 Critic Agent。必须只返回合法 JSON，结构为：'
+                '{"overall_score":0到100,"summary":"总评",'
+                '"dimensions":{"pacing":{"score":0到100,"summary":"评价",'
+                '"issues":[{"severity":"low|medium|high","dimension":"pacing","message":"问题",'
+                '"paragraph_index":0,"suggested_action":"动作"}],"suggestions":["建议"]}},'
+                '"issues":[{"severity":"low|medium|high","dimension":"维度","message":"问题",'
+                '"paragraph_index":0,"suggested_action":"动作"}],"suggestions":["建议"]}。'
+                'dimensions 必须包含 pacing、tension、character_consistency、dialogue_quality、'
+                'structure、world_continuity、readability。paragraph_index 使用 0-based 索引，可为空。'
+            ),
+        },
+        {
+            'role': 'user',
+            'content': (
+                f'世界设定：{world.truth_canon}\n'
+                f'世界版本：{world.world_version}\n'
+                f'角色：\n{character_lines}\n'
+                f'伏笔：\n{foreshadow_lines}\n'
+                f'章节标题：{chapter.title}\n'
+                f'草稿版本：{draft.draft_version}\n'
+                f'Outliner上下文：{chapter.outline_context}\n'
+                f'Outliner节拍：{chapter.outline_beats}\n'
+                f'正文：\n{draft.content}\n'
+                '请从节奏、张力、人物一致性、对白质量、结构、世界连续性、可读性七个维度生成审稿报告。'
+            ),
+        },
+    ]
+
+
+def _model_dump(value) -> dict:
+    if hasattr(value, 'model_dump'):
+        return value.model_dump()
+    return dict(value)
+
+
+def _critic_report_payload(chapter: Chapter, draft: ChapterDraft, report: dict) -> dict:
+    payload = dict(report)
+    payload['chapter_id'] = chapter.id
+    payload['draft_version'] = int(payload.get('draft_version', draft.draft_version))
+    payload['current_draft_version'] = chapter.draft_version
+    payload['is_stale'] = payload['draft_version'] != chapter.draft_version
+    payload.setdefault('created_at', datetime.now(UTC).isoformat())
+    return payload
+
+
 def validate_generation_ids(generation: ChapterGeneration, characters: list[Character], foreshadows: list[Foreshadow]) -> None:
     character_ids = {character.id for character in characters}
     foreshadow_ids = {foreshadow.id for foreshadow in foreshadows}
@@ -421,6 +497,41 @@ def critique_chapter(db: Session, user: User, chapter_id: int, llm_client: LLMCl
     db.commit()
     db.refresh(chapter)
     return {'chapter_id': chapter.id, 'critique_report': chapter.critique_report, 'status': chapter.status}
+
+
+def generate_critic_report(db: Session, user: User, chapter_id: int, llm_client: LLMClient | None = None) -> dict:
+    chapter = _require_owned_chapter(db, user, chapter_id)
+    draft = _latest_draft(db, chapter)
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_REQUIRED')
+    world = db.get(World, chapter.world_id)
+    assert world is not None
+    characters, foreshadows = _load_world_context(db, world)
+    client = _model_client(llm_client)
+    try:
+        report = client.generate_critic_report(build_critic_report_messages(world, characters, foreshadows, chapter, draft))
+    except (TimeoutError, ValueError, RuntimeError) as exc:
+        raise _map_model_error(exc) from exc
+
+    report_payload = _model_dump(report)
+    missing_dimensions = [dimension for dimension in CRITIC_DIMENSIONS if dimension not in report_payload.get('dimensions', {})]
+    if missing_dimensions:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+    stored_report = _critic_report_payload(chapter, draft, report_payload)
+    chapter.critique_report = stored_report
+    db.commit()
+    db.refresh(chapter)
+    return _critic_report_payload(chapter, draft, chapter.critique_report)
+
+
+def get_critic_report(db: Session, user: User, chapter_id: int) -> dict:
+    chapter = _require_owned_chapter(db, user, chapter_id)
+    draft = _latest_draft(db, chapter)
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_REQUIRED')
+    if not chapter.critique_report:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    return _critic_report_payload(chapter, draft, chapter.critique_report)
 
 
 def reject_chapter(db: Session, user: User, chapter_id: int, feedback: str) -> dict:

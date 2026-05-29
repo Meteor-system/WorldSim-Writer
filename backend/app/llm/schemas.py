@@ -59,6 +59,29 @@ class CritiqueReport(BaseModel):
     consistency_check: dict[str, Any]
 
 
+class LiteraryCriticIssue(BaseModel):
+    severity: str
+    dimension: str
+    message: str
+    paragraph_index: int | None = None
+    suggested_action: str | None = None
+
+
+class LiteraryCriticDimension(BaseModel):
+    score: int = Field(ge=0, le=100)
+    summary: str
+    issues: list[LiteraryCriticIssue] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+
+
+class LiteraryCriticReport(BaseModel):
+    overall_score: int = Field(ge=0, le=100)
+    summary: str
+    dimensions: dict[str, LiteraryCriticDimension]
+    issues: list[LiteraryCriticIssue] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+
+
 class ProposedCharacterChange(BaseModel):
     character_id: int
     status: str | None = None
@@ -126,5 +149,13 @@ def parse_critique_report(raw_text: str) -> CritiqueReport:
     try:
         payload = _load_json(raw_text)
         return CritiqueReport.model_validate(payload)
+    except ValidationError as exc:
+        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+
+
+def parse_literary_critic_report(raw_text: str) -> LiteraryCriticReport:
+    try:
+        payload = _load_json(raw_text)
+        return LiteraryCriticReport.model_validate(payload)
     except ValidationError as exc:
         raise ValueError('MODEL_RESPONSE_INVALID') from exc

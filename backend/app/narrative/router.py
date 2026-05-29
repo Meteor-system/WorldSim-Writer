@@ -8,6 +8,7 @@ from app.narrative.schemas import (
     ChapterPipelineResponse,
     ChapterResponse,
     CreateChapterRequest,
+    CriticReportResponse,
     CritiqueResponse,
     DraftRequest,
     DraftResponse,
@@ -26,7 +27,9 @@ from app.narrative.service import (
     critique_chapter,
     edit_chapter_draft,
     generate_chapter_outline,
+    generate_critic_report,
     get_approval_preview,
+    get_critic_report,
     get_draft_diff,
     reject_chapter,
     revise_chapter_paragraph,
@@ -90,6 +93,24 @@ def critique(
     db: Session = Depends(get_db),
 ) -> CritiqueResponse:
     return CritiqueResponse.model_validate(critique_chapter(db, current_user, chapter_id))
+
+
+@router.post('/chapters/{chapter_id}/critic-report', response_model=CriticReportResponse)
+def create_critic_report(
+    chapter_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> CriticReportResponse:
+    return CriticReportResponse.model_validate(generate_critic_report(db, current_user, chapter_id))
+
+
+@router.get('/chapters/{chapter_id}/critic-report', response_model=CriticReportResponse)
+def read_critic_report(
+    chapter_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> CriticReportResponse:
+    return CriticReportResponse.model_validate(get_critic_report(db, current_user, chapter_id))
 
 
 @router.post('/chapters/{chapter_id}/approve', response_model=ChapterResponse)

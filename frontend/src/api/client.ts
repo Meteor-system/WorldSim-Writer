@@ -8,6 +8,7 @@ import type {
   CharacterRelationCreate,
   CharacterRelationUpdate,
   CharacterUpdate,
+  CriticReportResponse,
   CritiqueResponse,
   DraftDiffResponse,
   DraftResponse,
@@ -134,6 +135,17 @@ export function getDraftDiff(chapterId: number, fromVersion: number, toVersion: 
 
 export function getApprovalPreview(chapterId: number) {
   return apiRequest<ApprovalPreviewResponse>(`/chapters/${chapterId}/approval-preview`);
+}
+
+export function generateCriticReport(chapterId: number) {
+  return apiRequest<CriticReportResponse>(`/chapters/${chapterId}/critic-report`, {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export function getCriticReport(chapterId: number) {
+  return apiRequest<CriticReportResponse>(`/chapters/${chapterId}/critic-report`);
 }
 
 export function critiqueChapter(chapterId: number) {

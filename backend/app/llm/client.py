@@ -7,10 +7,12 @@ from app.llm.schemas import (
     ChapterGeneration,
     ChapterOutline,
     CritiqueReport,
+    LiteraryCriticReport,
     StoryArcChapter,
     parse_chapter_generation,
     parse_chapter_outline,
     parse_critique_report,
+    parse_literary_critic_report,
     parse_story_arc,
 )
 
@@ -71,6 +73,43 @@ MOCK_CRITIQUE = {
         "world_rule_adherence": "pass",
         "pacing": "pass",
     },
+}
+
+MOCK_LITERARY_CRITIC = {
+    "overall_score": 82,
+    "summary": "章节结构清晰，角色动机基本稳定，但中段对白可以更有潜台词。",
+    "dimensions": {
+        "pacing": {"score": 80, "summary": "推进稳定。", "issues": [], "suggestions": ["保留章末钩子。"]},
+        "tension": {"score": 82, "summary": "冲突明确。", "issues": [], "suggestions": ["强化对峙压力。"]},
+        "character_consistency": {"score": 84, "summary": "角色目标一致。", "issues": [], "suggestions": ["保持林砚谨慎。"]},
+        "dialogue_quality": {
+            "score": 74,
+            "summary": "对白略直白。",
+            "issues": [
+                {
+                    "severity": "medium",
+                    "dimension": "dialogue_quality",
+                    "message": "沈微霜台词可以更克制。",
+                    "paragraph_index": 1,
+                    "suggested_action": "润色相关段落。",
+                }
+            ],
+            "suggestions": ["减少解释性台词。"],
+        },
+        "structure": {"score": 83, "summary": "起承转合清楚。", "issues": [], "suggestions": ["章末增加反转。"]},
+        "world_continuity": {"score": 88, "summary": "世界状态一致。", "issues": [], "suggestions": ["保持伏笔推进。"]},
+        "readability": {"score": 78, "summary": "语言顺畅。", "issues": [], "suggestions": ["压缩重复意象。"]},
+    },
+    "issues": [
+        {
+            "severity": "medium",
+            "dimension": "dialogue_quality",
+            "message": "沈微霜台词可以更克制。",
+            "paragraph_index": 1,
+            "suggested_action": "润色相关段落。",
+        }
+    ],
+    "suggestions": ["优先润色第二段对白。"],
 }
 
 MOCK_STORY_ARC = [
@@ -249,3 +288,8 @@ class LLMClient:
         if self.mock:
             return CritiqueReport.model_validate(MOCK_CRITIQUE)
         return parse_critique_report(self._post_json(messages, temperature=0.2))
+
+    def generate_critic_report(self, messages: list[dict[str, str]]) -> LiteraryCriticReport:
+        if self.mock:
+            return LiteraryCriticReport.model_validate(MOCK_LITERARY_CRITIC)
+        return parse_literary_critic_report(self._post_json(messages, temperature=0.2))
