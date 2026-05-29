@@ -20,6 +20,7 @@ class ForeshadowCreate(BaseModel):
     urgency_level: int | None = Field(default=None, ge=1, le=5)
     related_character_ids: list[int] | None = None
     expected_resolution_window: str | None = None
+    edit_reason: str | None = None
 
     @field_validator('title', 'description', 'foreshadow_type')
     @classmethod
@@ -36,6 +37,7 @@ class ForeshadowUpdate(BaseModel):
     urgency_level: int | None = Field(default=None, ge=1, le=5)
     related_character_ids: list[int] | None = None
     expected_resolution_window: str | None = None
+    edit_reason: str | None = None
 
     @field_validator('title', 'description', 'foreshadow_type')
     @classmethod
