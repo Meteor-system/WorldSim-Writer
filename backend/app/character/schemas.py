@@ -18,6 +18,7 @@ class CharacterCreate(BaseModel):
     hidden_traits: dict[str, Any] | None = None
     destiny_flag: str | None = None
     current_goals: list[str] | None = None
+    edit_reason: str | None = None
 
     @field_validator('name', 'role_type')
     @classmethod
@@ -33,6 +34,7 @@ class CharacterUpdate(BaseModel):
     hidden_traits: dict[str, Any] | None = None
     destiny_flag: str | None = None
     current_goals: list[str] | None = None
+    edit_reason: str | None = None
 
     @field_validator('name', 'role_type')
     @classmethod
