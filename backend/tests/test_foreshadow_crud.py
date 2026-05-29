@@ -33,6 +33,24 @@ def create_chapter(db_session, world_id):
     return chapter.id
 
 
+def create_approved_chapter(db_session, world_id, title):
+    from app.narrative.models import Chapter
+
+    chapter = Chapter(
+        world_id=world_id,
+        title=title,
+        status='approved',
+        draft_version=1,
+        approved_version=1,
+        base_world_version=1,
+        approved_content='正文',
+    )
+    db_session.add(chapter)
+    db_session.commit()
+    db_session.refresh(chapter)
+    return chapter.id
+
+
 def create_foreshadow(client, token, world_id, title='铜铃异响', status='planted', source_chapter_id=None):
     payload = {
         'title': title,
@@ -135,6 +153,59 @@ def test_foreshadow_event_created_on_transition(client):
     assert after.status_code == 200
     assert len(after.json()) == 2
     assert after.json()[-1]['event_type'] == 'advanced'
+
+
+def test_foreshadow_filter_by_status(client):
+    token = register(client)
+    world_id = create_world(client, token)
+    planted = create_foreshadow(client, token, world_id, title='A')
+    advanced = create_foreshadow(client, token, world_id, title='B')
+    expired = create_foreshadow(client, token, world_id, title='C')
+    assert client.put(f"/foreshadows/{advanced['id']}", headers=auth(token), json={'status': 'advanced'}).status_code == 200
+    assert client.put(f"/foreshadows/{expired['id']}", headers=auth(token), json={'status': 'expired'}).status_code == 200
+
+    only_planted = client.get(f'/worlds/{world_id}/foreshadows?status=planted', headers=auth(token))
+    assert only_planted.status_code == 200
+    assert planted['id'] in {item['id'] for item in only_planted.json()}
+    assert advanced['id'] not in {item['id'] for item in only_planted.json()}
+    assert expired['id'] not in {item['id'] for item in only_planted.json()}
+    assert {item['status'] for item in only_planted.json()} == {'planted'}
+
+    multi = client.get(f'/worlds/{world_id}/foreshadows?status=planted,advanced', headers=auth(token))
+    assert multi.status_code == 200
+    multi_ids = {item['id'] for item in multi.json()}
+    assert planted['id'] in multi_ids
+    assert advanced['id'] in multi_ids
+    assert expired['id'] not in multi_ids
+    assert {item['status'] for item in multi.json()} <= {'planted', 'advanced'}
+
+    invalid = client.get(f'/worlds/{world_id}/foreshadows?status=bad', headers=auth(token))
+    assert invalid.status_code == 400
+    assert invalid.json()['detail'] == 'INVALID_STATUS'
+
+
+def test_foreshadow_stale_detection(client, db_session):
+    token = register(client)
+    world_id = create_world(client, token)
+    source_id = create_approved_chapter(db_session, world_id, '源章节')
+    foreshadow = create_foreshadow(client, token, world_id, title='旧伏笔', source_chapter_id=source_id)
+
+    for idx in range(3):
+        create_approved_chapter(db_session, world_id, f'后续 {idx}')
+
+    warning = client.get(f'/worlds/{world_id}/foreshadows/stale', headers=auth(token))
+    assert warning.status_code == 200
+    assert warning.json()[0]['foreshadow']['id'] == foreshadow['id']
+    assert warning.json()[0]['chapters_since_planted'] == 3
+    assert warning.json()[0]['alert_level'] == 'warning'
+
+    for idx in range(3, 6):
+        create_approved_chapter(db_session, world_id, f'后续 {idx}')
+
+    critical = client.get(f'/worlds/{world_id}/foreshadows/stale', headers=auth(token))
+    assert critical.status_code == 200
+    assert critical.json()[0]['chapters_since_planted'] == 6
+    assert critical.json()[0]['alert_level'] == 'critical'
 
 
 def test_foreshadow_crud_lifecycle(client, db_session):

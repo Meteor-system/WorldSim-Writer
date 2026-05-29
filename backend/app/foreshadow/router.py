@@ -1,16 +1,23 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
-from app.foreshadow.schemas import ForeshadowCreate, ForeshadowEventResponse, ForeshadowResponse, ForeshadowUpdate
+from app.foreshadow.schemas import (
+    ForeshadowCreate,
+    ForeshadowEventResponse,
+    ForeshadowResponse,
+    ForeshadowUpdate,
+    StaleForeshadowResponse,
+)
 from app.foreshadow.service import (
     create_foreshadow,
     delete_foreshadow,
     get_foreshadow,
     get_foreshadow_timeline,
     get_foreshadows,
+    get_stale_foreshadows,
     update_foreshadow,
 )
 
@@ -30,12 +37,26 @@ def create(
 @router.get('/worlds/{world_id}/foreshadows', response_model=list[ForeshadowResponse])
 def list_foreshadows(
     world_id: int,
+    status_filter: str | None = Query(default=None, alias='status'),
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> list[ForeshadowResponse]:
+    statuses = [item.strip() for item in status_filter.split(',') if item.strip()] if status_filter else None
     return [
         ForeshadowResponse.model_validate(f)
-        for f in get_foreshadows(db, current_user, world_id)
+        for f in get_foreshadows(db, current_user, world_id, statuses)
+    ]
+
+
+@router.get('/worlds/{world_id}/foreshadows/stale', response_model=list[StaleForeshadowResponse])
+def stale(
+    world_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> list[StaleForeshadowResponse]:
+    return [
+        StaleForeshadowResponse.model_validate(item)
+        for item in get_stale_foreshadows(db, current_user, world_id)
     ]
 
 

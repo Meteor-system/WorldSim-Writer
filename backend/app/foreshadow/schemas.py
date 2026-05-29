@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -64,3 +65,9 @@ class ForeshadowEventResponse(BaseModel):
     chapter_title: str | None
     note: str | None
     created_at: datetime
+
+
+class StaleForeshadowResponse(BaseModel):
+    foreshadow: ForeshadowResponse
+    chapters_since_planted: int
+    alert_level: Literal['warning', 'critical']

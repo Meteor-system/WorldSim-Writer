@@ -1,5 +1,5 @@
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
@@ -116,13 +116,15 @@ def create_foreshadow(db: Session, user: User, world_id: int, data: ForeshadowCr
     return foreshadow
 
 
-def get_foreshadows(db: Session, user: User, world_id: int) -> list[Foreshadow]:
+def get_foreshadows(db: Session, user: User, world_id: int, statuses: list[str] | None = None) -> list[Foreshadow]:
     require_owned_world(db, user, world_id)
-    return list(
-        db.scalars(
-            select(Foreshadow).where(Foreshadow.world_id == world_id).order_by(Foreshadow.id)
-        )
-    )
+    if statuses:
+        for status_value in statuses:
+            validate_foreshadow_status(status_value)
+    query = select(Foreshadow).where(Foreshadow.world_id == world_id)
+    if statuses:
+        query = query.where(Foreshadow.status.in_(statuses))
+    return list(db.scalars(query.order_by(Foreshadow.id)))
 
 
 def _require_owned_foreshadow(db: Session, user: User, foreshadow_id: int) -> Foreshadow:
@@ -177,6 +179,38 @@ def update_foreshadow(db: Session, user: User, foreshadow_id: int, data: Foresha
     db.commit()
     db.refresh(foreshadow)
     return foreshadow
+
+
+def get_stale_foreshadows(db: Session, user: User, world_id: int) -> list[dict]:
+    world = require_owned_world(db, user, world_id)
+    planted = list(
+        db.scalars(
+            select(Foreshadow)
+            .where(Foreshadow.world_id == world.id)
+            .where(Foreshadow.status == 'planted')
+            .where(Foreshadow.source_chapter_id.is_not(None))
+            .order_by(Foreshadow.id)
+        )
+    )
+    stale = []
+    for foreshadow in planted:
+        assert foreshadow.source_chapter_id is not None
+        count = db.scalar(
+            select(func.count())
+            .select_from(Chapter)
+            .where(Chapter.world_id == world.id)
+            .where(Chapter.status == 'approved')
+            .where(Chapter.id > foreshadow.source_chapter_id)
+        ) or 0
+        if count >= 3:
+            stale.append(
+                {
+                    'foreshadow': foreshadow,
+                    'chapters_since_planted': count,
+                    'alert_level': 'critical' if count >= 6 else 'warning',
+                }
+            )
+    return stale
 
 
 def delete_foreshadow(db: Session, user: User, foreshadow_id: int) -> None:
