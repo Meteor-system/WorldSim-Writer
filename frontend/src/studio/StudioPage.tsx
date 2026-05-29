@@ -64,8 +64,21 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
     return content.split('\n\n').map((paragraph) => paragraph.trim()).filter(Boolean);
   }
 
+  function resolveDraftVersion(nextDraft: DraftResponse): number {
+    const draftVersion = Number(nextDraft.draft_version);
+    if (Number.isFinite(draftVersion) && draftVersion > 0) return draftVersion;
+    const chapterVersion = Number(chapter?.draft_version);
+    if (Number.isFinite(chapterVersion) && chapterVersion > 0) return chapterVersion;
+    return 1;
+  }
+
+  function normalizeDraft(nextDraft: DraftResponse): DraftResponse {
+    return { ...nextDraft, draft_version: resolveDraftVersion(nextDraft) };
+  }
+
   async function refreshReviewStudioPanels(nextDraft: DraftResponse) {
-    setDraftVersions((versions) => Array.from(new Set([...versions, nextDraft.draft_version])).sort((a, b) => a - b));
+    const version = resolveDraftVersion(nextDraft);
+    setDraftVersions((versions) => Array.from(new Set([...versions, version])).sort((a, b) => a - b));
     try {
       const preview = await getApprovalPreview(nextDraft.chapter_id);
       setApprovalPreview(preview);
@@ -140,7 +153,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
     setWorking(true);
     setError('');
     try {
-      const nextDraft = await writeChapter(chapter.id, { outline_beats: outlineBeats });
+      const nextDraft = normalizeDraft(await writeChapter(chapter.id, { outline_beats: outlineBeats }));
       setDraft(nextDraft);
       setDraftVersions([nextDraft.draft_version]);
       await refreshReviewStudioPanels(nextDraft);
@@ -230,10 +243,10 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
     setWorking(true);
     setError('');
     try {
-      const updated = await apiRequest<DraftResponse>(`/chapters/${draft.chapter_id}/draft`, {
+      const updated = normalizeDraft(await apiRequest<DraftResponse>(`/chapters/${draft.chapter_id}/draft`, {
         method: 'PUT',
         body: JSON.stringify({ content: editContent }),
-      });
+      }));
       setDraft(updated);
       await refreshReviewStudioPanels(updated);
       setEditMode(false);
@@ -251,7 +264,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
     setWorking(true);
     setError('');
     try {
-      const updated = await stashDraft(draft.chapter_id, { note: '暂存当前草稿' });
+      const updated = normalizeDraft(await stashDraft(draft.chapter_id, { note: '暂存当前草稿' }));
       setDraft(updated);
       await refreshReviewStudioPanels(updated);
       setCritique(null);
@@ -267,7 +280,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
     setWorking(true);
     setError('');
     try {
-      const updated = await reviseParagraph(draft.chapter_id, { paragraph_index: index, mode });
+      const updated = normalizeDraft(await reviseParagraph(draft.chapter_id, { paragraph_index: index, mode }));
       setDraft(updated);
       await refreshReviewStudioPanels(updated);
       setCritique(null);
@@ -385,8 +398,8 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
                 <div className="mt-4 flex flex-wrap items-end gap-3">
                   <label className="block">
                     <span className="text-sm font-bold text-[#5e3b1c]">草稿版本</span>
-                    <select className="paper-input mt-1" aria-label="草稿版本" value={draft.draft_version} onChange={() => undefined}>
-                      {draftVersions.map((version) => <option key={version} value={version}>v{version}</option>)}
+                    <select className="paper-input mt-1" aria-label="草稿版本" value={resolveDraftVersion(draft)} onChange={() => undefined}>
+                      {draftVersions.map((version) => <option key={`draft-version-${version}`} value={version}>v{version}</option>)}
                     </select>
                   </label>
                   <button className="secondary-button" disabled={working} onClick={saveStash}>暂存当前草稿</button>
@@ -414,9 +427,9 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
                 <section className="space-y-3 rounded-2xl bg-white/35 p-4">
                   <h3 className="font-black text-[#3b2511]">段落级修订</h3>
                   {paragraphList(draft.content).map((paragraph, index) => (
-                    <div key={`${index}-${paragraph.slice(0, 12)}`} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
-                      <p className="manuscript text-sm">第 {index + 1} 段：{paragraph.slice(0, 70)}</p>
-                      <div className="mt-2 flex gap-2">
+                    <div key={`${index}-${paragraph.slice(0, 24)}`} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
+                      <p className="manuscript whitespace-pre-wrap text-sm leading-relaxed">第 {index + 1} 段：{paragraph}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
                         <button className="secondary-button" disabled={working} onClick={() => reviseDraftParagraph(index, 'rewrite')}>重写本段</button>
                         <button className="secondary-button" disabled={working} onClick={() => reviseDraftParagraph(index, 'polish')}>润色本段</button>
                       </div>

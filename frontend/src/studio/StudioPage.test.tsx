@@ -1,7 +1,8 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { writeChapter } from '../api/client';
 import type { DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -146,6 +147,11 @@ const world: WorldOverview = {
   approved_chapter_count: 0,
 };
 
+afterEach(() => {
+  cleanup();
+  vi.mocked(writeChapter).mockClear();
+});
+
 describe('StudioPage Review Studio 2.0 controls', () => {
   it('renders version selector, stash, paragraph controls, diff, and approval preview after drafting', async () => {
     const user = userEvent.setup();
@@ -168,5 +174,26 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByText('总评分：78/100')).toBeInTheDocument();
     expect(screen.getByText('Critic 发现高风险问题，建议修订后再批准。')).toBeInTheDocument();
     expect(screen.getByText('林砚突然信任沈微霜，与当前谨慎状态冲突。')).toBeInTheDocument();
+  });
+
+  it('falls back to the chapter draft version label and shows full paragraph card text', async () => {
+    const user = userEvent.setup();
+    const longParagraph = '第一段：林砚停在雨巷口，掌心的玉佩微微发烫，他反复想起师门旧案与城主府密道之间那些尚未被证实却越来越危险的联系。';
+    vi.mocked(writeChapter).mockResolvedValueOnce({
+      ...draftResponse,
+      draft_version: undefined as unknown as number,
+      content: `${longParagraph}\n\n第二段：沈微霜递来一封湿透的信。`,
+    });
+
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+
+    expect(await screen.findByRole('option', { name: 'v1' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'v' })).not.toBeInTheDocument();
+    expect(screen.getByText(`第 1 段：${longParagraph}`)).toBeInTheDocument();
   });
 });

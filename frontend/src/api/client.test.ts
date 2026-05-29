@@ -157,4 +157,32 @@ describe('draft versioning API helpers', () => {
     );
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8000/chapters/11/critic-report', expect.any(Object));
   });
+
+  it('falls back to the legacy critique endpoint when critic-report is not available', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ detail: 'Not Found' }), { status: 404, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(jsonResponse({
+        chapter_id: 11,
+        critique_report: {
+          score: 84,
+          issues: [{ category: 'character_voice', severity: 'medium', message: '沈微霜台词可以更克制。' }],
+          suggestions: ['加强林砚担心牵连师门的内心压力。'],
+          consistency_check: { world_rule_adherence: 'pass' },
+        },
+        status: 'reviewing',
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const report = await generateCriticReport(11);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://localhost:8000/chapters/11/critic-report', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:8000/chapters/11/critique',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
+    );
+    expect(report.overall_score).toBe(84);
+    expect(report.issues[0]).toMatchObject({ severity: 'medium', dimension: 'character_voice', message: '沈微霜台词可以更克制。' });
+  });
 });
