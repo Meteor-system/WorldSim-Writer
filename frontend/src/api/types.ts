@@ -20,6 +20,7 @@ export type CharacterCreate = {
   hidden_traits?: Record<string, unknown>;
   destiny_flag?: string;
   current_goals?: string[];
+  edit_reason?: string;
 };
 
 export type CharacterUpdate = {
@@ -30,6 +31,34 @@ export type CharacterUpdate = {
   hidden_traits?: Record<string, unknown>;
   destiny_flag?: string;
   current_goals?: string[];
+  edit_reason?: string;
+};
+
+export type CharacterRelation = {
+  id: number;
+  source_character_id: number;
+  target_character_id: number;
+  relation_type: string;
+  intensity: number;
+  visibility: string;
+};
+
+export type CharacterRelationCreate = {
+  source_character_id: number;
+  target_character_id: number;
+  relation_type: string;
+  intensity?: number;
+  visibility?: string;
+  edit_reason?: string;
+};
+
+export type CharacterRelationUpdate = {
+  source_character_id?: number;
+  target_character_id?: number;
+  relation_type?: string;
+  intensity?: number;
+  visibility?: string;
+  edit_reason?: string;
 };
 
 export type ForeshadowStatus = 'planted' | 'advanced' | 'resolved' | 'expired';
@@ -55,6 +84,7 @@ export type ForeshadowCreate = {
   urgency_level?: number;
   related_character_ids?: number[];
   expected_resolution_window?: string;
+  edit_reason?: string;
 };
 
 export type ForeshadowUpdate = {
@@ -66,6 +96,7 @@ export type ForeshadowUpdate = {
   urgency_level?: number;
   related_character_ids?: number[];
   expected_resolution_window?: string;
+  edit_reason?: string;
 };
 
 export type ForeshadowEvent = {
@@ -162,8 +193,9 @@ export type WorldOverview = {
   tone_profile: Record<string, unknown>;
   current_characters: Character[];
   current_foreshadows: Foreshadow[];
+  current_relations: CharacterRelation[];
   characters: Character[];
-  relations: Array<Record<string, unknown>>;
+  relations: CharacterRelation[];
   foreshadows: Foreshadow[];
   recent_events: EventLog[];
   story_arc: StoryArcChapter[];
