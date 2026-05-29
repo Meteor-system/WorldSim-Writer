@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { writeChapter } from '../api/client';
+import { generateCharacterArcReport, writeChapter } from '../api/client';
 import type { DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -87,6 +87,46 @@ vi.mock('../api/client', () => ({
     created_at: '2026-05-29T00:00:00Z',
   })),
   getCriticReport: vi.fn(),
+  generateCharacterArcReport: vi.fn(async () => ({
+    chapter_id: 11,
+    draft_version: 1,
+    current_draft_version: 1,
+    is_stale: false,
+    summary: '本章推动林砚从被动等待转向主动追查湿信来源。',
+    character_arcs: [
+      {
+        character_id: 1,
+        name: '林砚',
+        role_type: 'protagonist',
+        current_status: 'active',
+        current_goals: [],
+        presence_level: 'major',
+        arc_stage: 'choice',
+        chapter_function: '在雨巷会面中承担调查者与选择者功能。',
+        observed_shift: '从谨慎观察转向主动追问湿信来源。',
+        proposed_state_change: { status: '开始调查密信', current_goals: ['追查湿信来源'] },
+        continuity_risk: 'medium',
+        risk_reason: '如果立刻信任沈微霜，需要补足信任建立过程。',
+        suggested_revision: '增加林砚犹疑和试探沈微霜的动作。',
+        next_chapter_setup: '让林砚以湿信为线索试探城主府密道。',
+      },
+    ],
+    relationship_notes: [],
+    progression_hints: [
+      {
+        hint_type: 'character',
+        priority: 'high',
+        title: '让林砚做出是否相信沈微霜的选择',
+        rationale: '本章已经建立湿信线索。',
+        suggested_next_beat: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+        related_character_ids: [1],
+        related_foreshadow_ids: [1],
+        can_seed_next_chapter_goal: true,
+      },
+    ],
+    created_at: '2026-05-29T00:00:00Z',
+  })),
+  getCharacterArcReport: vi.fn(),
   suggestGoal: vi.fn(),
   stashDraft: vi.fn(async () => ({ ...draftResponse, draft_version: 2, change_type: 'stash', change_summary: '暂存当前草稿', parent_draft_version: 1 })),
   reviseParagraph: vi.fn(async () => ({
@@ -195,5 +235,22 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByRole('option', { name: 'v1' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'v' })).not.toBeInTheDocument();
     expect(screen.getByText(`第 1 段：${longParagraph}`)).toBeInTheDocument();
+  });
+
+  it('generates and displays a character arc report from the draft review flow', async () => {
+    const user = userEvent.setup();
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(screen.getByRole('button', { name: '生成角色弧线报告' }));
+
+    expect(generateCharacterArcReport).toHaveBeenCalledWith(11);
+    expect(await screen.findByText('角色弧线报告')).toBeInTheDocument();
+    expect(screen.getByText('本章推动林砚从被动等待转向主动追查湿信来源。')).toBeInTheDocument();
+    expect(screen.getByText('林砚 · protagonist')).toBeInTheDocument();
+    expect(screen.getByText('让林砚做出是否相信沈微霜的选择')).toBeInTheDocument();
   });
 });

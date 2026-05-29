@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.narrative.schemas import (
     ChapterPipelineResponse,
     ChapterResponse,
+    CharacterArcReportResponse,
     CreateChapterRequest,
     CriticReportResponse,
     CritiqueResponse,
@@ -26,9 +27,11 @@ from app.narrative.service import (
     create_chapter_session,
     critique_chapter,
     edit_chapter_draft,
+    generate_character_arc_report,
     generate_chapter_outline,
     generate_critic_report,
     get_approval_preview,
+    get_character_arc_report,
     get_critic_report,
     get_draft_diff,
     reject_chapter,
@@ -111,6 +114,24 @@ def read_critic_report(
     db: Session = Depends(get_db),
 ) -> CriticReportResponse:
     return CriticReportResponse.model_validate(get_critic_report(db, current_user, chapter_id))
+
+
+@router.post('/chapters/{chapter_id}/character-arc-report', response_model=CharacterArcReportResponse)
+def create_character_arc_report(
+    chapter_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> CharacterArcReportResponse:
+    return CharacterArcReportResponse.model_validate(generate_character_arc_report(db, current_user, chapter_id))
+
+
+@router.get('/chapters/{chapter_id}/character-arc-report', response_model=CharacterArcReportResponse)
+def read_character_arc_report(
+    chapter_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> CharacterArcReportResponse:
+    return CharacterArcReportResponse.model_validate(get_character_arc_report(db, current_user, chapter_id))
 
 
 @router.post('/chapters/{chapter_id}/approve', response_model=ChapterResponse)

@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
-from app.character.models import Character
+from app.character.models import Character, CharacterRelation
 from app.core.config import get_settings
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow
@@ -296,6 +296,78 @@ def build_critic_report_messages(
     ]
 
 
+def build_character_arc_report_messages(
+    world: World,
+    characters: list[Character],
+    foreshadows: list[Foreshadow],
+    relations: list[CharacterRelation],
+    recent_events: list[EventLog],
+    chapter: Chapter,
+    draft: ChapterDraft,
+) -> list[dict[str, str]]:
+    character_lines = '\n'.join(
+        f'- {c.id}: {c.name}, role={c.role_type}, status={c.status}, goals={c.current_goals}, public={c.public_profile}, hidden={c.hidden_traits}'
+        for c in characters
+    )
+    relation_lines = '\n'.join(
+        f'- {r.source_character_id}->{r.target_character_id}: type={r.relation_type}, intensity={r.intensity}, visibility={r.visibility}'
+        for r in relations
+    )
+    foreshadow_lines = '\n'.join(
+        f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}, related={f.related_character_ids}, description={f.description}'
+        for f in foreshadows
+    )
+    event_lines = '\n'.join(
+        f'- v{event.world_version_after}: {event.event_type}, payload={event.payload}'
+        for event in recent_events
+    )
+    return [
+        {
+            'role': 'system',
+            'content': (
+                '你是 WorldSim-Writer 的长篇小说角色弧线编辑。必须只返回合法 JSON，结构为：'
+                '{"summary":"总述","character_arcs":[{"character_id":整数,"name":"角色名",'
+                '"role_type":"角色类型","current_status":"当前状态","current_goals":["目标"],'
+                '"presence_level":"absent|mentioned|supporting|major",'
+                '"arc_stage":"setup|pressure|choice|consequence|growth|regression|resolution|unknown",'
+                '"chapter_function":"本章叙事功能","observed_shift":"本章变化",'
+                '"proposed_state_change":{},"continuity_risk":"none|low|medium|high",'
+                '"risk_reason":"风险原因","suggested_revision":"修订建议",'
+                '"next_chapter_setup":"下一章铺垫"}],'
+                '"relationship_notes":[{"source_character_id":整数,"target_character_id":整数,'
+                '"source_name":"角色A","target_name":"角色B","relation_type":"关系",'
+                '"current_intensity":1,"visibility":"public|private","chapter_shift":"本章关系变化",'
+                '"progression_hint":"下一章关系推进","risk_level":"none|low|medium|high",'
+                '"risk_reason":"风险原因"}],'
+                '"progression_hints":[{"hint_type":"character|relationship|foreshadow|plot",'
+                '"priority":"low|medium|high","title":"提示标题","rationale":"理由",'
+                '"suggested_next_beat":"下一章节拍","related_character_ids":[整数],'
+                '"related_foreshadow_ids":[整数],"can_seed_next_chapter_goal":true}]}。'
+                '不要编造不存在的角色 ID 或伏笔 ID。报告只是审核建议，不会自动提交世界状态。'
+            ),
+        },
+        {
+            'role': 'user',
+            'content': (
+                f'世界设定：{world.truth_canon}\n'
+                f'世界版本：{world.world_version}\n'
+                f'故事弧线：{world.story_arc}\n'
+                f'角色：\n{character_lines}\n'
+                f'关系：\n{relation_lines or "无"}\n'
+                f'伏笔：\n{foreshadow_lines}\n'
+                f'近期事件：\n{event_lines or "无"}\n'
+                f'章节标题：{chapter.title}\n'
+                f'章节目标：{chapter.chapter_goal}\n'
+                f'草稿版本：{draft.draft_version}\n'
+                f'草稿拟提交变化：{draft.proposed_changes}\n'
+                f'正文：\n{draft.content}\n'
+                '请分析本章角色弧线推进、关系推进和下一章 progression hints。'
+            ),
+        },
+    ]
+
+
+
 def _model_dump(value) -> dict:
     if hasattr(value, 'model_dump'):
         return value.model_dump()
@@ -310,6 +382,35 @@ def _critic_report_payload(chapter: Chapter, draft: ChapterDraft, report: dict) 
     payload['is_stale'] = payload['draft_version'] != chapter.draft_version
     payload.setdefault('created_at', datetime.now(UTC).isoformat())
     return payload
+
+
+def _character_arc_report_payload(chapter: Chapter, draft: ChapterDraft, report: dict) -> dict:
+    payload = dict(report)
+    payload['chapter_id'] = chapter.id
+    payload['draft_version'] = int(payload.get('draft_version', draft.draft_version))
+    payload['current_draft_version'] = chapter.draft_version
+    payload['is_stale'] = payload['draft_version'] != chapter.draft_version
+    payload.setdefault('created_at', datetime.now(UTC).isoformat())
+    payload.setdefault('character_arcs', [])
+    payload.setdefault('relationship_notes', [])
+    payload.setdefault('progression_hints', [])
+    return payload
+
+
+def _validate_character_arc_report_ids(report: dict, characters: list[Character], foreshadows: list[Foreshadow]) -> None:
+    character_ids = {character.id for character in characters}
+    foreshadow_ids = {foreshadow.id for foreshadow in foreshadows}
+    for arc in report.get('character_arcs', []):
+        if arc.get('character_id') not in character_ids:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+    for note in report.get('relationship_notes', []):
+        if note.get('source_character_id') not in character_ids or note.get('target_character_id') not in character_ids:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+    for hint in report.get('progression_hints', []):
+        if any(character_id not in character_ids for character_id in hint.get('related_character_ids', [])):
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+        if any(foreshadow_id not in foreshadow_ids for foreshadow_id in hint.get('related_foreshadow_ids', [])):
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
 
 
 def validate_generation_ids(generation: ChapterGeneration, characters: list[Character], foreshadows: list[Foreshadow]) -> None:
@@ -335,6 +436,7 @@ def create_chapter_session(db: Session, user: User, world_id: int, chapter_goal:
         outline_beats=[],
         outline_context={},
         critique_report={},
+        character_arc_report={},
     )
     db.add(chapter)
     db.commit()
@@ -402,6 +504,7 @@ def create_chapter_draft(
         outline_beats=[],
         outline_context={},
         critique_report={},
+        character_arc_report={},
     )
     db.add(chapter)
     db.flush()
@@ -532,6 +635,45 @@ def get_critic_report(db: Session, user: User, chapter_id: int) -> dict:
     if not chapter.critique_report:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
     return _critic_report_payload(chapter, draft, chapter.critique_report)
+
+
+def generate_character_arc_report(db: Session, user: User, chapter_id: int, llm_client: LLMClient | None = None) -> dict:
+    chapter = _require_owned_chapter(db, user, chapter_id)
+    draft = _latest_draft(db, chapter)
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_REQUIRED')
+    world = db.get(World, chapter.world_id)
+    assert world is not None
+    characters, foreshadows = _load_world_context(db, world)
+    relations = list(db.scalars(select(CharacterRelation).where(CharacterRelation.world_id == world.id).order_by(CharacterRelation.id)))
+    recent_events = list(
+        db.scalars(select(EventLog).where(EventLog.world_id == world.id).order_by(EventLog.id.desc()).limit(10))
+    )
+    client = _model_client(llm_client)
+    try:
+        report = client.generate_character_arc_report(
+            build_character_arc_report_messages(world, characters, foreshadows, relations, recent_events, chapter, draft)
+        )
+    except (TimeoutError, ValueError, RuntimeError) as exc:
+        raise _map_model_error(exc) from exc
+
+    report_payload = _model_dump(report)
+    _validate_character_arc_report_ids(report_payload, characters, foreshadows)
+    stored_report = _character_arc_report_payload(chapter, draft, report_payload)
+    chapter.character_arc_report = stored_report
+    db.commit()
+    db.refresh(chapter)
+    return _character_arc_report_payload(chapter, draft, chapter.character_arc_report)
+
+
+def get_character_arc_report(db: Session, user: User, chapter_id: int) -> dict:
+    chapter = _require_owned_chapter(db, user, chapter_id)
+    draft = _latest_draft(db, chapter)
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_REQUIRED')
+    if not chapter.character_arc_report:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    return _character_arc_report_payload(chapter, draft, chapter.character_arc_report)
 
 
 def reject_chapter(db: Session, user: User, chapter_id: int, feedback: str) -> dict:

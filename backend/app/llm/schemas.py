@@ -1,5 +1,5 @@
 import json
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
 
@@ -82,6 +82,55 @@ class LiteraryCriticReport(BaseModel):
     suggestions: list[str] = Field(default_factory=list)
 
 
+class CharacterArcEntry(BaseModel):
+    character_id: int
+    name: str
+    role_type: str | None = None
+    current_status: str | None = None
+    current_goals: list[str] = Field(default_factory=list)
+    presence_level: Literal['absent', 'mentioned', 'supporting', 'major']
+    arc_stage: Literal['setup', 'pressure', 'choice', 'consequence', 'growth', 'regression', 'resolution', 'unknown']
+    chapter_function: str
+    observed_shift: str
+    proposed_state_change: dict[str, Any] | None = None
+    continuity_risk: Literal['none', 'low', 'medium', 'high']
+    risk_reason: str | None = None
+    suggested_revision: str | None = None
+    next_chapter_setup: str | None = None
+
+
+class RelationshipProgressionNote(BaseModel):
+    source_character_id: int
+    target_character_id: int
+    source_name: str
+    target_name: str
+    relation_type: str
+    current_intensity: int | None = None
+    visibility: str | None = None
+    chapter_shift: str
+    progression_hint: str
+    risk_level: Literal['none', 'low', 'medium', 'high']
+    risk_reason: str | None = None
+
+
+class ChapterProgressionHint(BaseModel):
+    hint_type: Literal['character', 'relationship', 'foreshadow', 'plot']
+    priority: Literal['low', 'medium', 'high']
+    title: str
+    rationale: str
+    suggested_next_beat: str
+    related_character_ids: list[int] = Field(default_factory=list)
+    related_foreshadow_ids: list[int] = Field(default_factory=list)
+    can_seed_next_chapter_goal: bool = False
+
+
+class CharacterArcReport(BaseModel):
+    summary: str
+    character_arcs: list[CharacterArcEntry] = Field(default_factory=list)
+    relationship_notes: list[RelationshipProgressionNote] = Field(default_factory=list)
+    progression_hints: list[ChapterProgressionHint] = Field(default_factory=list)
+
+
 class ProposedCharacterChange(BaseModel):
     character_id: int
     status: str | None = None
@@ -157,5 +206,13 @@ def parse_literary_critic_report(raw_text: str) -> LiteraryCriticReport:
     try:
         payload = _load_json(raw_text)
         return LiteraryCriticReport.model_validate(payload)
+    except ValidationError as exc:
+        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+
+
+def parse_character_arc_report(raw_text: str) -> CharacterArcReport:
+    try:
+        payload = _load_json(raw_text)
+        return CharacterArcReport.model_validate(payload)
     except ValidationError as exc:
         raise ValueError('MODEL_RESPONSE_INVALID') from exc

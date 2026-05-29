@@ -6,11 +6,13 @@ from app.core.config import Settings, get_settings
 from app.llm.schemas import (
     ChapterGeneration,
     ChapterOutline,
+    CharacterArcReport,
     CritiqueReport,
     LiteraryCriticReport,
     StoryArcChapter,
     parse_chapter_generation,
     parse_chapter_outline,
+    parse_character_arc_report,
     parse_critique_report,
     parse_literary_critic_report,
     parse_story_arc,
@@ -111,6 +113,42 @@ MOCK_LITERARY_CRITIC = {
     ],
     "suggestions": ["优先润色第二段对白。"],
 }
+
+MOCK_CHARACTER_ARC_REPORT = {
+    "summary": "本章推动林砚从被动调查转向主动选择下一步行动。",
+    "character_arcs": [
+        {
+            "character_id": 1,
+            "name": "林砚",
+            "role_type": "protagonist",
+            "current_status": "active",
+            "current_goals": [],
+            "presence_level": "major",
+            "arc_stage": "choice",
+            "chapter_function": "承担调查者与选择者功能。",
+            "observed_shift": "从谨慎观察转向主动追问线索。",
+            "proposed_state_change": {"status": "获得预言古书，面临三日抉择"},
+            "continuity_risk": "medium",
+            "risk_reason": "信任建立需要更多铺垫。",
+            "suggested_revision": "增加林砚试探盟友的动作。",
+            "next_chapter_setup": "让林砚围绕密道做出第一次冒险选择。",
+        }
+    ],
+    "relationship_notes": [],
+    "progression_hints": [
+        {
+            "hint_type": "character",
+            "priority": "high",
+            "title": "让林砚做出是否冒险进入密道的选择",
+            "rationale": "当前章节已给出线索，下一章需要转化为行动。",
+            "suggested_next_beat": "林砚在城主府外墙试探密道入口。",
+            "related_character_ids": [1],
+            "related_foreshadow_ids": [1],
+            "can_seed_next_chapter_goal": True,
+        }
+    ],
+}
+
 
 MOCK_STORY_ARC = [
     {
@@ -293,3 +331,8 @@ class LLMClient:
         if self.mock:
             return LiteraryCriticReport.model_validate(MOCK_LITERARY_CRITIC)
         return parse_literary_critic_report(self._post_json(messages, temperature=0.2))
+
+    def generate_character_arc_report(self, messages: list[dict[str, str]]) -> CharacterArcReport:
+        if self.mock:
+            return CharacterArcReport.model_validate(MOCK_CHARACTER_ARC_REPORT)
+        return parse_character_arc_report(self._post_json(messages, temperature=0.2))

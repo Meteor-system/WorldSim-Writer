@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
   createChapter as createChapterRequest,
+  generateCharacterArcReport,
   generateCriticReport,
   generateOutline,
   getApprovalPreview,
@@ -11,7 +12,8 @@ import {
   suggestGoal,
   writeChapter,
 } from '../api/client';
-import type { ApprovalPreviewResponse, BeatCard, ChapterPipelineResponse, CriticReportResponse, DraftDiffResponse, DraftResponse, WorldOverview } from '../api/types';
+import type { ApprovalPreviewResponse, BeatCard, ChapterPipelineResponse, CharacterArcReportResponse, CriticReportResponse, DraftDiffResponse, DraftResponse, WorldOverview } from '../api/types';
+import { CharacterArcPanel } from './CharacterArcPanel';
 import { CriticReportPanel } from './CriticReportPanel';
 
 type Props = { world: WorldOverview; onBack: () => void; onApproved: (world: WorldOverview) => void };
@@ -37,6 +39,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
   const [draftDiff, setDraftDiff] = useState<DraftDiffResponse | null>(null);
   const [approvalPreview, setApprovalPreview] = useState<ApprovalPreviewResponse | null>(null);
   const [critique, setCritique] = useState<CriticReportResponse | null>(null);
+  const [characterArcReport, setCharacterArcReport] = useState<CharacterArcReportResponse | null>(null);
   const [working, setWorking] = useState(false);
   const [suggestingGoal, setSuggestingGoal] = useState(false);
   const [error, setError] = useState('');
@@ -119,6 +122,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
       setOutlineContext(created.outline_context);
       setDraft(null);
       setCritique(null);
+      setCharacterArcReport(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建章节失败');
     } finally {
@@ -137,6 +141,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
       setChapter({ ...chapter, status: outline.status, outline_beats: outline.outline_beats, outline_context: outline.outline_context });
       setDraft(null);
       setCritique(null);
+      setCharacterArcReport(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成大纲失败');
     } finally {
@@ -158,6 +163,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
       setDraftVersions([nextDraft.draft_version]);
       await refreshReviewStudioPanels(nextDraft);
       setCritique(null);
+      setCharacterArcReport(null);
       setEditMode(false);
       setEditContent('');
       setChapter({
@@ -188,6 +194,23 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
     } finally {
       setWorking(false);
     }
+  }
+
+  async function runCharacterArcReport() {
+    if (!chapter || !draft) return;
+    setWorking(true);
+    setError('');
+    try {
+      setCharacterArcReport(await generateCharacterArcReport(chapter.id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成角色弧线报告失败');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function useHintAsGoal(nextGoal: string) {
+    setGoal(nextGoal);
   }
 
   async function approveDraft() {
@@ -252,6 +275,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
       setEditMode(false);
       setEditContent('');
       setCritique(null);
+      setCharacterArcReport(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '保存编辑失败');
     } finally {
@@ -268,6 +292,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
       setDraft(updated);
       await refreshReviewStudioPanels(updated);
       setCritique(null);
+      setCharacterArcReport(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '暂存草稿失败');
     } finally {
@@ -284,6 +309,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
       setDraft(updated);
       await refreshReviewStudioPanels(updated);
       setCritique(null);
+      setCharacterArcReport(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '段落修订失败');
     } finally {
@@ -341,6 +367,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
               <button className="secondary-button" disabled={working || !chapter} onClick={runOutliner}>生成大纲</button>
               <button className="secondary-button" disabled={working || !chapter || outlineBeats.length === 0} onClick={runWriter}>基于大纲生成正文</button>
               <button className="secondary-button" disabled={working || !draft} onClick={runCritic}>生成 Critic 报告</button>
+              <button className="secondary-button" disabled={working || !draft} onClick={runCharacterArcReport}>生成角色弧线报告</button>
             </div>
           </div>
 
@@ -516,6 +543,10 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
 
           {critique && (
             <CriticReportPanel report={critique} working={working} onReviseParagraph={reviseDraftParagraph} />
+          )}
+
+          {characterArcReport && (
+            <CharacterArcPanel report={characterArcReport} working={working} onUseHintAsGoal={useHintAsGoal} />
           )}
 
           {draft && (
