@@ -1,5 +1,5 @@
 from fastapi import HTTPException, status
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
@@ -40,6 +40,39 @@ def _validate_starter_asset_indexes(data: WorldCreateRequest) -> None:
     for foreshadow in data.starter_assets.foreshadows:
         for index in foreshadow.related_character_indexes or []:
             _validate_character_index(index, character_count)
+
+
+def character_projection(character: Character) -> dict:
+    return {
+        'id': character.id,
+        'name': character.name,
+        'role_type': character.role_type,
+        'status': character.status,
+        'public_profile': character.public_profile,
+        'hidden_traits': character.hidden_traits,
+        'destiny_flag': character.destiny_flag,
+        'current_goals': character.current_goals,
+    }
+
+
+def foreshadow_projection(foreshadow: Foreshadow) -> dict:
+    return {
+        'id': foreshadow.id,
+        'title': foreshadow.title,
+        'description': foreshadow.description,
+        'foreshadow_type': foreshadow.foreshadow_type,
+        'status': foreshadow.status,
+        'urgency_level': foreshadow.urgency_level,
+        'related_character_ids': foreshadow.related_character_ids,
+        'expected_resolution_window': foreshadow.expected_resolution_window,
+    }
+
+
+def refresh_world_projection(db: Session, world: World) -> None:
+    characters = list(db.scalars(select(Character).where(Character.world_id == world.id).order_by(Character.id)))
+    foreshadows = list(db.scalars(select(Foreshadow).where(Foreshadow.world_id == world.id).order_by(Foreshadow.id)))
+    world.current_characters = [character_projection(character) for character in characters]
+    world.current_foreshadows = [foreshadow_projection(foreshadow) for foreshadow in foreshadows]
 
 
 def create_world_from_template(db: Session, user: User, data: WorldCreateRequest) -> World:
@@ -99,6 +132,8 @@ def create_world_from_template(db: Session, user: User, data: WorldCreateRequest
                 expected_resolution_window=item.expected_resolution_window,
             )
         )
+    db.flush()
+    refresh_world_projection(db, world)
 
     db.commit()
     db.refresh(world)
@@ -137,8 +172,22 @@ def get_world_overview(db: Session, user: User, world_id: int) -> dict:
         'world_version': world.world_version,
         'status': world.status,
         'tone_profile': world.tone_profile,
+        'current_characters': world.current_characters,
+        'current_foreshadows': world.current_foreshadows,
         'characters': characters,
         'relations': relations,
         'foreshadows': foreshadows,
         'recent_events': recent_events,
     }
+
+
+def list_world_events(db: Session, user: User, world_id: int, event_type: str | None = None, limit: int = 20, offset: int = 0) -> dict:
+    world = require_owned_world(db, user, world_id)
+    query = select(EventLog).where(EventLog.world_id == world.id)
+    count_query = select(func.count()).select_from(EventLog).where(EventLog.world_id == world.id)
+    if event_type is not None:
+        query = query.where(EventLog.event_type == event_type)
+        count_query = count_query.where(EventLog.event_type == event_type)
+    total = db.scalar(count_query) or 0
+    items = list(db.scalars(query.order_by(desc(EventLog.id)).limit(limit).offset(offset)))
+    return {'items': items, 'total': total, 'limit': limit, 'offset': offset}

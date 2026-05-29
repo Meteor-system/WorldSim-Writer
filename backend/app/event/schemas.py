@@ -5,6 +5,8 @@ from pydantic import BaseModel
 
 class EventLogResponse(BaseModel):
     id: int
+    world_id: int
+    chapter_id: int | None
     event_type: str
     source_type: str
     commit_id: str
@@ -14,3 +16,10 @@ class EventLogResponse(BaseModel):
     created_at: datetime
 
     model_config = {'from_attributes': True}
+
+
+class EventLogListResponse(BaseModel):
+    items: list[EventLogResponse]
+    total: int
+    limit: int
+    offset: int

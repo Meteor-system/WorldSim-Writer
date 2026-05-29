@@ -109,6 +109,8 @@ export type WorldCreateRequest = {
 
 export type EventLog = {
   id: number;
+  world_id: number;
+  chapter_id: number | null;
   event_type: string;
   source_type: string;
   commit_id: string;
@@ -127,6 +129,8 @@ export type WorldOverview = {
   world_version: number;
   status: string;
   tone_profile: Record<string, unknown>;
+  current_characters: Character[];
+  current_foreshadows: Foreshadow[];
   characters: Character[];
   relations: Array<Record<string, unknown>>;
   foreshadows: Foreshadow[];

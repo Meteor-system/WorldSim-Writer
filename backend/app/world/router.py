@@ -1,11 +1,19 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
+from app.event.schemas import EventLogListResponse
 from app.world.schemas import WorldCreateRequest, WorldOverviewResponse, WorldResponse
-from app.world.service import create_sample_world, create_world_from_template, get_world_overview, list_user_worlds, require_owned_world
+from app.world.service import (
+    create_sample_world,
+    create_world_from_template,
+    get_world_overview,
+    list_user_worlds,
+    list_world_events,
+    require_owned_world,
+)
 
 router = APIRouter(prefix='/worlds', tags=['worlds'])
 
@@ -37,3 +45,15 @@ def get_world(world_id: int, current_user: User = Depends(require_user), db: Ses
 @router.get('/{world_id}/overview', response_model=WorldOverviewResponse)
 def overview(world_id: int, current_user: User = Depends(require_user), db: Session = Depends(get_db)) -> WorldOverviewResponse:
     return WorldOverviewResponse.model_validate(get_world_overview(db, current_user, world_id))
+
+
+@router.get('/{world_id}/events', response_model=EventLogListResponse)
+def events(
+    world_id: int,
+    event_type: str | None = None,
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> EventLogListResponse:
+    return EventLogListResponse.model_validate(list_world_events(db, current_user, world_id, event_type, limit, offset))

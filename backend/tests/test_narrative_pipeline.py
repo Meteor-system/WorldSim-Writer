@@ -230,7 +230,7 @@ def test_pipeline_approve_preserves_existing_world_update_invariant(client, monk
     assert after['world_version'] == 2
     assert after['characters'][0]['current_goals'] == ['追查城主府叛乱']
     assert after['foreshadows'][0]['status'] == 'triggered'
-    assert after['recent_events'][0]['event_type'] == 'CHAPTER_APPROVED'
+    assert after['recent_events'][0]['event_type'] == 'chapter_approved'
 
 
 def test_pipeline_access_is_limited_to_owner(client, monkeypatch):

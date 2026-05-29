@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
 if TYPE_CHECKING:
+    from app.narrative.models import Chapter
     from app.world.models import World
 
 
@@ -16,6 +17,7 @@ class EventLog(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     world_id: Mapped[int] = mapped_column(ForeignKey('worlds.id', ondelete='CASCADE'), nullable=False, index=True)
+    chapter_id: Mapped[int | None] = mapped_column(ForeignKey('chapters.id', ondelete='SET NULL'), nullable=True, index=True)
     event_type: Mapped[str] = mapped_column(String(80), nullable=False)
     source_type: Mapped[str] = mapped_column(String(80), nullable=False)
     commit_id: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
@@ -27,3 +29,4 @@ class EventLog(Base):
     )
 
     world: Mapped['World'] = relationship('World', back_populates='events')
+    chapter: Mapped['Chapter | None'] = relationship('Chapter')

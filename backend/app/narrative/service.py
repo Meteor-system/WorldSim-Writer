@@ -13,7 +13,7 @@ from app.llm.client import LLMClient
 from app.llm.schemas import BeatCard, ChapterGeneration
 from app.narrative.models import Chapter, ChapterDraft
 from app.world.models import World
-from app.world.service import require_owned_world
+from app.world.service import character_projection, foreshadow_projection, refresh_world_projection, require_owned_world
 
 
 def _model_client(llm_client: LLMClient | None = None) -> LLMClient:
@@ -414,58 +414,149 @@ def edit_chapter_draft(db: Session, user: User, chapter_id: int, new_content: st
 
 
 def approve_chapter(db: Session, user: User, chapter_id: int) -> Chapter:
-    chapter = db.get(Chapter, chapter_id)
-    if chapter is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
-    world = db.scalar(select(World).where(World.id == chapter.world_id).with_for_update())
-    if world is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
-    if world.owner_id != user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='FORBIDDEN')
-    draft = _latest_draft(db, chapter)
-    if draft is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
-    if draft.source_world_version != world.world_version:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
+    try:
+        chapter = db.get(Chapter, chapter_id)
+        if chapter is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+        world = db.scalar(select(World).where(World.id == chapter.world_id).with_for_update())
+        if world is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+        if world.owner_id != user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='FORBIDDEN')
+        draft = _latest_draft(db, chapter)
+        if draft is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+        if draft.source_world_version != world.world_version:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
 
-    version_before = world.world_version
-    chapter.status = 'approved'
-    chapter.approved_content = draft.content
-    chapter.approved_version = draft.draft_version
+        character_changes = []
+        for change in draft.proposed_changes.get('characters', []):
+            character = db.get(Character, change.get('character_id'))
+            if character is None or character.world_id != world.id:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+            before = character_projection(character)
+            after = before | {
+                key: change[key]
+                for key in ('status', 'current_goals')
+                if key in change
+            }
+            character_changes.append((character, change, before, after))
 
-    for change in draft.proposed_changes.get('characters', []):
-        character = db.get(Character, change['character_id'])
-        if character is None or character.world_id != world.id:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
-        if 'status' in change:
-            character.status = change['status']
-        if 'current_goals' in change:
-            character.current_goals = change['current_goals']
+        foreshadow_changes = []
+        for change in draft.proposed_changes.get('foreshadows', []):
+            foreshadow = db.get(Foreshadow, change.get('foreshadow_id'))
+            if foreshadow is None or foreshadow.world_id != world.id or 'status' not in change:
+                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+            before = foreshadow_projection(foreshadow)
+            after = before | {'status': change['status']}
+            if change.get('description_note'):
+                after['description'] = f"{foreshadow.description}\n审核备注：{change['description_note']}"
+            foreshadow_changes.append((foreshadow, change, before, after))
 
-    for change in draft.proposed_changes.get('foreshadows', []):
-        foreshadow = db.get(Foreshadow, change['foreshadow_id'])
-        if foreshadow is None or foreshadow.world_id != world.id:
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
-        foreshadow.status = change['status']
-        if change.get('description_note'):
-            foreshadow.description = f"{foreshadow.description}\n审核备注：{change['description_note']}"
+        version_before = world.world_version
+        version_after = version_before + 1
+        commit_group_id = f'chapter-{chapter.id}-{uuid4().hex}'
+        chapter.status = 'approved'
+        chapter.approved_content = draft.content
+        chapter.approved_version = draft.draft_version
 
-    world.world_version = version_before + 1
-    db.add(
-        EventLog(
-            world_id=world.id,
-            event_type='CHAPTER_APPROVED',
-            source_type='chapter',
-            commit_id=f'chapter-{chapter.id}-{uuid4().hex}',
-            payload={
-                'chapter_id': chapter.id,
-                'chapter_title': chapter.title,
-                'proposed_changes': draft.proposed_changes,
-            },
-            world_version_before=version_before,
-            world_version_after=world.world_version,
+        for character, change, _before, _after in character_changes:
+            if 'status' in change:
+                character.status = change['status']
+            if 'current_goals' in change:
+                character.current_goals = change['current_goals']
+
+        for foreshadow, change, _before, _after in foreshadow_changes:
+            foreshadow.status = change['status']
+            if change.get('description_note'):
+                foreshadow.description = f"{foreshadow.description}\n审核备注：{change['description_note']}"
+
+        world.world_version = version_after
+        db.flush()
+        refresh_world_projection(db, world)
+
+        for character, change, before, after in character_changes:
+            db.add(
+                EventLog(
+                    world_id=world.id,
+                    chapter_id=chapter.id,
+                    event_type='character_change',
+                    source_type='chapter_approval',
+                    commit_id=f'{commit_group_id}-character-{character.id}',
+                    payload={
+                        'commit_group_id': commit_group_id,
+                        'chapter_id': chapter.id,
+                        'object_type': 'character',
+                        'object_id': character.id,
+                        'change': change,
+                        'before': before,
+                        'after': after,
+                    },
+                    world_version_before=version_before,
+                    world_version_after=version_after,
+                )
+            )
+
+        for foreshadow, change, before, after in foreshadow_changes:
+            db.add(
+                EventLog(
+                    world_id=world.id,
+                    chapter_id=chapter.id,
+                    event_type='foreshadow_change',
+                    source_type='chapter_approval',
+                    commit_id=f'{commit_group_id}-foreshadow-{foreshadow.id}',
+                    payload={
+                        'commit_group_id': commit_group_id,
+                        'chapter_id': chapter.id,
+                        'object_type': 'foreshadow',
+                        'object_id': foreshadow.id,
+                        'change': change,
+                        'before': before,
+                        'after': after,
+                    },
+                    world_version_before=version_before,
+                    world_version_after=version_after,
+                )
+            )
+
+        db.add(
+            EventLog(
+                world_id=world.id,
+                chapter_id=chapter.id,
+                event_type='world_version_increment',
+                source_type='chapter_approval',
+                commit_id=f'{commit_group_id}-version',
+                payload={
+                    'commit_group_id': commit_group_id,
+                    'chapter_id': chapter.id,
+                    'world_version_before': version_before,
+                    'world_version_after': version_after,
+                },
+                world_version_before=version_before,
+                world_version_after=version_after,
+            )
         )
-    )
-    db.commit()
-    db.refresh(chapter)
-    return chapter
+        db.add(
+            EventLog(
+                world_id=world.id,
+                chapter_id=chapter.id,
+                event_type='chapter_approved',
+                source_type='chapter_approval',
+                commit_id=f'{commit_group_id}-approved',
+                payload={
+                    'commit_group_id': commit_group_id,
+                    'chapter_id': chapter.id,
+                    'chapter_title': chapter.title,
+                    'approved_version': draft.draft_version,
+                    'proposed_changes': draft.proposed_changes,
+                },
+                world_version_before=version_before,
+                world_version_after=version_after,
+            )
+        )
+        db.commit()
+        db.refresh(chapter)
+        return chapter
+    except Exception:
+        db.rollback()
+        raise

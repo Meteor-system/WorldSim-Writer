@@ -6,6 +6,7 @@ import type {
   CharacterUpdate,
   CritiqueResponse,
   DraftResponse,
+  EventLog,
   Foreshadow,
   ForeshadowCreate,
   ForeshadowUpdate,
@@ -54,6 +55,15 @@ export function createWorld(data: WorldCreateRequest) {
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+export function getWorldEvents(worldId: number, params: { event_type?: string; limit?: number; offset?: number } = {}) {
+  const search = new URLSearchParams();
+  if (params.event_type) search.set('event_type', params.event_type);
+  if (params.limit !== undefined) search.set('limit', String(params.limit));
+  if (params.offset !== undefined) search.set('offset', String(params.offset));
+  const query = search.toString();
+  return apiRequest<{ items: EventLog[]; total: number; limit: number; offset: number }>(`/worlds/${worldId}/events${query ? `?${query}` : ''}`);
 }
 
 /* ── Narrative pipeline ── */

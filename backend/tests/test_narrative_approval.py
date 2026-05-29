@@ -61,7 +61,7 @@ def test_approve_chapter_updates_world_character_foreshadow_and_events(client, m
     assert overview['world_version'] == 2
     assert overview['characters'][0]['current_goals'] == ['追查城主府叛乱']
     assert overview['foreshadows'][0]['status'] == 'triggered'
-    assert overview['recent_events'][0]['event_type'] == 'CHAPTER_APPROVED'
+    assert overview['recent_events'][0]['event_type'] == 'chapter_approved'
     assert overview['recent_events'][0]['world_version_before'] == 1
     assert overview['recent_events'][0]['world_version_after'] == 2
 
