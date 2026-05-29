@@ -235,6 +235,16 @@ class LLMClient:
             return ChapterGeneration.model_validate(mock_data)
         return parse_chapter_generation(self._post_json(messages, temperature=0.7))
 
+    def suggest_goal(self, messages: list[dict[str, str]]) -> dict:
+        if self.mock:
+            return {'goal': '主角在旧工业区偶遇关键人物，通过一场意外对话揭开隐藏在身份背后的秘密，并决定下一步行动。'}
+        import json as _json
+        raw = self._post_json(messages, temperature=0.6)
+        parsed = _json.loads(raw)
+        if isinstance(parsed, dict) and 'goal' in parsed:
+            return {'goal': parsed['goal']}
+        return {'goal': raw}
+
     def critique_chapter(self, messages: list[dict[str, str]]) -> CritiqueReport:
         if self.mock:
             return CritiqueReport.model_validate(MOCK_CRITIQUE)

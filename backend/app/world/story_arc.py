@@ -78,6 +78,71 @@ def build_story_arc_messages(
     ]
 
 
+def build_suggest_goal_messages(
+    world: World,
+    characters: list[Character],
+    foreshadows: list[Foreshadow],
+    approved_chapter_count: int,
+) -> list[dict[str, str]]:
+    character_lines = '\n'.join(
+        f'- {character.name}（{character.role_type}）: 当前状态={character.status}, 目标={character.current_goals}'
+        for character in characters
+    )
+    foreshadow_lines = '\n'.join(
+        f'- {foreshadow.title}（{foreshadow.foreshadow_type}）: 状态={foreshadow.status}, 紧迫度={foreshadow.urgency_level}, 描述={foreshadow.description}'
+        for foreshadow in foreshadows
+    )
+    next_chapter = approved_chapter_count + 1
+    story_arc_hint = ''
+    if world.story_arc:
+        for arc_ch in world.story_arc:
+            if isinstance(arc_ch, dict) and arc_ch.get('chapter_number') == next_chapter:
+                story_arc_hint = (
+                    f"\n故事大纲参考（第{next_chapter}章）：\n"
+                    f"标题：{arc_ch.get('title', '未知')}\n"
+                    f"概要：{arc_ch.get('summary', '未知')}\n"
+                    f"核心冲突：{arc_ch.get('core_conflict', '未知')}\n"
+                    f"建议POV：{arc_ch.get('pov_suggestion', '未知')}"
+                )
+                break
+    return [
+        {
+            'role': 'system',
+            'content': (
+                '你是 WorldSim-Writer 的章节目标生成器。你的任务是为一个完全不会写小说的用户生成一章的"章节目标"。'
+                '章节目标应该用 2-3 句自然语言描述这一章要讲什么故事、推进什么冲突、展示什么角色变化。'
+                '语言要生动具体，让新手一看就知道该怎么写。不要用元术语（如"推进伏笔"），而是用故事化的语言描述。'
+                '必须只返回 JSON 对象：{"goal": "章节目标文本"}。不要返回其他内容。'
+            ),
+        },
+        {
+            'role': 'user',
+            'content': (
+                f'世界标题：{world.title}\n'
+                f'类型：{world.genre_template}\n'
+                f'世界设定：{world.truth_canon}\n'
+                f'已写完章节数：{approved_chapter_count}\n'
+                f'角色：\n{character_lines or "暂无角色"}\n'
+                f'伏笔：\n{foreshadow_lines or "暂无伏笔"}'
+                f'{story_arc_hint}\n'
+                f'请为第 {next_chapter} 章生成一个章节目标。'
+            ),
+        },
+    ]
+
+
+def suggest_chapter_goal(db: Session, user: User, world_id: int, llm_client: LLMClient | None = None) -> dict:
+    world = require_owned_world(db, user, world_id)
+    characters, foreshadows = _load_story_arc_context(db, world)
+    approved_count = count_approved_chapters(db, world.id)
+    client = _model_client(llm_client)
+    try:
+        result = client.suggest_goal(build_suggest_goal_messages(world, characters, foreshadows, approved_count))
+    except (TimeoutError, ValueError, RuntimeError) as exc:
+        raise _map_model_error(exc) from exc
+    return result
+
+
 def generate_story_arc(db: Session, user: User, world_id: int, llm_client: LLMClient | None = None) -> dict:
     world = require_owned_world(db, user, world_id)
     characters, foreshadows = _load_story_arc_context(db, world)

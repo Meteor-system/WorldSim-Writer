@@ -4,6 +4,7 @@ import {
   createChapter as createChapterRequest,
   critiqueChapter,
   generateOutline,
+  suggestGoal,
   writeChapter,
 } from '../api/client';
 import type { BeatCard, ChapterPipelineResponse, CritiqueReport, DraftResponse, WorldOverview } from '../api/types';
@@ -29,6 +30,7 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
   const [draft, setDraft] = useState<DraftResponse | null>(null);
   const [critique, setCritique] = useState<CritiqueReport | null>(null);
   const [working, setWorking] = useState(false);
+  const [suggestingGoal, setSuggestingGoal] = useState(false);
   const [error, setError] = useState('');
   const [editMode, setEditMode] = useState(false);
   const [editContent, setEditContent] = useState('');
@@ -49,6 +51,19 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
   useEffect(() => {
     if (draft) draftTitleRef.current?.focus();
   }, [draft]);
+
+  async function handleSuggestGoal() {
+    setSuggestingGoal(true);
+    setError('');
+    try {
+      const result = await suggestGoal(world.id);
+      setGoal(result.goal);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成章节目标失败');
+    } finally {
+      setSuggestingGoal(false);
+    }
+  }
 
   async function createChapterSession() {
     setWorking(true);
@@ -230,8 +245,18 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
         </aside>
         <div className="space-y-5">
           <div className="book-card p-5">
-            <label className="mb-2 block text-sm font-bold text-[#5e3b1c]" htmlFor="chapter-goal">章节目标</label>
-            <textarea id="chapter-goal" className="paper-input min-h-28" value={goal} onChange={(event) => setGoal(event.target.value)} aria-label="章节目标" disabled={Boolean(chapter)} />
+            <div className="mb-2 flex items-center justify-between">
+              <label className="text-sm font-bold text-[#5e3b1c]" htmlFor="chapter-goal">章节目标</label>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-lg border border-amber-700/25 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-40"
+                disabled={suggestingGoal || Boolean(chapter)}
+                onClick={handleSuggestGoal}
+                title="AI 根据世界设定、故事大纲、角色和伏笔自动生成章节目标"
+              >
+                {suggestingGoal ? '⏳ 生成中…' : '✨ 自动生成'}
+              </button>
+            </div>
+            <textarea id="chapter-goal" className="paper-input min-h-28" value={goal} onChange={(event) => setGoal(event.target.value)} aria-label="章节目标" disabled={Boolean(chapter)} placeholder="输入本章要讲什么故事……或者点击「✨ 自动生成」让 AI 帮你写" />
             <div className="mt-4 flex flex-wrap gap-3">
               <button className="primary-button" disabled={working || Boolean(chapter)} onClick={createChapterSession}>{chapter ? '章节已创建' : '创建章节'}</button>
               <button className="secondary-button" disabled={working || !chapter} onClick={runOutliner}>生成大纲</button>

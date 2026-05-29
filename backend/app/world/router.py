@@ -14,7 +14,7 @@ from app.world.service import (
     list_world_events,
     require_owned_world,
 )
-from app.world.story_arc import generate_story_arc
+from app.world.story_arc import generate_story_arc, suggest_chapter_goal
 
 router = APIRouter(prefix='/worlds', tags=['worlds'])
 
@@ -55,6 +55,15 @@ def story_arc(
     db: Session = Depends(get_db),
 ) -> StoryArcResponse:
     return StoryArcResponse.model_validate(generate_story_arc(db, current_user, world_id))
+
+
+@router.post('/{world_id}/suggest-goal')
+def suggest_goal(
+    world_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return suggest_chapter_goal(db, current_user, world_id)
 
 
 @router.get('/{world_id}/events', response_model=EventLogListResponse)

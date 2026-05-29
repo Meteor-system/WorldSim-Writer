@@ -77,6 +77,13 @@ export function generateStoryArc(worldId: number) {
   });
 }
 
+export function suggestGoal(worldId: number) {
+  return apiRequest<{ goal: string }>(`/worlds/${worldId}/suggest-goal`, {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
 /* ── Narrative pipeline ── */
 
 export function createChapter(worldId: number, data: { chapter_goal: string; title?: string }) {
