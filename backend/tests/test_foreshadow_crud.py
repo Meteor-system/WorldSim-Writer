@@ -33,6 +33,20 @@ def create_chapter(db_session, world_id):
     return chapter.id
 
 
+def create_foreshadow(client, token, world_id, title='铜铃异响', status='planted', source_chapter_id=None):
+    payload = {
+        'title': title,
+        'description': '夜半铜铃无人自鸣。',
+        'foreshadow_type': 'plot',
+        'status': status,
+    }
+    if source_chapter_id is not None:
+        payload['source_chapter_id'] = source_chapter_id
+    response = client.post(f'/worlds/{world_id}/foreshadows', headers=auth(token), json=payload)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
 def test_foreshadow_event_model_is_registered(db_session):
     from app.foreshadow.models import ForeshadowEvent
 
@@ -40,6 +54,51 @@ def test_foreshadow_event_model_is_registered(db_session):
         table_names = set(db_session.bind.dialect.get_table_names(connection))
     assert 'foreshadow_events' in table_names
     assert ForeshadowEvent.__tablename__ == 'foreshadow_events'
+
+
+def test_foreshadow_status_transitions(client):
+    token = register(client)
+    world_id = create_world(client, token)
+    foreshadow = create_foreshadow(client, token, world_id)
+
+    advanced = client.put(f"/foreshadows/{foreshadow['id']}", headers=auth(token), json={'status': 'advanced'})
+    assert advanced.status_code == 200
+    assert advanced.json()['status'] == 'advanced'
+
+    backwards = client.put(f"/foreshadows/{foreshadow['id']}", headers=auth(token), json={'status': 'planted'})
+    assert backwards.status_code == 400
+    assert backwards.json()['detail'] == 'INVALID_STATUS_TRANSITION'
+
+    resolved = client.put(f"/foreshadows/{foreshadow['id']}", headers=auth(token), json={'status': 'resolved'})
+    assert resolved.status_code == 200
+    assert resolved.json()['status'] == 'resolved'
+
+    terminal = client.put(f"/foreshadows/{foreshadow['id']}", headers=auth(token), json={'status': 'expired'})
+    assert terminal.status_code == 400
+    assert terminal.json()['detail'] == 'INVALID_STATUS_TRANSITION'
+
+    expiring = create_foreshadow(client, token, world_id, title='井中红光')
+    expired = client.put(f"/foreshadows/{expiring['id']}", headers=auth(token), json={'status': 'expired'})
+    assert expired.status_code == 200
+    assert expired.json()['status'] == 'expired'
+
+
+def test_foreshadow_rejects_invalid_status(client):
+    token = register(client)
+    world_id = create_world(client, token)
+
+    create_response = client.post(
+        f'/worlds/{world_id}/foreshadows',
+        headers=auth(token),
+        json={'title': '铜铃异响', 'description': '夜半铜铃无人自鸣。', 'foreshadow_type': 'plot', 'status': 'bad'},
+    )
+    assert create_response.status_code == 400
+    assert create_response.json()['detail'] == 'INVALID_STATUS'
+
+    foreshadow = create_foreshadow(client, token, world_id)
+    update_response = client.put(f"/foreshadows/{foreshadow['id']}", headers=auth(token), json={'status': 'bad'})
+    assert update_response.status_code == 400
+    assert update_response.json()['detail'] == 'INVALID_STATUS'
 
 
 def test_foreshadow_crud_lifecycle(client, db_session):

@@ -44,6 +44,7 @@ class ForeshadowUpdate(BaseModel):
 
 class ForeshadowResponse(BaseModel):
     id: int
+    source_chapter_id: int | None
     title: str
     description: str
     foreshadow_type: str

@@ -4,10 +4,64 @@ from sqlalchemy.orm import Session
 
 from app.auth.models import User
 from app.character.models import Character
-from app.foreshadow.models import Foreshadow
+from app.foreshadow.models import Foreshadow, ForeshadowEvent
 from app.foreshadow.schemas import ForeshadowCreate, ForeshadowUpdate
 from app.narrative.models import Chapter
 from app.world.service import require_owned_world
+
+FORESHADOW_STATUSES = {'planted', 'advanced', 'resolved', 'expired'}
+VALID_STATUS_TRANSITIONS = {
+    'planted': {'advanced', 'expired'},
+    'advanced': {'resolved', 'expired'},
+    'resolved': set(),
+    'expired': set(),
+}
+
+
+def validate_foreshadow_status(status_value: str) -> None:
+    if status_value not in FORESHADOW_STATUSES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='INVALID_STATUS')
+
+
+def validate_foreshadow_transition(current_status: str, next_status: str) -> None:
+    validate_foreshadow_status(next_status)
+    if current_status == next_status:
+        return
+    if next_status not in VALID_STATUS_TRANSITIONS.get(current_status, set()):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='INVALID_STATUS_TRANSITION')
+
+
+def add_foreshadow_event(
+    db: Session,
+    foreshadow: Foreshadow,
+    event_type: str,
+    chapter_id: int | None = None,
+    note: str | None = None,
+) -> ForeshadowEvent:
+    validate_foreshadow_status(event_type)
+    event = ForeshadowEvent(
+        foreshadow_id=foreshadow.id,
+        chapter_id=chapter_id,
+        event_type=event_type,
+        note=note,
+    )
+    db.add(event)
+    return event
+
+
+def apply_foreshadow_status_transition(
+    db: Session,
+    foreshadow: Foreshadow,
+    next_status: str,
+    chapter_id: int | None = None,
+    note: str | None = None,
+) -> bool:
+    validate_foreshadow_transition(foreshadow.status, next_status)
+    if foreshadow.status == next_status:
+        return False
+    foreshadow.status = next_status
+    add_foreshadow_event(db, foreshadow, next_status, chapter_id=chapter_id, note=note)
+    return True
 
 
 def _validate_source_chapter(db: Session, world_id: int, source_chapter_id: int | None) -> None:
@@ -41,18 +95,22 @@ def create_foreshadow(db: Session, user: User, world_id: int, data: ForeshadowCr
     require_owned_world(db, user, world_id)
     _validate_source_chapter(db, world_id, data.source_chapter_id)
     related_character_ids = _validate_related_characters(db, world_id, data.related_character_ids)
+    foreshadow_status = data.status if data.status is not None else 'planted'
+    validate_foreshadow_status(foreshadow_status)
     foreshadow = Foreshadow(
         world_id=world_id,
         source_chapter_id=data.source_chapter_id,
         title=data.title,
         description=data.description,
         foreshadow_type=data.foreshadow_type,
-        status=data.status if data.status is not None else 'planted',
+        status=foreshadow_status,
         urgency_level=data.urgency_level if data.urgency_level is not None else 1,
         related_character_ids=related_character_ids,
         expected_resolution_window=data.expected_resolution_window,
     )
     db.add(foreshadow)
+    db.flush()
+    add_foreshadow_event(db, foreshadow, foreshadow.status, chapter_id=foreshadow.source_chapter_id)
     db.commit()
     db.refresh(foreshadow)
     return foreshadow
@@ -91,8 +149,11 @@ def update_foreshadow(db: Session, user: User, foreshadow_id: int, data: Foresha
             foreshadow.world_id,
             update_data['related_character_ids'],
         )
+    next_status = update_data.pop('status', None)
     for field, value in update_data.items():
         setattr(foreshadow, field, value)
+    if next_status is not None:
+        apply_foreshadow_status_transition(db, foreshadow, next_status)
     db.commit()
     db.refresh(foreshadow)
     return foreshadow
