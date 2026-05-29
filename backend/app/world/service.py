@@ -5,10 +5,12 @@ from sqlalchemy.orm import Session
 from app.auth.models import User
 from app.character.models import Character, CharacterRelation
 from app.event.models import EventLog
-from app.foreshadow.models import Foreshadow
+from app.foreshadow.models import Foreshadow, ForeshadowEvent
 from app.world.models import World
 from app.world.schemas import WorldCreateRequest
 from app.world.templates import SAMPLE_WORLD
+
+FORESHADOW_STATUSES = {'planted', 'advanced', 'resolved', 'expired'}
 
 
 def _sample_world_request() -> WorldCreateRequest:
@@ -119,20 +121,26 @@ def create_world_from_template(db: Session, user: User, data: WorldCreateRequest
             )
         )
 
+    foreshadows: list[Foreshadow] = []
     for item in data.starter_assets.foreshadows:
-        db.add(
-            Foreshadow(
-                world_id=world.id,
-                title=item.title,
-                description=item.description,
-                foreshadow_type=item.foreshadow_type,
-                status=item.status if item.status is not None else 'planted',
-                urgency_level=item.urgency_level if item.urgency_level is not None else 1,
-                related_character_ids=[characters[index].id for index in item.related_character_indexes or []],
-                expected_resolution_window=item.expected_resolution_window,
-            )
+        foreshadow_status = item.status if item.status is not None else 'planted'
+        if foreshadow_status not in FORESHADOW_STATUSES:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='INVALID_STATUS')
+        foreshadow = Foreshadow(
+            world_id=world.id,
+            title=item.title,
+            description=item.description,
+            foreshadow_type=item.foreshadow_type,
+            status=foreshadow_status,
+            urgency_level=item.urgency_level if item.urgency_level is not None else 1,
+            related_character_ids=[characters[index].id for index in item.related_character_indexes or []],
+            expected_resolution_window=item.expected_resolution_window,
         )
+        db.add(foreshadow)
+        foreshadows.append(foreshadow)
     db.flush()
+    for foreshadow in foreshadows:
+        db.add(ForeshadowEvent(foreshadow_id=foreshadow.id, event_type=foreshadow.status))
     refresh_world_projection(db, world)
 
     db.commit()

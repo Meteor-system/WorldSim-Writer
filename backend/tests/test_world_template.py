@@ -121,6 +121,21 @@ def test_create_custom_world_from_template_payload(client):
     assert foreshadow['related_character_ids'] == character_ids
 
 
+def test_template_foreshadows_get_initial_timeline_event(client):
+    token = register(client)
+
+    create_response = client.post('/worlds', headers=auth(token), json=custom_world_payload())
+    assert create_response.status_code == 200
+    world_id = create_response.json()['id']
+    overview = client.get(f'/worlds/{world_id}/overview', headers=auth(token)).json()
+    foreshadow_id = overview['foreshadows'][0]['id']
+
+    timeline = client.get(f'/foreshadows/{foreshadow_id}/timeline', headers=auth(token))
+
+    assert timeline.status_code == 200
+    assert [event['event_type'] for event in timeline.json()] == ['planted']
+
+
 def test_create_custom_world_requires_login(client):
     response = client.post('/worlds', json=custom_world_payload())
 
