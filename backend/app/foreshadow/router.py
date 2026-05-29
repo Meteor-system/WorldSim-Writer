@@ -4,11 +4,12 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
-from app.foreshadow.schemas import ForeshadowCreate, ForeshadowResponse, ForeshadowUpdate
+from app.foreshadow.schemas import ForeshadowCreate, ForeshadowEventResponse, ForeshadowResponse, ForeshadowUpdate
 from app.foreshadow.service import (
     create_foreshadow,
     delete_foreshadow,
     get_foreshadow,
+    get_foreshadow_timeline,
     get_foreshadows,
     update_foreshadow,
 )
@@ -35,6 +36,18 @@ def list_foreshadows(
     return [
         ForeshadowResponse.model_validate(f)
         for f in get_foreshadows(db, current_user, world_id)
+    ]
+
+
+@router.get('/foreshadows/{foreshadow_id}/timeline', response_model=list[ForeshadowEventResponse])
+def timeline(
+    foreshadow_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> list[ForeshadowEventResponse]:
+    return [
+        ForeshadowEventResponse.model_validate(item)
+        for item in get_foreshadow_timeline(db, current_user, foreshadow_id)
     ]
 
 

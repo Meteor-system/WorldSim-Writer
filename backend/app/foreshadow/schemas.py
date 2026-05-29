@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -54,3 +56,11 @@ class ForeshadowResponse(BaseModel):
     expected_resolution_window: str | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ForeshadowEventResponse(BaseModel):
+    event_type: str
+    chapter_id: int | None
+    chapter_title: str | None
+    note: str | None
+    created_at: datetime

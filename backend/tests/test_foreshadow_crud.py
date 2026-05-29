@@ -101,6 +101,42 @@ def test_foreshadow_rejects_invalid_status(client):
     assert update_response.json()['detail'] == 'INVALID_STATUS'
 
 
+def test_foreshadow_timeline(client):
+    token = register(client)
+    world_id = create_world(client, token)
+    foreshadow = create_foreshadow(client, token, world_id)
+
+    update = client.put(f"/foreshadows/{foreshadow['id']}", headers=auth(token), json={'status': 'advanced'})
+    assert update.status_code == 200
+
+    timeline = client.get(f"/foreshadows/{foreshadow['id']}/timeline", headers=auth(token))
+    assert timeline.status_code == 200
+    events = timeline.json()
+    assert [event['event_type'] for event in events] == ['planted', 'advanced']
+    assert events[0]['chapter_id'] is None
+    assert events[0]['chapter_title'] is None
+    assert events[0]['note'] is None
+    assert events[0]['created_at']
+
+
+def test_foreshadow_event_created_on_transition(client):
+    token = register(client)
+    world_id = create_world(client, token)
+    foreshadow = create_foreshadow(client, token, world_id)
+
+    before = client.get(f"/foreshadows/{foreshadow['id']}/timeline", headers=auth(token))
+    assert before.status_code == 200
+    assert len(before.json()) == 1
+
+    response = client.put(f"/foreshadows/{foreshadow['id']}", headers=auth(token), json={'status': 'advanced'})
+    assert response.status_code == 200
+
+    after = client.get(f"/foreshadows/{foreshadow['id']}/timeline", headers=auth(token))
+    assert after.status_code == 200
+    assert len(after.json()) == 2
+    assert after.json()[-1]['event_type'] == 'advanced'
+
+
 def test_foreshadow_crud_lifecycle(client, db_session):
     token = register(client)
     world_id = create_world(client, token)

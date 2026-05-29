@@ -138,6 +138,26 @@ def get_foreshadow(db: Session, user: User, foreshadow_id: int) -> Foreshadow:
     return _require_owned_foreshadow(db, user, foreshadow_id)
 
 
+def get_foreshadow_timeline(db: Session, user: User, foreshadow_id: int) -> list[dict]:
+    foreshadow = _require_owned_foreshadow(db, user, foreshadow_id)
+    rows = db.execute(
+        select(ForeshadowEvent, Chapter.title)
+        .outerjoin(Chapter, ForeshadowEvent.chapter_id == Chapter.id)
+        .where(ForeshadowEvent.foreshadow_id == foreshadow.id)
+        .order_by(ForeshadowEvent.created_at, ForeshadowEvent.id)
+    ).all()
+    return [
+        {
+            'event_type': event.event_type,
+            'chapter_id': event.chapter_id,
+            'chapter_title': chapter_title,
+            'note': event.note,
+            'created_at': event.created_at,
+        }
+        for event, chapter_title in rows
+    ]
+
+
 def update_foreshadow(db: Session, user: User, foreshadow_id: int, data: ForeshadowUpdate) -> Foreshadow:
     foreshadow = _require_owned_foreshadow(db, user, foreshadow_id)
     update_data = data.model_dump(exclude_unset=True)
