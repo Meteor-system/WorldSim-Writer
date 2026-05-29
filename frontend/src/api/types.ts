@@ -334,6 +334,111 @@ export type CharacterArcReportResponse = {
   created_at: string;
 };
 
+export type ChapterHistoryItem = {
+  id: number;
+  title: string;
+  status: string;
+  approved_version: number;
+  base_world_version: number;
+  world_version_after: number;
+  approved_excerpt: string;
+  event_count: number;
+  character_change_count: number;
+  foreshadow_change_count: number;
+};
+
+export type ChapterHistoryResponse = {
+  world_id: number;
+  chapters: ChapterHistoryItem[];
+};
+
+export type ChapterHistoryEvent = {
+  id: number;
+  event_type: string;
+  source_type: string;
+  world_version_before: number;
+  world_version_after: number;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ChapterHistoryChange = {
+  event_type: string;
+  object_type: string | null;
+  object_id: number | null;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  payload: Record<string, unknown>;
+};
+
+export type ChapterHistoryDetailResponse = {
+  id: number;
+  world_id: number;
+  title: string;
+  status: string;
+  approved_version: number;
+  base_world_version: number;
+  approved_content: string;
+  world_version_before: number;
+  world_version_after: number;
+  events: ChapterHistoryEvent[];
+  character_changes: ChapterHistoryChange[];
+  foreshadow_changes: ChapterHistoryChange[];
+  critic_summary: string | null;
+  character_arc_summary: string | null;
+};
+
+export type ApprovedChapterHistoryResponse = ChapterHistoryResponse;
+export type ApprovedChapterHistoryDetailResponse = ChapterHistoryDetailResponse;
+
+export type NextChapterPrepCharacter = {
+  character_id: number;
+  name: string;
+  role_type: string;
+  status: string;
+  reason: string;
+};
+
+export type NextChapterPrepForeshadow = {
+  foreshadow_id: number;
+  title: string;
+  status: string;
+  urgency_level: number;
+  reason: string;
+};
+
+export type NextChapterPrepWarning = {
+  severity: string;
+  category: string;
+  message: string;
+  related_character_ids: number[];
+  related_foreshadow_ids: number[];
+};
+
+export type NextChapterPrepEvent = {
+  id: number;
+  event_type: string;
+  world_version_before: number;
+  world_version_after: number;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+export type NextChapterPrepResponse = {
+  world_id: number;
+  world_version: number;
+  next_chapter_number: number;
+  suggested_goal: string;
+  recommended_pov_character_id: number | null;
+  recommended_pov_character_name: string | null;
+  source_signals: string[];
+  priority_characters: NextChapterPrepCharacter[];
+  priority_foreshadows: NextChapterPrepForeshadow[];
+  progression_hints: ChapterProgressionHint[];
+  continuity_warnings: NextChapterPrepWarning[];
+  recent_events: NextChapterPrepEvent[];
+};
+
 export type CritiqueResponse = {
   chapter_id: number;
   critique_report: CritiqueReport;

@@ -1,6 +1,8 @@
 import type {
   ApprovalPreviewResponse,
   BeatCard,
+  ChapterHistoryDetailResponse,
+  ChapterHistoryResponse,
   ChapterPipelineResponse,
   Character,
   CharacterArcReportResponse,
@@ -20,6 +22,7 @@ import type {
   ForeshadowEvent,
   ForeshadowStatus,
   ForeshadowUpdate,
+  NextChapterPrepResponse,
   OutlineResponse,
   ParagraphReviseRequest,
   StaleForeshadow,
@@ -203,6 +206,18 @@ export function generateCharacterArcReport(chapterId: number) {
 
 export function getCharacterArcReport(chapterId: number) {
   return apiRequest<CharacterArcReportResponse>(`/chapters/${chapterId}/character-arc-report`);
+}
+
+export function getChapterHistory(worldId: number) {
+  return apiRequest<ChapterHistoryResponse>(`/worlds/${worldId}/chapters/history`);
+}
+
+export function getChapterHistoryDetail(chapterId: number) {
+  return apiRequest<ChapterHistoryDetailResponse>(`/chapters/${chapterId}/history`);
+}
+
+export function getNextChapterPrep(worldId: number) {
+  return apiRequest<NextChapterPrepResponse>(`/worlds/${worldId}/next-chapter-prep`);
 }
 
 export function critiqueChapter(chapterId: number) {

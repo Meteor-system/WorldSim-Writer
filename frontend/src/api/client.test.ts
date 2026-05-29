@@ -8,7 +8,10 @@ import {
   generateCriticReport,
   getApprovalPreview,
   getCharacterArcReport,
+  getChapterHistory,
+  getChapterHistoryDetail,
   getCriticReport,
+  getNextChapterPrep,
   getDraftDiff,
   getRelations,
   reviseParagraph,
@@ -204,5 +207,22 @@ describe('draft versioning API helpers', () => {
       expect.objectContaining({ method: 'POST', body: '{}' }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8000/chapters/11/character-arc-report', expect.any(Object));
+  });
+
+  it('calls narrative control center chapter history and prep endpoints', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ world_id: 7, chapters: [] }))
+      .mockResolvedValueOnce(jsonResponse({ id: 11, events: [] }))
+      .mockResolvedValueOnce(jsonResponse({ world_id: 7, suggested_goal: '推进湿信线索' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await getChapterHistory(7);
+    await getChapterHistoryDetail(11);
+    await getNextChapterPrep(7);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://localhost:8000/worlds/7/chapters/history', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8000/chapters/11/history', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8000/worlds/7/next-chapter-prep', expect.any(Object));
   });
 });

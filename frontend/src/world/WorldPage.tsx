@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { apiRequest, createWorld, generateStoryArc } from '../api/client';
-import type { StoryArcChapter, WorldCreateRequest, WorldOverview } from '../api/types';
+import { apiRequest, createWorld, generateStoryArc, getChapterHistory, getChapterHistoryDetail, getNextChapterPrep } from '../api/client';
+import type { ChapterHistoryResponse, NextChapterPrepResponse, StoryArcChapter, WorldCreateRequest, WorldOverview } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
+import { ChapterHistoryPanel } from './ChapterHistoryPanel';
+import { NextChapterPrepPanel } from './NextChapterPrepPanel';
 import { WorldCreationForm } from './WorldCreationForm';
 
 type Props = { onEnterStudio: (world: WorldOverview) => void; autoFocusTitle?: boolean };
@@ -100,8 +102,38 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [arcLoading, setArcLoading] = useState(false);
+  const [chapterHistory, setChapterHistory] = useState<ChapterHistoryResponse | null>(null);
+  const [chapterHistoryLoading, setChapterHistoryLoading] = useState(false);
+  const [chapterHistoryError, setChapterHistoryError] = useState('');
+  const [nextPrep, setNextPrep] = useState<NextChapterPrepResponse | null>(null);
+  const [nextPrepLoading, setNextPrepLoading] = useState(false);
+  const [nextPrepError, setNextPrepError] = useState('');
+  const [selectedNextGoal, setSelectedNextGoal] = useState('');
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
+
+  async function loadNarrativeControlCenter(worldId: number) {
+    setChapterHistoryLoading(true);
+    setNextPrepLoading(true);
+    setChapterHistoryError('');
+    setNextPrepError('');
+    try {
+      setChapterHistory(await getChapterHistory(worldId));
+    } catch {
+      setChapterHistory(null);
+      setChapterHistoryError('章节历史暂不可用');
+    } finally {
+      setChapterHistoryLoading(false);
+    }
+    try {
+      setNextPrep(await getNextChapterPrep(worldId));
+    } catch {
+      setNextPrep(null);
+      setNextPrepError('下一章准备台暂不可用');
+    } finally {
+      setNextPrepLoading(false);
+    }
+  }
 
   async function loadWorld() {
     setError('');
@@ -110,7 +142,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       if (worlds.length === 0) {
         setWorld(null);
       } else {
-        setWorld(await apiRequest<WorldOverview>(`/worlds/${worlds[0].id}/overview`));
+        const overview = await apiRequest<WorldOverview>(`/worlds/${worlds[0].id}/overview`);
+        setWorld(overview);
+        void loadNarrativeControlCenter(overview.id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载世界失败');
@@ -124,7 +158,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     setError('');
     try {
       const created = await createWorld(payload);
-      setWorld(await apiRequest<WorldOverview>(`/worlds/${created.id}/overview`));
+      const overview = await apiRequest<WorldOverview>(`/worlds/${created.id}/overview`);
+      setWorld(overview);
+      void loadNarrativeControlCenter(overview.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建世界失败');
     } finally {
@@ -276,6 +312,27 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   ))}
                 </div>
               )}
+            </section>
+
+            <section className="md:col-span-2 space-y-5">
+              <div>
+                <p className="chapter-kicker">Narrative Console</p>
+                <h2 className="mt-2 text-3xl font-black text-[#34210f]">Narrative Control Center</h2>
+                <p className="manuscript mt-2 text-sm text-[#5e3b1c]">查看已批准章节历史，并准备下一章目标。</p>
+                {selectedNextGoal && <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已设为下一章目标：{selectedNextGoal}</p>}
+              </div>
+              <NextChapterPrepPanel
+                prep={nextPrep}
+                loading={nextPrepLoading}
+                error={nextPrepError}
+                onUseGoal={setSelectedNextGoal}
+              />
+              <ChapterHistoryPanel
+                history={chapterHistory}
+                loading={chapterHistoryLoading}
+                error={chapterHistoryError}
+                onLoadDetail={(chapterId) => getChapterHistoryDetail(chapterId)}
+              />
             </section>
           </div>
         )}
