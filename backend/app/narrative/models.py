@@ -41,5 +41,6 @@ class ChapterDraft(Base):
     review_hints: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
     proposed_changes: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     source_world_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    rejection_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     chapter: Mapped['Chapter'] = relationship('Chapter', back_populates='drafts')

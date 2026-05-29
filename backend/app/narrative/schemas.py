@@ -14,6 +14,17 @@ class DraftResponse(BaseModel):
     review_hints: list[str]
     proposed_changes: dict
     source_world_version: int
+    status: str | None = None
+    approved_content: str | None = None
+    rejection_feedback: str | None = None
+
+
+class RejectRequest(BaseModel):
+    feedback: str = Field(min_length=1)
+
+
+class EditDraftRequest(BaseModel):
+    content: str = Field(min_length=10)
 
 
 class ChapterResponse(BaseModel):

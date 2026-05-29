@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.models import User
 from app.character.models import Character
+from app.core.config import get_settings
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow
 from app.llm.client import LLMClient
@@ -24,7 +25,13 @@ def build_generation_messages(
     character_lines = '\n'.join(f'- {c.id}: {c.name}, status={c.status}, goals={c.current_goals}' for c in characters)
     foreshadow_lines = '\n'.join(f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}' for f in foreshadows)
     return [
-        {'role': 'system', 'content': '你是长篇小说创作系统的章节起草助手。必须只返回 JSON。'},
+        {'role': 'system', 'content': '你是长篇小说创作系统的章节起草助手。必须只返回合法的 JSON，字段结构如下：\n'
+         '{"title": "章节标题", "draft_content": "正文内容", "context_summary": "摘要", '
+         '"review_hints": ["提示1", "提示2"], '
+         '"proposed_character_changes": [{"character_id": 整数, "status": "新状态", "current_goals": ["目标1"]}], '
+         '"proposed_foreshadow_changes": [{"foreshadow_id": 整数, "status": "advanced|resolved|planted", "description_note": "备注"}]}。'
+         '\nproposed_character_changes 和 proposed_foreshadow_changes 可以为空数组 []，'
+         '但如果包含元素则必须严格包含上述必填字段。'},
         {
             'role': 'user',
             'content': (
@@ -33,8 +40,7 @@ def build_generation_messages(
                 f'角色：\n{character_lines}\n'
                 f'伏笔：\n{foreshadow_lines}\n'
                 f'本章目标：{chapter_goal}\n'
-                '返回字段：title, draft_content, context_summary, review_hints, '
-                'proposed_character_changes, proposed_foreshadow_changes。'
+                '请生成章节，返回 JSON。'
             ),
         },
     ]
@@ -61,7 +67,10 @@ def create_chapter_draft(
     foreshadows = list(
         db.scalars(select(Foreshadow).where(Foreshadow.world_id == world.id).order_by(Foreshadow.urgency_level.desc(), Foreshadow.id))
     )
+    settings = get_settings()
     client = llm_client or LLMClient()
+    if hasattr(client, 'mock'):
+        client.mock = settings.llm_mock
     try:
         generation = client.generate_chapter(build_generation_messages(world, characters, foreshadows, chapter_goal))
     except TimeoutError as exc:
@@ -108,6 +117,78 @@ def create_chapter_draft(
         'review_hints': draft.review_hints,
         'proposed_changes': draft.proposed_changes,
         'source_world_version': draft.source_world_version,
+    }
+
+
+def reject_chapter(db: Session, user: User, chapter_id: int, feedback: str) -> dict:
+    chapter = db.get(Chapter, chapter_id)
+    if chapter is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    world = db.scalar(select(World).where(World.id == chapter.world_id))
+    if world is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    if world.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='FORBIDDEN')
+    draft = db.scalar(
+        select(ChapterDraft)
+        .where(ChapterDraft.chapter_id == chapter.id)
+        .where(ChapterDraft.draft_version == chapter.draft_version)
+    )
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    
+    chapter.status = 'rejected'
+    draft.rejection_feedback = feedback
+    db.commit()
+    db.refresh(chapter)
+    db.refresh(draft)
+    return {
+        'chapter_id': chapter.id,
+        'draft_id': draft.id,
+        'title': chapter.title,
+        'content': draft.content,
+        'context_summary': draft.context_summary,
+        'review_hints': draft.review_hints,
+        'proposed_changes': draft.proposed_changes,
+        'source_world_version': draft.source_world_version,
+        'status': chapter.status,
+        'approved_content': chapter.approved_content,
+        'rejection_feedback': draft.rejection_feedback,
+    }
+
+
+def edit_chapter_draft(db: Session, user: User, chapter_id: int, new_content: str) -> dict:
+    chapter = db.get(Chapter, chapter_id)
+    if chapter is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    world = db.scalar(select(World).where(World.id == chapter.world_id))
+    if world is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    if world.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='FORBIDDEN')
+    if chapter.status == 'approved':
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
+    draft = db.scalar(
+        select(ChapterDraft)
+        .where(ChapterDraft.chapter_id == chapter.id)
+        .where(ChapterDraft.draft_version == chapter.draft_version)
+    )
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    
+    draft.content = new_content
+    db.commit()
+    db.refresh(draft)
+    return {
+        'chapter_id': chapter.id,
+        'draft_id': draft.id,
+        'title': chapter.title,
+        'content': draft.content,
+        'context_summary': draft.context_summary,
+        'review_hints': draft.review_hints,
+        'proposed_changes': draft.proposed_changes,
+        'source_world_version': draft.source_world_version,
+        'rejection_feedback': draft.rejection_feedback,
     }
 
 
