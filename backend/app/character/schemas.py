@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 def _strip_required(value: str) -> str:
@@ -55,6 +55,36 @@ class CharacterResponse(BaseModel):
     current_goals: list[str]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CharacterRelationCreate(BaseModel):
+    source_character_id: int
+    target_character_id: int
+    relation_type: str
+    intensity: int = Field(default=1, ge=1, le=5)
+    visibility: str = 'public'
+    edit_reason: str | None = None
+
+    @field_validator('relation_type')
+    @classmethod
+    def validate_relation_type(cls, value: str) -> str:
+        return _strip_required(value)
+
+
+class CharacterRelationUpdate(BaseModel):
+    source_character_id: int | None = None
+    target_character_id: int | None = None
+    relation_type: str | None = None
+    intensity: int | None = Field(default=None, ge=1, le=5)
+    visibility: str | None = None
+    edit_reason: str | None = None
+
+    @field_validator('relation_type')
+    @classmethod
+    def validate_optional_relation_type(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _strip_required(value)
 
 
 class CharacterRelationResponse(BaseModel):
