@@ -17,7 +17,7 @@ class FakeLLMClient:
             review_hints=['确认沈微霜动机是否一致'],
             proposed_character_changes=[ProposedCharacterChange(character_id=1, current_goals=['追查城主府叛乱'])],
             proposed_foreshadow_changes=[
-                ProposedForeshadowChange(foreshadow_id=1, status='triggered', description_note='玉佩线索被推进')
+                ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='玉佩线索被推进')
             ],
         )
 
@@ -60,10 +60,31 @@ def test_approve_chapter_updates_world_character_foreshadow_and_events(client, m
     assert approve_response.status_code == 200
     assert overview['world_version'] == 2
     assert overview['characters'][0]['current_goals'] == ['追查城主府叛乱']
-    assert overview['foreshadows'][0]['status'] == 'triggered'
+    assert overview['foreshadows'][0]['status'] == 'advanced'
     assert overview['recent_events'][0]['event_type'] == 'chapter_approved'
     assert overview['recent_events'][0]['world_version_before'] == 1
     assert overview['recent_events'][0]['world_version_after'] == 2
+
+
+def test_approve_chapter_creates_foreshadow_lifecycle_event(client, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+
+    response = client.post(f"/chapters/{draft['chapter_id']}/approve", headers={'Authorization': f'Bearer {token}'})
+    assert response.status_code == 200
+
+    timeline = client.get('/foreshadows/1/timeline', headers={'Authorization': f'Bearer {token}'})
+    assert timeline.status_code == 200
+    event = timeline.json()[-1]
+    assert event['event_type'] == 'advanced'
+    assert event['chapter_id'] == draft['chapter_id']
+    assert event['chapter_title'] == '第一章 暗井回声'
+    assert event['note'] == '玉佩线索被推进'
 
 
 def test_reject_chapter_does_not_approve_or_update_world(client, monkeypatch):

@@ -9,6 +9,7 @@ from app.character.models import Character
 from app.core.config import get_settings
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow
+from app.foreshadow.service import apply_foreshadow_status_transition
 from app.llm.client import LLMClient
 from app.llm.schemas import BeatCard, ChapterGeneration
 from app.narrative.models import Chapter, ChapterDraft
@@ -467,7 +468,13 @@ def approve_chapter(db: Session, user: User, chapter_id: int) -> Chapter:
                 character.current_goals = change['current_goals']
 
         for foreshadow, change, _before, _after in foreshadow_changes:
-            foreshadow.status = change['status']
+            apply_foreshadow_status_transition(
+                db,
+                foreshadow,
+                change['status'],
+                chapter_id=chapter.id,
+                note=change.get('description_note'),
+            )
             if change.get('description_note'):
                 foreshadow.description = f"{foreshadow.description}\n审核备注：{change['description_note']}"
 
