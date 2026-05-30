@@ -1,8 +1,8 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, getChapterHistory, getChapterHistoryDetail, getNextChapterPrep } from '../api/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { apiRequest, getChapterHistory, getChapterHistoryDetail, getNextChapterPrep, getRelations } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -13,6 +13,7 @@ vi.mock('../api/client', () => ({
   getChapterHistory: vi.fn(),
   getChapterHistoryDetail: vi.fn(),
   getNextChapterPrep: vi.fn(),
+  getRelations: vi.fn(),
 }));
 
 const world: WorldOverview = {
@@ -39,11 +40,15 @@ const world: WorldOverview = {
   approved_chapter_count: 1,
 };
 
+afterEach(() => cleanup());
+
 beforeEach(() => {
   vi.mocked(apiRequest).mockReset();
   vi.mocked(getChapterHistory).mockReset();
   vi.mocked(getChapterHistoryDetail).mockReset();
   vi.mocked(getNextChapterPrep).mockReset();
+  vi.mocked(getRelations).mockReset();
+  vi.mocked(getRelations).mockResolvedValue([]);
   vi.mocked(apiRequest)
     .mockResolvedValueOnce([{ id: 7 }])
     .mockResolvedValueOnce(world);
@@ -124,5 +129,44 @@ describe('WorldPage Narrative Control Center', () => {
     await waitFor(() => expect(getChapterHistory).toHaveBeenCalledWith(7));
     expect(await screen.findByText('章节历史暂不可用')).toBeInTheDocument();
     expect(await screen.findByText('下一章准备台暂不可用')).toBeInTheDocument();
+  });
+
+  it('renders RelationManager from the relations tab', async () => {
+    const user = userEvent.setup();
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('青岚城')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '关系管理' }));
+
+    expect(screen.getAllByText('关系管理').length).toBeGreaterThanOrEqual(2);
+    expect(getRelations).toHaveBeenCalledWith(7);
+    expect(screen.getByRole('button', { name: '+ 新增关系' })).toBeInTheDocument();
+  });
+
+  it('passes a selected next chapter goal when entering Studio from the regular button', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    await screen.findByText('Narrative Control Center');
+    await user.click(screen.getByRole('button', { name: '用作下一章目标' }));
+    await user.click(screen.getByRole('button', { name: '进入创作台' }));
+
+    expect(onEnterStudio).toHaveBeenCalledWith(world, {
+      initialChapterGoal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+    });
+  });
+
+  it('enters Studio directly with the Next Chapter Prep suggested goal', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    await screen.findByText('Narrative Control Center');
+    await user.click(screen.getByRole('button', { name: '进入创作台并使用此目标' }));
+
+    expect(onEnterStudio).toHaveBeenCalledWith(world, {
+      initialChapterGoal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+    });
   });
 });

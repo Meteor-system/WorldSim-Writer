@@ -12,18 +12,22 @@ import {
 import type { ChapterHistoryResponse, NextChapterPrepResponse, StoryArcChapter, WorldCreateRequest, WorldOverview } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
+import { RelationManager } from '../components/RelationManager';
 import { ChapterHistoryPanel } from './ChapterHistoryPanel';
 import { NextChapterPrepPanel } from './NextChapterPrepPanel';
 import { WorldArchivePanel } from './WorldArchivePanel';
 import { WorldCreationForm } from './WorldCreationForm';
 
-type Props = { onEnterStudio: (world: WorldOverview) => void; autoFocusTitle?: boolean };
+type EnterStudioOptions = { initialChapterGoal?: string };
 
-type Tab = 'overview' | 'characters' | 'foreshadows';
+type Props = { onEnterStudio: (world: WorldOverview, options?: EnterStudioOptions) => void; autoFocusTitle?: boolean };
+
+type Tab = 'overview' | 'characters' | 'relations' | 'foreshadows';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'overview', label: '世界概览' },
   { key: 'characters', label: '角色管理' },
+  { key: 'relations', label: '关系管理' },
   { key: 'foreshadows', label: '伏笔账本' },
 ];
 
@@ -264,7 +268,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 </p>
               )}
               <div className="mt-8 flex flex-wrap gap-3">
-                <button className="primary-button" onClick={() => onEnterStudio(world)}>
+                <button className="primary-button" onClick={() => onEnterStudio(world, { initialChapterGoal: selectedNextGoal || undefined })}>
                   进入创作台
                 </button>
                 <button className="secondary-button" disabled={arcLoading} onClick={runStoryArcPlanner}>
@@ -336,6 +340,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 loading={nextPrepLoading}
                 error={nextPrepError}
                 onUseGoal={setSelectedNextGoal}
+                onEnterStudioWithGoal={(goal) => onEnterStudio(world, { initialChapterGoal: goal })}
               />
               <WorldArchivePanel
                 onCreateSnapshot={() => createWorldSnapshot(world.id)}
@@ -352,6 +357,10 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
         )}
 
         {tab === 'characters' && <CharacterManager worldId={world.id} onChanged={loadWorld} />}
+
+        {tab === 'relations' && (
+          <RelationManager worldId={world.id} characters={world.characters} onChanged={loadWorld} />
+        )}
 
         {tab === 'foreshadows' && (
           <ForeshadowManager worldId={world.id} characters={world.characters} onChanged={loadWorld} />

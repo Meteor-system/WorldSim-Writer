@@ -5,6 +5,7 @@ type Props = {
   loading?: boolean;
   error?: string;
   onUseGoal?: (goal: string) => void;
+  onEnterStudioWithGoal?: (goal: string) => void;
 };
 
 const WARNING_CLASS: Record<string, string> = {
@@ -24,7 +25,7 @@ function signalLabel(signal: string): string {
   return labels[signal] ?? signal;
 }
 
-export function NextChapterPrepPanel({ prep, loading, error, onUseGoal }: Props) {
+export function NextChapterPrepPanel({ prep, loading, error, onUseGoal, onEnterStudioWithGoal }: Props) {
   if (loading) {
     return (
       <section className="book-card p-5">
@@ -67,11 +68,18 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseGoal }: Props)
             </span>
           ))}
         </div>
-        {onUseGoal && (
-          <button className="secondary-button mt-4" onClick={() => onUseGoal(prep.suggested_goal)}>
-            用作下一章目标
-          </button>
-        )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          {onUseGoal && (
+            <button className="secondary-button" onClick={() => onUseGoal(prep.suggested_goal)}>
+              用作下一章目标
+            </button>
+          )}
+          {onEnterStudioWithGoal && (
+            <button className="primary-button" onClick={() => onEnterStudioWithGoal(prep.suggested_goal)}>
+              进入创作台并使用此目标
+            </button>
+          )}
+        </div>
       </article>
 
       <p className="rounded-2xl bg-white/35 p-3 text-sm font-bold text-[#5e3b1c]">

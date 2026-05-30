@@ -68,8 +68,9 @@ describe('NextChapterPrepPanel', () => {
   it('renders next chapter prep signals and uses suggested goal callback', async () => {
     const user = userEvent.setup();
     const onUseGoal = vi.fn();
+    const onEnterStudioWithGoal = vi.fn();
 
-    render(<NextChapterPrepPanel prep={prep} onUseGoal={onUseGoal} />);
+    render(<NextChapterPrepPanel prep={prep} onUseGoal={onUseGoal} onEnterStudioWithGoal={onEnterStudioWithGoal} />);
 
     expect(screen.getByText('下一章准备台')).toBeInTheDocument();
     expect(screen.getByText('第 2 章建议目标')).toBeInTheDocument();
@@ -83,6 +84,9 @@ describe('NextChapterPrepPanel', () => {
 
     await user.click(screen.getByRole('button', { name: '用作下一章目标' }));
     expect(onUseGoal).toHaveBeenCalledWith('林砚带着湿信赴城主府外墙，并设置一次试探。');
+
+    await user.click(screen.getByRole('button', { name: '进入创作台并使用此目标' }));
+    expect(onEnterStudioWithGoal).toHaveBeenCalledWith('林砚带着湿信赴城主府外墙，并设置一次试探。');
   });
 
   it('renders loading and error states', () => {
