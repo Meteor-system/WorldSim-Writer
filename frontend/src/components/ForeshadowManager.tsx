@@ -340,6 +340,9 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
           </button>
         </div>
       </div>
+      <p className="mt-3 rounded-2xl border border-amber-700/25 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+        这些编辑会正式写入世界状态，并使 world_version 增长。
+      </p>
 
       {staleForeshadows.length > 0 && (
         <button

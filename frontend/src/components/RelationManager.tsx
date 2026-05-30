@@ -141,6 +141,9 @@ export function RelationManager({ worldId, characters, onChanged }: Props) {
           + 新增关系
         </button>
       </div>
+      <p className="mt-3 rounded-2xl border border-amber-700/25 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+        这些编辑会正式写入世界状态，并使 world_version 增长。
+      </p>
 
       {error && (
         <p className="paper-error mt-4" role="alert">

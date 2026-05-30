@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, getChapterHistory, getChapterHistoryDetail, getNextChapterPrep, getRelations } from '../api/client';
+import { apiRequest, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadows, getNextChapterPrep, getRelations, getStaleForeshadows } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -13,6 +13,10 @@ vi.mock('../api/client', () => ({
   getChapterHistory: vi.fn(),
   getChapterHistoryDetail: vi.fn(),
   getNextChapterPrep: vi.fn(),
+  getCharacters: vi.fn(),
+  getForeshadows: vi.fn(),
+  getForeshadowTimeline: vi.fn(),
+  getStaleForeshadows: vi.fn(),
   getRelations: vi.fn(),
 }));
 
@@ -47,7 +51,13 @@ beforeEach(() => {
   vi.mocked(getChapterHistory).mockReset();
   vi.mocked(getChapterHistoryDetail).mockReset();
   vi.mocked(getNextChapterPrep).mockReset();
+  vi.mocked(getCharacters).mockReset();
+  vi.mocked(getForeshadows).mockReset();
+  vi.mocked(getStaleForeshadows).mockReset();
   vi.mocked(getRelations).mockReset();
+  vi.mocked(getCharacters).mockResolvedValue(world.characters);
+  vi.mocked(getForeshadows).mockResolvedValue(world.foreshadows);
+  vi.mocked(getStaleForeshadows).mockResolvedValue([]);
   vi.mocked(getRelations).mockResolvedValue([]);
   vi.mocked(apiRequest)
     .mockResolvedValueOnce([{ id: 7 }])
@@ -132,16 +142,27 @@ describe('WorldPage Narrative Control Center', () => {
     expect(await screen.findByText('下一章准备台暂不可用')).toBeInTheDocument();
   });
 
-  it('renders RelationManager from the relations tab', async () => {
+  it('renders World Bible Editor manager tabs with governance warning', async () => {
     const user = userEvent.setup();
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
     expect(await screen.findByText('青岚城')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '关系管理' }));
 
+    await user.click(screen.getByRole('button', { name: '角色管理' }));
+    expect(screen.getAllByText('角色管理').length).toBeGreaterThanOrEqual(2);
+    expect(getCharacters).toHaveBeenCalledWith(7);
+    expect(screen.getByText('这些编辑会正式写入世界状态，并使 world_version 增长。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '+ 新增角色' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '关系管理' }));
     expect(screen.getAllByText('关系管理').length).toBeGreaterThanOrEqual(2);
     expect(getRelations).toHaveBeenCalledWith(7);
     expect(screen.getByRole('button', { name: '+ 新增关系' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '伏笔账本' }));
+    expect(screen.getAllByText('伏笔账本').length).toBeGreaterThanOrEqual(2);
+    expect(getForeshadows).toHaveBeenCalledWith(7);
+    expect(screen.getByRole('button', { name: '+ 新增伏笔' })).toBeInTheDocument();
   });
 
   it('passes a selected next chapter goal when entering Studio from the regular button', async () => {
