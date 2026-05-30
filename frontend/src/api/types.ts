@@ -552,8 +552,16 @@ export type DraftDiffResponse = {
 };
 
 export type ApprovalPreviewChange = {
+  change_index: number;
+  selected_by_default: boolean;
   before: Record<string, unknown>;
   after: Record<string, unknown>;
+};
+
+export type ApproveRequest = {
+  draft_version?: number;
+  selected_character_change_indexes?: number[];
+  selected_foreshadow_change_indexes?: number[];
 };
 
 export type ApprovalPreviewResponse = {

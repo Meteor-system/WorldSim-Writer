@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
+  approveChapter,
   createChapter as createChapterRequest,
   generateCharacterArcReport,
   generateCriticReport,
@@ -97,6 +98,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [draftVersions, setDraftVersions] = useState<number[]>([]);
   const [draftDiff, setDraftDiff] = useState<DraftDiffResponse | null>(null);
   const [approvalPreview, setApprovalPreview] = useState<ApprovalPreviewResponse | null>(null);
+  const [selectedCharacterChangeIndexes, setSelectedCharacterChangeIndexes] = useState<number[]>([]);
+  const [selectedForeshadowChangeIndexes, setSelectedForeshadowChangeIndexes] = useState<number[]>([]);
   const [approvalReadiness, setApprovalReadiness] = useState<ApprovalReadinessResponse | null>(null);
   const [critique, setCritique] = useState<CriticReportResponse | null>(null);
   const [characterArcReport, setCharacterArcReport] = useState<CharacterArcReportResponse | null>(null);
@@ -141,6 +144,24 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     return { ...nextDraft, draft_version: resolveDraftVersion(nextDraft) };
   }
 
+  function previewIndex(change: { change_index?: number }, fallback: number): number {
+    return typeof change.change_index === 'number' ? change.change_index : fallback;
+  }
+
+  function toggleIndex(values: number[], index: number): number[] {
+    return values.includes(index) ? values.filter((value) => value !== index) : [...values, index].sort((a, b) => a - b);
+  }
+
+  function initializeApprovalSelection(preview: ApprovalPreviewResponse) {
+    setSelectedCharacterChangeIndexes(preview.character_changes.map((change, index) => previewIndex(change, index)));
+    setSelectedForeshadowChangeIndexes(preview.foreshadow_changes.map((change, index) => previewIndex(change, index)));
+  }
+
+  function clearApprovalSelection() {
+    setSelectedCharacterChangeIndexes([]);
+    setSelectedForeshadowChangeIndexes([]);
+  }
+
   async function refreshReviewStudioPanels(nextDraft: DraftResponse) {
     const version = resolveDraftVersion(nextDraft);
     const knownVersions = [version];
@@ -150,8 +171,10 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     try {
       const preview = await getApprovalPreview(nextDraft.chapter_id);
       setApprovalPreview(preview);
+      initializeApprovalSelection(preview);
     } catch {
       setApprovalPreview(null);
+      clearApprovalSelection();
     }
     try {
       setApprovalReadiness(await getApprovalReadiness(nextDraft.chapter_id));
@@ -196,6 +219,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setOutlineBeats(created.outline_beats);
       setOutlineContext(created.outline_context);
       setDraft(null);
+      setApprovalPreview(null);
+      clearApprovalSelection();
       setApprovalReadiness(null);
       setCritique(null);
       setCharacterArcReport(null);
@@ -216,6 +241,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setOutlineContext(outline.outline_context);
       setChapter({ ...chapter, status: outline.status, outline_beats: outline.outline_beats, outline_context: outline.outline_context });
       setDraft(null);
+      setApprovalPreview(null);
+      clearApprovalSelection();
       setApprovalReadiness(null);
       setCritique(null);
       setCharacterArcReport(null);
@@ -311,7 +338,11 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setWorking(true);
     setError('');
     try {
-      await apiRequest(`/chapters/${draft.chapter_id}/approve`, { method: 'POST', body: '{}' });
+      await approveChapter(draft.chapter_id, {
+        draft_version: resolveDraftVersion(draft),
+        selected_character_change_indexes: selectedCharacterChangeIndexes,
+        selected_foreshadow_change_indexes: selectedForeshadowChangeIndexes,
+      });
       onApproved(await apiRequest<WorldOverview>(`/worlds/${world.id}/overview`));
     } catch (err) {
       setError(err instanceof Error ? err.message : '审批草稿失败');
@@ -463,6 +494,9 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setWorking(false);
     }
   }
+
+  const totalPreviewChanges = approvalPreview ? approvalPreview.character_changes.length + approvalPreview.foreshadow_changes.length : 0;
+  const selectedPreviewChanges = selectedCharacterChangeIndexes.length + selectedForeshadowChangeIndexes.length;
 
   return (
     <section className="mx-auto max-w-6xl">
@@ -662,13 +696,36 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                 <section className="space-y-3 rounded-2xl border border-amber-900/15 bg-amber-50/45 p-4">
                   <h3 className="font-black text-[#3b2511]">通过后将提交</h3>
                   <p className="manuscript">世界版本：{approvalPreview.world_version_before} → {approvalPreview.world_version_after}</p>
+                  <p className="manuscript text-sm">已选择 {selectedPreviewChanges} / {totalPreviewChanges} 条拟提交变化</p>
                   {approvalPreview.version_conflict && <p className="paper-error">世界版本已变化，请重新生成草稿。</p>}
-                  {approvalPreview.character_changes.map((change) => (
-                    <p key={`character-${change.character_id}`} className="manuscript text-sm">角色：{change.name} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</p>
-                  ))}
-                  {approvalPreview.foreshadow_changes.map((change) => (
-                    <p key={`foreshadow-${change.foreshadow_id}`} className="manuscript text-sm">伏笔：{change.title} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</p>
-                  ))}
+                  {approvalPreview.character_changes.map((change, index) => {
+                    const changeIndex = previewIndex(change, index);
+                    return (
+                      <label key={`character-${changeIndex}-${change.character_id}`} className="flex items-start gap-3 rounded-xl bg-white/45 p-3 manuscript text-sm">
+                        <input
+                          type="checkbox"
+                          className="mt-1 accent-amber-800"
+                          checked={selectedCharacterChangeIndexes.includes(changeIndex)}
+                          onChange={() => setSelectedCharacterChangeIndexes((values) => toggleIndex(values, changeIndex))}
+                        />
+                        <span>角色：{change.name} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</span>
+                      </label>
+                    );
+                  })}
+                  {approvalPreview.foreshadow_changes.map((change, index) => {
+                    const changeIndex = previewIndex(change, index);
+                    return (
+                      <label key={`foreshadow-${changeIndex}-${change.foreshadow_id}`} className="flex items-start gap-3 rounded-xl bg-white/45 p-3 manuscript text-sm">
+                        <input
+                          type="checkbox"
+                          className="mt-1 accent-amber-800"
+                          checked={selectedForeshadowChangeIndexes.includes(changeIndex)}
+                          onChange={() => setSelectedForeshadowChangeIndexes((values) => toggleIndex(values, changeIndex))}
+                        />
+                        <span>伏笔：{change.title} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</span>
+                      </label>
+                    );
+                  })}
                 </section>
               )}
               {draft.proposed_changes && (Object.keys(draft.proposed_changes).length > 0) && (

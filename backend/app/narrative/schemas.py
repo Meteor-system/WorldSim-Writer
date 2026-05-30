@@ -108,6 +108,12 @@ class DraftResponse(BaseModel):
     execution_context: dict | None = None
 
 
+class ApproveRequest(BaseModel):
+    draft_version: int | None = None
+    selected_character_change_indexes: list[int] | None = None
+    selected_foreshadow_change_indexes: list[int] | None = None
+
+
 class RejectRequest(BaseModel):
     feedback: str = Field(min_length=1)
 

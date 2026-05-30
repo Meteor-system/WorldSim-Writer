@@ -862,6 +862,18 @@ def get_draft_diff(db: Session, user: User, chapter_id: int, from_version: int, 
     }
 
 
+def _change_index_set(selection: list[int] | None, total: int) -> set[int]:
+    if selection is None:
+        return set(range(total))
+    if len(selection) != len(set(selection)) or any(index < 0 or index >= total for index in selection):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='INVALID_CHANGE_SELECTION')
+    return set(selection)
+
+
+def _selected_changes(changes: list[dict], indexes: set[int]) -> list[tuple[int, dict]]:
+    return [(index, change) for index, change in enumerate(changes) if index in indexes]
+
+
 def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
     chapter = _require_owned_chapter(db, user, chapter_id)
     draft = _latest_draft(db, chapter)
@@ -872,7 +884,7 @@ def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
     version_conflict = draft.source_world_version != world.world_version
 
     character_changes = []
-    for change in draft.proposed_changes.get('characters', []):
+    for index, change in enumerate(draft.proposed_changes.get('characters', [])):
         character = db.get(Character, change.get('character_id'))
         if character is None or character.world_id != world.id:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
@@ -880,6 +892,8 @@ def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
         after = before | {key: change[key] for key in ('status', 'current_goals') if key in change}
         character_changes.append(
             {
+                'change_index': index,
+                'selected_by_default': True,
                 'character_id': character.id,
                 'name': character.name,
                 'before': before,
@@ -888,7 +902,7 @@ def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
         )
 
     foreshadow_changes = []
-    for change in draft.proposed_changes.get('foreshadows', []):
+    for index, change in enumerate(draft.proposed_changes.get('foreshadows', [])):
         foreshadow = db.get(Foreshadow, change.get('foreshadow_id'))
         if foreshadow is None or foreshadow.world_id != world.id or 'status' not in change:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
@@ -898,6 +912,8 @@ def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
             after['description'] = f"{foreshadow.description}\n审核备注：{change['description_note']}"
         foreshadow_changes.append(
             {
+                'change_index': index,
+                'selected_by_default': True,
                 'foreshadow_id': foreshadow.id,
                 'title': foreshadow.title,
                 'before': before,
@@ -1294,7 +1310,7 @@ def revise_chapter_paragraph(
     return _draft_payload(chapter, new_draft)
 
 
-def approve_chapter(db: Session, user: User, chapter_id: int) -> Chapter:
+def approve_chapter(db: Session, user: User, chapter_id: int, selection=None) -> Chapter:
     try:
         chapter = db.get(Chapter, chapter_id)
         if chapter is None:
@@ -1307,11 +1323,24 @@ def approve_chapter(db: Session, user: User, chapter_id: int) -> Chapter:
         draft = _latest_draft(db, chapter)
         if draft is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+        if selection is not None and selection.draft_version is not None and selection.draft_version != draft.draft_version:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_VERSION_MISMATCH')
         if draft.source_world_version != world.world_version:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
 
+        proposed_character_changes = list(draft.proposed_changes.get('characters', []))
+        proposed_foreshadow_changes = list(draft.proposed_changes.get('foreshadows', []))
+        selected_character_indexes = _change_index_set(
+            selection.selected_character_change_indexes if selection is not None else None,
+            len(proposed_character_changes),
+        )
+        selected_foreshadow_indexes = _change_index_set(
+            selection.selected_foreshadow_change_indexes if selection is not None else None,
+            len(proposed_foreshadow_changes),
+        )
+
         character_changes = []
-        for change in draft.proposed_changes.get('characters', []):
+        for index, change in _selected_changes(proposed_character_changes, selected_character_indexes):
             character = db.get(Character, change.get('character_id'))
             if character is None or character.world_id != world.id:
                 raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
@@ -1321,10 +1350,10 @@ def approve_chapter(db: Session, user: User, chapter_id: int) -> Chapter:
                 for key in ('status', 'current_goals')
                 if key in change
             }
-            character_changes.append((character, change, before, after))
+            character_changes.append((index, character, change, before, after))
 
         foreshadow_changes = []
-        for change in draft.proposed_changes.get('foreshadows', []):
+        for index, change in _selected_changes(proposed_foreshadow_changes, selected_foreshadow_indexes):
             foreshadow = db.get(Foreshadow, change.get('foreshadow_id'))
             if foreshadow is None or foreshadow.world_id != world.id or 'status' not in change:
                 raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
@@ -1332,7 +1361,7 @@ def approve_chapter(db: Session, user: User, chapter_id: int) -> Chapter:
             after = before | {'status': change['status']}
             if change.get('description_note'):
                 after['description'] = f"{foreshadow.description}\n审核备注：{change['description_note']}"
-            foreshadow_changes.append((foreshadow, change, before, after))
+            foreshadow_changes.append((index, foreshadow, change, before, after))
 
         version_before = world.world_version
         version_after = version_before + 1
@@ -1341,13 +1370,13 @@ def approve_chapter(db: Session, user: User, chapter_id: int) -> Chapter:
         chapter.approved_content = draft.content
         chapter.approved_version = draft.draft_version
 
-        for character, change, _before, _after in character_changes:
+        for _index, character, change, _before, _after in character_changes:
             if 'status' in change:
                 character.status = change['status']
             if 'current_goals' in change:
                 character.current_goals = change['current_goals']
 
-        for foreshadow, change, _before, _after in foreshadow_changes:
+        for _index, foreshadow, change, _before, _after in foreshadow_changes:
             apply_foreshadow_status_transition(
                 db,
                 foreshadow,
@@ -1362,14 +1391,14 @@ def approve_chapter(db: Session, user: User, chapter_id: int) -> Chapter:
         db.flush()
         refresh_world_projection(db, world)
 
-        for character, change, before, after in character_changes:
+        for index, character, change, before, after in character_changes:
             db.add(
                 EventLog(
                     world_id=world.id,
                     chapter_id=chapter.id,
                     event_type='character_change',
                     source_type='chapter_approval',
-                    commit_id=f'{commit_group_id}-character-{character.id}',
+                    commit_id=f'{commit_group_id}-character-{index}-{character.id}',
                     payload={
                         'commit_group_id': commit_group_id,
                         'chapter_id': chapter.id,
@@ -1384,14 +1413,14 @@ def approve_chapter(db: Session, user: User, chapter_id: int) -> Chapter:
                 )
             )
 
-        for foreshadow, change, before, after in foreshadow_changes:
+        for index, foreshadow, change, before, after in foreshadow_changes:
             db.add(
                 EventLog(
                     world_id=world.id,
                     chapter_id=chapter.id,
                     event_type='foreshadow_change',
                     source_type='chapter_approval',
-                    commit_id=f'{commit_group_id}-foreshadow-{foreshadow.id}',
+                    commit_id=f'{commit_group_id}-foreshadow-{index}-{foreshadow.id}',
                     payload={
                         'commit_group_id': commit_group_id,
                         'chapter_id': chapter.id,
@@ -1435,7 +1464,14 @@ def approve_chapter(db: Session, user: User, chapter_id: int) -> Chapter:
                     'chapter_id': chapter.id,
                     'chapter_title': chapter.title,
                     'approved_version': draft.draft_version,
-                    'proposed_changes': draft.proposed_changes,
+                    'applied_changes': {
+                        'characters': [change for _index, _character, change, _before, _after in character_changes],
+                        'foreshadows': [change for _index, _foreshadow, change, _before, _after in foreshadow_changes],
+                    },
+                    'applied_change_indexes': {
+                        'characters': [index for index, _character, _change, _before, _after in character_changes],
+                        'foreshadows': [index for index, _foreshadow, _change, _before, _after in foreshadow_changes],
+                    },
                 },
                 world_version_before=version_before,
                 world_version_after=version_after,

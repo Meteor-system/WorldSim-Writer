@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createChapter, generateCharacterArcReport, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
+import { approveChapter, createChapter, generateCharacterArcReport, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
 import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -41,7 +41,8 @@ const draftResponse: DraftResponse = {
 };
 
 vi.mock('../api/client', () => ({
-  apiRequest: vi.fn(),
+  apiRequest: vi.fn(async () => world),
+  approveChapter: vi.fn(async () => ({ status: 'approved' })),
   createChapter: vi.fn(async () => ({
     id: 11,
     world_id: 7,
@@ -201,10 +202,10 @@ vi.mock('../api/client', () => ({
     version_conflict: false,
     warnings: [],
     character_changes: [
-      { character_id: 1, name: '林砚', before: { status: 'active' }, after: { status: '开始调查密信', current_goals: ['追查湿信来源'] } },
+      { change_index: 0, selected_by_default: true, character_id: 1, name: '林砚', before: { status: 'active' }, after: { status: '开始调查密信', current_goals: ['追查湿信来源'] } },
     ],
     foreshadow_changes: [
-      { foreshadow_id: 1, title: '裂纹玉佩', before: { status: 'planted' }, after: { status: 'advanced', description: '审核备注：湿信推进玉佩线索' } },
+      { change_index: 0, selected_by_default: true, foreshadow_id: 1, title: '裂纹玉佩', before: { status: 'planted' }, after: { status: 'advanced', description: '审核备注：湿信推进玉佩线索' } },
     ],
   })),
   getApprovalReadiness: vi.fn(async () => ({
@@ -243,6 +244,7 @@ const world: WorldOverview = {
 
 afterEach(() => {
   cleanup();
+  vi.mocked(approveChapter).mockClear();
   vi.mocked(writeChapter).mockClear();
   vi.mocked(getApprovalReadiness).mockClear();
   vi.mocked(reviseDraft).mockClear();
@@ -457,5 +459,38 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByText('第一段：林砚停在雨巷口。')).toBeInTheDocument();
     expect(screen.getByText('正在查看历史版本，切回最新版本后才能批准。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '通过并更新世界' })).toBeDisabled();
+  });
+
+  it('renders approval preview changes as selected checkboxes by default', async () => {
+    const user = userEvent.setup();
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+
+    expect(await screen.findByRole('checkbox', { name: /角色：林砚/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /伏笔：裂纹玉佩/ })).toBeChecked();
+    expect(screen.getByText('已选择 2 / 2 条拟提交变化')).toBeInTheDocument();
+  });
+
+  it('submits only selected approval change indexes with the current draft version', async () => {
+    const user = userEvent.setup();
+    const onApproved = vi.fn();
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={onApproved} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(await screen.findByRole('checkbox', { name: /伏笔：裂纹玉佩/ }));
+    await user.click(screen.getByRole('button', { name: '通过并更新世界' }));
+
+    expect(approveChapter).toHaveBeenCalledWith(11, {
+      draft_version: 1,
+      selected_character_change_indexes: [0],
+      selected_foreshadow_change_indexes: [],
+    });
   });
 });

@@ -1,6 +1,7 @@
 import type {
   ApprovalPreviewResponse,
   ApprovalReadinessResponse,
+  ApproveRequest,
   BeatCard,
   ChapterHistoryDetailResponse,
   ChapterExecutionContext,
@@ -168,6 +169,13 @@ export function getApprovalPreview(chapterId: number) {
 
 export function getApprovalReadiness(chapterId: number) {
   return apiRequest<ApprovalReadinessResponse>(`/chapters/${chapterId}/approval-readiness`);
+}
+
+export function approveChapter(chapterId: number, data: ApproveRequest = {}) {
+  return apiRequest<ChapterPipelineResponse>(`/chapters/${chapterId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 function legacyCritiqueToCriticReport(chapterId: number, response: CritiqueResponse): CriticReportResponse {

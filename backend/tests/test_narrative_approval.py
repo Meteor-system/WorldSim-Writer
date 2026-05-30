@@ -1,3 +1,6 @@
+from sqlalchemy import select
+
+from app.event.models import EventLog
 from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter
@@ -21,6 +24,37 @@ class FakeLLMClient:
                 ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='玉佩线索被推进')
             ],
         )
+
+
+class MultiChangeLLMClient:
+    def generate_chapter(self, messages):
+        return ChapterGeneration(
+            title='第一章 雨巷密谈',
+            draft_content='林砚停在雨巷口，沈微霜递来一封湿透的信。',
+            context_summary='林砚与沈微霜交换线索。',
+            review_hints=['确认角色状态与伏笔推进是否都应提交'],
+            proposed_character_changes=[
+                ProposedCharacterChange(character_id=1, status='开始调查密信', current_goals=['追查湿信来源']),
+                ProposedCharacterChange(character_id=2, status='隐瞒湿信来历', current_goals=['观察林砚反应']),
+            ],
+            proposed_foreshadow_changes=[
+                ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='湿信推进玉佩线索'),
+            ],
+        )
+
+
+def event_logs(db_session, world_id):
+    return list(
+        db_session.scalars(
+            select(EventLog)
+            .where(EventLog.world_id == world_id)
+            .order_by(EventLog.id)
+        )
+    )
+
+
+def chapter_approved_event(db_session, world_id):
+    return next(event for event in event_logs(db_session, world_id) if event.event_type == 'chapter_approved')
 
 
 def register_and_create_world(client):
@@ -97,6 +131,132 @@ def test_approve_chapter_creates_foreshadow_lifecycle_event(client, monkeypatch)
     assert event['chapter_id'] == draft['chapter_id']
     assert event['chapter_title'] == '第一章 暗井回声'
     assert event['note'] == '玉佩线索被推进'
+
+
+def test_approval_preview_exposes_change_indexes_and_default_selection(client, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+
+    response = client.get(f"/chapters/{draft['chapter_id']}/approval-preview", headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['character_changes'][0]['change_index'] == 0
+    assert body['character_changes'][0]['selected_by_default'] is True
+    assert body['foreshadow_changes'][0]['change_index'] == 0
+    assert body['foreshadow_changes'][0]['selected_by_default'] is True
+
+
+def test_approve_chapter_applies_only_selected_character_and_foreshadow_changes(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: MultiChangeLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进雨巷密谈'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/approve",
+        json={
+            'draft_version': draft['draft_version'],
+            'selected_character_change_indexes': [1],
+            'selected_foreshadow_change_indexes': [0],
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    overview = client.get(f'/worlds/{world_id}/overview', headers={'Authorization': f'Bearer {token}'}).json()
+    assert overview['world_version'] == 2
+    characters_by_id = {character['id']: character for character in overview['characters']}
+    foreshadows_by_id = {foreshadow['id']: foreshadow for foreshadow in overview['foreshadows']}
+    assert characters_by_id[1]['status'] == 'active'
+    assert characters_by_id[2]['status'] == '隐瞒湿信来历'
+    assert foreshadows_by_id[1]['status'] == 'advanced'
+
+    events = event_logs(db_session, world_id)
+    assert [event.event_type for event in events].count('character_change') == 1
+    assert [event.event_type for event in events].count('foreshadow_change') == 1
+    approved = chapter_approved_event(db_session, world_id)
+    assert approved.payload['applied_change_indexes'] == {'characters': [1], 'foreshadows': [0]}
+    assert approved.payload['applied_changes']['characters'] == [draft['proposed_changes']['characters'][1]]
+    assert approved.payload['applied_changes']['foreshadows'] == [draft['proposed_changes']['foreshadows'][0]]
+    assert 'proposed_changes' not in approved.payload
+
+
+def test_approve_chapter_allows_empty_selection_without_object_changes(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/approve",
+        json={
+            'draft_version': draft['draft_version'],
+            'selected_character_change_indexes': [],
+            'selected_foreshadow_change_indexes': [],
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    overview = client.get(f'/worlds/{world_id}/overview', headers={'Authorization': f'Bearer {token}'}).json()
+    assert overview['world_version'] == 2
+    assert overview['characters'][0]['current_goals'] == ['调查青岚城灵脉衰退']
+    assert overview['foreshadows'][0]['status'] == 'planted'
+    events = event_logs(db_session, world_id)
+    assert 'character_change' not in [event.event_type for event in events]
+    assert 'foreshadow_change' not in [event.event_type for event in events]
+    approved = chapter_approved_event(db_session, world_id)
+    assert approved.payload['applied_changes'] == {'characters': [], 'foreshadows': []}
+
+
+def test_approve_chapter_rejects_invalid_change_selection(client, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/approve",
+        json={'draft_version': draft['draft_version'], 'selected_character_change_indexes': [0, 0]},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 400
+    assert response.json()['detail'] == 'INVALID_CHANGE_SELECTION'
+
+
+def test_approve_chapter_rejects_stale_draft_version_selection(client, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/approve",
+        json={'draft_version': draft['draft_version'] + 1, 'selected_character_change_indexes': [0]},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 409
+    assert response.json()['detail'] == 'DRAFT_VERSION_MISMATCH'
 
 
 def test_reject_chapter_does_not_approve_or_update_world(client, monkeypatch):

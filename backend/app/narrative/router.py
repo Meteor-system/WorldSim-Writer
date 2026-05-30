@@ -6,6 +6,7 @@ from app.auth.models import User
 from app.core.database import get_db
 from app.narrative.schemas import (
     ApprovalReadinessResponse,
+    ApproveRequest,
     ChapterPipelineResponse,
     ChapterResponse,
     CharacterArcReportResponse,
@@ -142,10 +143,11 @@ def read_character_arc_report(
 @router.post('/chapters/{chapter_id}/approve', response_model=ChapterResponse)
 def approve(
     chapter_id: int,
+    payload: ApproveRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> ChapterResponse:
-    return ChapterResponse.model_validate(approve_chapter(db, current_user, chapter_id))
+    return ChapterResponse.model_validate(approve_chapter(db, current_user, chapter_id, payload))
 
 
 @router.post('/chapters/{chapter_id}/reject', response_model=DraftResponse)
