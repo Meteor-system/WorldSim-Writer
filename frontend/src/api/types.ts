@@ -439,6 +439,45 @@ export type NextChapterPrepResponse = {
   recent_events: NextChapterPrepEvent[];
 };
 
+export type WorldSnapshotSummary = {
+  id: number;
+  world_id: number;
+  world_version: number;
+  label: string | null;
+  note: string | null;
+  created_at: string;
+};
+
+export type WorldSnapshotListResponse = {
+  world_id: number;
+  snapshots: WorldSnapshotSummary[];
+};
+
+export type WorldSnapshotPayload = {
+  world: Record<string, unknown>;
+  characters: unknown[];
+  relations: unknown[];
+  foreshadows: unknown[];
+  approved_chapters: unknown[];
+  events: unknown[];
+};
+
+export type WorldSnapshotDetailResponse = WorldSnapshotSummary & {
+  payload: WorldSnapshotPayload;
+};
+
+export type MarkdownExportFile = {
+  path: string;
+  content: string;
+};
+
+export type WorldMarkdownExportResponse = {
+  world_id: number;
+  world_version: number;
+  generated_at: string;
+  files: MarkdownExportFile[];
+};
+
 export type CritiqueResponse = {
   chapter_id: number;
   critique_report: CritiqueReport;

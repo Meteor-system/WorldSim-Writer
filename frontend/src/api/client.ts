@@ -28,6 +28,10 @@ import type {
   StaleForeshadow,
   StoryArcResponse,
   WorldCreateRequest,
+  WorldMarkdownExportResponse,
+  WorldSnapshotDetailResponse,
+  WorldSnapshotListResponse,
+  WorldSnapshotSummary,
 } from './types';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
@@ -218,6 +222,28 @@ export function getChapterHistoryDetail(chapterId: number) {
 
 export function getNextChapterPrep(worldId: number) {
   return apiRequest<NextChapterPrepResponse>(`/worlds/${worldId}/next-chapter-prep`);
+}
+
+export function createWorldSnapshot(worldId: number, data: { label?: string; note?: string } = {}) {
+  return apiRequest<WorldSnapshotSummary>(`/worlds/${worldId}/snapshots`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function listWorldSnapshots(worldId: number) {
+  return apiRequest<WorldSnapshotListResponse>(`/worlds/${worldId}/snapshots`);
+}
+
+export function getWorldSnapshot(snapshotId: number) {
+  return apiRequest<WorldSnapshotDetailResponse>(`/snapshots/${snapshotId}`);
+}
+
+export function exportWorldArchiveMarkdown(worldId: number) {
+  return apiRequest<WorldMarkdownExportResponse>(`/worlds/${worldId}/export/markdown`, {
+    method: 'POST',
+    body: '{}',
+  });
 }
 
 export function critiqueChapter(chapterId: number) {
