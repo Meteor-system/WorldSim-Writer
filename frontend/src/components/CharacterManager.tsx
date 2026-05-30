@@ -1,15 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  createCharacter,
-  deleteCharacter,
-  getCharacters,
-  updateCharacter,
-} from '../api/client';
-import type { Character, CharacterCreate, CharacterUpdate } from '../api/types';
+import { getCharacters, updateCharacter } from '../api/client';
+import type { Character, CharacterUpdate } from '../api/types';
 
 type Props = { worldId: number; onChanged?: () => Promise<void> | void };
 
-const ROLE_TYPES = ['protagonist', 'antagonist', 'supporting', 'minor'] as const;
 const ROLE_LABELS: Record<string, string> = {
   protagonist: '主角',
   antagonist: '反派',
@@ -29,16 +23,14 @@ type FormData = {
   name: string;
   role_type: string;
   status: string;
-  destiny_flag: string;
   current_goals: string;
   edit_reason: string;
 };
 
 const EMPTY_FORM: FormData = {
   name: '',
-  role_type: 'protagonist',
+  role_type: '',
   status: 'active',
-  destiny_flag: '',
   current_goals: '',
   edit_reason: '',
 };
@@ -48,18 +40,14 @@ function formFromCharacter(c: Character): FormData {
     name: c.name,
     role_type: c.role_type,
     status: c.status,
-    destiny_flag: c.destiny_flag ?? '',
     current_goals: c.current_goals.join('、'),
     edit_reason: '',
   };
 }
 
-function formToPayload(f: FormData): CharacterCreate {
+function formToUpdatePayload(f: FormData): CharacterUpdate {
   return {
-    name: f.name.trim(),
-    role_type: f.role_type,
     status: f.status,
-    destiny_flag: f.destiny_flag.trim() || undefined,
     current_goals: f.current_goals
       .split(/[、,，]/)
       .map((s) => s.trim())
@@ -72,12 +60,9 @@ export function CharacterManager({ worldId, onChanged }: Props) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
-  const [deleteReason, setDeleteReason] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,35 +80,22 @@ export function CharacterManager({ worldId, onChanged }: Props) {
     void load();
   }, [load]);
 
-  function openCreate() {
-    setForm(EMPTY_FORM);
-    setEditingId(null);
-    setShowForm(true);
-  }
-
   function openEdit(c: Character) {
     setForm(formFromCharacter(c));
     setEditingId(c.id);
-    setShowForm(true);
   }
 
   function closeForm() {
-    setShowForm(false);
     setEditingId(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) return;
+    if (!editingId) return;
     setSubmitting(true);
     setError('');
     try {
-      if (editingId) {
-        const payload: CharacterUpdate = formToPayload(form);
-        await updateCharacter(editingId, payload);
-      } else {
-        await createCharacter(worldId, formToPayload(form));
-      }
+      await updateCharacter(editingId, formToUpdatePayload(form));
       closeForm();
       await load();
       await onChanged?.();
@@ -134,28 +106,12 @@ export function CharacterManager({ worldId, onChanged }: Props) {
     }
   }
 
-  async function handleDelete(id: number) {
-    setError('');
-    try {
-      await deleteCharacter(id, deleteReason.trim() || undefined);
-      setConfirmDelete(null);
-      setDeleteReason('');
-      await load();
-      await onChanged?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '删除角色失败');
-    }
-  }
-
   if (loading) return <p className="ink-muted py-4">正在加载角色列表…</p>;
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="chapter-kicker">角色管理</p>
-        <button className="primary-button" onClick={openCreate}>
-          + 新增角色
-        </button>
       </div>
       <p className="mt-3 rounded-2xl border border-amber-700/25 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
         这些编辑会正式写入世界状态，并使 world_version 增长。
@@ -167,9 +123,8 @@ export function CharacterManager({ worldId, onChanged }: Props) {
         </p>
       )}
 
-      {/* Card grid */}
       {characters.length === 0 ? (
-        <p className="manuscript mt-6 ink-muted">还没有角色，点击上方按钮创建第一个角色。</p>
+        <p className="manuscript mt-6 ink-muted">还没有角色。MVP9 仅支持编辑已有角色。</p>
       ) : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {characters.map((c) => (
@@ -203,42 +158,13 @@ export function CharacterManager({ worldId, onChanged }: Props) {
                 <button className="secondary-button text-sm" onClick={() => openEdit(c)}>
                   编辑
                 </button>
-                {confirmDelete === c.id ? (
-                  <div className="w-full space-y-2">
-                    <input
-                      className="paper-input text-sm"
-                      value={deleteReason}
-                      placeholder="删除原因（可选）"
-                      onChange={(e) => setDeleteReason(e.target.value)}
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        className="rounded-full border border-red-800/40 bg-red-100 px-3 py-1.5 text-sm font-bold text-red-800"
-                        onClick={() => handleDelete(c.id)}
-                      >
-                        确认删除
-                      </button>
-                      <button className="ghost-button text-sm" onClick={() => { setConfirmDelete(null); setDeleteReason(''); }}>
-                        取消
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    className="ghost-button text-sm text-red-700/80"
-                    onClick={() => { setConfirmDelete(c.id); setDeleteReason(''); }}
-                  >
-                    删除
-                  </button>
-                )}
               </div>
             </article>
           ))}
         </div>
       )}
 
-      {/* Modal form */}
-      {showForm && (
+      {editingId && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           onClick={closeForm}
@@ -248,59 +174,24 @@ export function CharacterManager({ worldId, onChanged }: Props) {
             onClick={(e) => e.stopPropagation()}
             onSubmit={handleSubmit}
           >
-            <h2 className="text-xl font-black text-[#3b2511]">
-              {editingId ? '编辑角色' : '新增角色'}
-            </h2>
-
-            <label className="block">
-              <span className="text-sm font-semibold text-[#4a321e]">名字 *</span>
-              <input
-                className="paper-input mt-1"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                required
-              />
-            </label>
-
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-sm font-semibold text-[#4a321e]">类型</span>
-                <select
-                  className="paper-input mt-1"
-                  value={form.role_type}
-                  onChange={(e) => setForm({ ...form, role_type: e.target.value })}
-                >
-                  {ROLE_TYPES.map((r) => (
-                    <option key={r} value={r}>
-                      {ROLE_LABELS[r]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-sm font-semibold text-[#4a321e]">状态</span>
-                <select
-                  className="paper-input mt-1"
-                  value={form.status}
-                  onChange={(e) => setForm({ ...form, status: e.target.value })}
-                >
-                  {STATUS_OPTIONS.map((s) => (
-                    <option key={s} value={s}>
-                      {STATUS_LABELS[s]}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <div>
+              <h2 className="text-xl font-black text-[#3b2511]">编辑角色</h2>
+              <p className="manuscript mt-1 text-sm">{form.name} · {form.role_type}</p>
             </div>
 
             <label className="block">
-              <span className="text-sm font-semibold text-[#4a321e]">命运标记</span>
-              <input
+              <span className="text-sm font-semibold text-[#4a321e]">状态</span>
+              <select
                 className="paper-input mt-1"
-                value={form.destiny_flag}
-                placeholder="如：注定牺牲"
-                onChange={(e) => setForm({ ...form, destiny_flag: e.target.value })}
-              />
+                value={form.status}
+                onChange={(e) => setForm({ ...form, status: e.target.value })}
+              >
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>
+                    {STATUS_LABELS[s]}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label className="block">

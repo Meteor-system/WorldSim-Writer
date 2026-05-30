@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { createRelation, deleteRelation, getRelations, updateRelation } from '../api/client';
+import { createRelation, getRelations, updateRelation } from '../api/client';
 import type { Character, CharacterRelation, CharacterRelationCreate, CharacterRelationUpdate } from '../api/types';
 
 type Props = { worldId: number; characters: Character[]; onChanged?: () => Promise<void> | void };
@@ -56,8 +56,6 @@ export function RelationManager({ worldId, characters, onChanged }: Props) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<FormData>(() => emptyForm(characters));
   const [submitting, setSubmitting] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
-  const [deleteReason, setDeleteReason] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -118,19 +116,6 @@ export function RelationManager({ worldId, characters, onChanged }: Props) {
     }
   }
 
-  async function handleDelete(id: number) {
-    setError('');
-    try {
-      await deleteRelation(id, deleteReason.trim() || undefined);
-      setConfirmDelete(null);
-      setDeleteReason('');
-      await load();
-      await onChanged?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '删除关系失败');
-    }
-  }
-
   if (loading) return <p className="ink-muted py-4">正在加载角色关系…</p>;
 
   return (
@@ -173,34 +158,6 @@ export function RelationManager({ worldId, characters, onChanged }: Props) {
                 <button className="secondary-button text-sm" onClick={() => openEdit(relation)}>
                   编辑
                 </button>
-                {confirmDelete === relation.id ? (
-                  <div className="w-full space-y-2">
-                    <input
-                      className="paper-input text-sm"
-                      value={deleteReason}
-                      placeholder="删除原因（可选）"
-                      onChange={(event) => setDeleteReason(event.target.value)}
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        className="rounded-full border border-red-800/40 bg-red-100 px-3 py-1.5 text-sm font-bold text-red-800"
-                        onClick={() => handleDelete(relation.id)}
-                      >
-                        确认删除
-                      </button>
-                      <button className="ghost-button text-sm" onClick={() => { setConfirmDelete(null); setDeleteReason(''); }}>
-                        取消
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    className="ghost-button text-sm text-red-700/80"
-                    onClick={() => { setConfirmDelete(relation.id); setDeleteReason(''); }}
-                  >
-                    删除
-                  </button>
-                )}
               </div>
             </article>
           ))}

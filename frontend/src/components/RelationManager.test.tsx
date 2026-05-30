@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRelation, deleteRelation, getRelations, updateRelation } from '../api/client';
+import { createRelation, getRelations, updateRelation } from '../api/client';
 import type { Character, CharacterRelation } from '../api/types';
 import { RelationManager } from './RelationManager';
 
@@ -10,7 +10,6 @@ vi.mock('../api/client', () => ({
   getRelations: vi.fn(),
   createRelation: vi.fn(),
   updateRelation: vi.fn(),
-  deleteRelation: vi.fn(),
 }));
 
 const characters: Character[] = [
@@ -26,7 +25,6 @@ beforeEach(() => {
   vi.mocked(getRelations).mockReset().mockResolvedValue(relations);
   vi.mocked(createRelation).mockReset().mockResolvedValue(relations[0]);
   vi.mocked(updateRelation).mockReset().mockResolvedValue(relations[0]);
-  vi.mocked(deleteRelation).mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => cleanup());
@@ -40,6 +38,13 @@ describe('RelationManager', () => {
     expect(screen.getByText('关系：uneasy_alliance')).toBeInTheDocument();
     expect(screen.getByText('强度：2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '+ 新增关系' })).toBeInTheDocument();
+  });
+
+  it('hides relation delete controls for MVP9 scope', async () => {
+    render(<RelationManager worldId={7} characters={characters} />);
+
+    expect(await screen.findByText('林砚 → 沈微霜')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
   });
 
   it('creates a relation and refreshes the world overview', async () => {
@@ -88,18 +93,32 @@ describe('RelationManager', () => {
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
-  it('deletes a relation with an optional reason and refreshes the world overview', async () => {
+  it('shows saving state while saving a relation', async () => {
     const user = userEvent.setup();
-    const onChanged = vi.fn();
-    render(<RelationManager worldId={7} characters={characters} onChanged={onChanged} />);
+    let resolveCreate: (value: CharacterRelation) => void = () => undefined;
+    vi.mocked(createRelation).mockReturnValueOnce(new Promise((resolve) => { resolveCreate = resolve; }));
+    render(<RelationManager worldId={7} characters={characters} />);
 
     await screen.findByText('林砚 → 沈微霜');
-    await user.click(screen.getByRole('button', { name: '删除' }));
-    await user.type(screen.getByPlaceholderText('删除原因（可选）'), '关系不成立');
-    await user.click(screen.getByRole('button', { name: '确认删除' }));
+    await user.click(screen.getByRole('button', { name: '+ 新增关系' }));
+    await user.type(screen.getByLabelText('关系类型 *'), 'mentor');
+    await user.click(screen.getByRole('button', { name: '保存' }));
 
-    await waitFor(() => expect(deleteRelation).toHaveBeenCalledWith(1, '关系不成立'));
-    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '保存中…' })).toBeDisabled();
+    resolveCreate(relations[0]);
+  });
+
+  it('shows save errors without closing the form', async () => {
+    const user = userEvent.setup();
+    vi.mocked(updateRelation).mockRejectedValueOnce(new Error('保存关系失败'));
+    render(<RelationManager worldId={7} characters={characters} />);
+
+    await screen.findByText('林砚 → 沈微霜');
+    await user.click(screen.getByRole('button', { name: '编辑' }));
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('保存关系失败');
+    expect(screen.getByText('编辑关系')).toBeInTheDocument();
   });
 
   it('prevents saving a relation with the same source and target character', async () => {

@@ -152,7 +152,7 @@ describe('WorldPage Narrative Control Center', () => {
     expect(screen.getAllByText('角色管理').length).toBeGreaterThanOrEqual(2);
     expect(getCharacters).toHaveBeenCalledWith(7);
     expect(screen.getByText('这些编辑会正式写入世界状态，并使 world_version 增长。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '+ 新增角色' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ 新增角色' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '关系管理' }));
     expect(screen.getAllByText('关系管理').length).toBeGreaterThanOrEqual(2);
