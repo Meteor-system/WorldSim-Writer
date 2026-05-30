@@ -1,10 +1,20 @@
 import { useEffect, useRef, useState } from 'react';
-import { apiRequest, createWorld, generateStoryArc, getChapterHistory, getChapterHistoryDetail, getNextChapterPrep } from '../api/client';
+import {
+  apiRequest,
+  createWorld,
+  createWorldSnapshot,
+  exportWorldArchiveMarkdown,
+  generateStoryArc,
+  getChapterHistory,
+  getChapterHistoryDetail,
+  getNextChapterPrep,
+} from '../api/client';
 import type { ChapterHistoryResponse, NextChapterPrepResponse, StoryArcChapter, WorldCreateRequest, WorldOverview } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { ChapterHistoryPanel } from './ChapterHistoryPanel';
 import { NextChapterPrepPanel } from './NextChapterPrepPanel';
+import { WorldArchivePanel } from './WorldArchivePanel';
 import { WorldCreationForm } from './WorldCreationForm';
 
 type Props = { onEnterStudio: (world: WorldOverview) => void; autoFocusTitle?: boolean };
@@ -326,6 +336,10 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 loading={nextPrepLoading}
                 error={nextPrepError}
                 onUseGoal={setSelectedNextGoal}
+              />
+              <WorldArchivePanel
+                onCreateSnapshot={() => createWorldSnapshot(world.id)}
+                onExportMarkdown={() => exportWorldArchiveMarkdown(world.id)}
               />
               <ChapterHistoryPanel
                 history={chapterHistory}

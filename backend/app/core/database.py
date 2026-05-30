@@ -28,4 +28,5 @@ def import_models() -> None:
     import app.event.models  # noqa: F401
     import app.foreshadow.models  # noqa: F401
     import app.narrative.models  # noqa: F401
+    import app.snapshot_export.models  # noqa: F401
     import app.world.models  # noqa: F401
