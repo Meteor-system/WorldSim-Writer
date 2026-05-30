@@ -84,6 +84,7 @@ beforeEach(() => {
     foreshadow_changes: [],
     critic_summary: null,
     character_arc_summary: null,
+    execution_context: null,
   });
   vi.mocked(getNextChapterPrep).mockResolvedValue({
     world_id: 7,
@@ -154,6 +155,10 @@ describe('WorldPage Narrative Control Center', () => {
 
     expect(onEnterStudio).toHaveBeenCalledWith(world, {
       initialChapterGoal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+      executionContext: expect.objectContaining({
+        source: 'next_chapter_prep',
+        recommended_pov: { character_id: 1, name: '林砚' },
+      }),
     });
   });
 
@@ -167,6 +172,10 @@ describe('WorldPage Narrative Control Center', () => {
 
     expect(onEnterStudio).toHaveBeenCalledWith(world, {
       initialChapterGoal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+      executionContext: expect.objectContaining({
+        source: 'next_chapter_prep',
+        recommended_pov: { character_id: 1, name: '林砚' },
+      }),
     });
   });
 });

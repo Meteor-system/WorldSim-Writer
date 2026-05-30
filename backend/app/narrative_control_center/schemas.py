@@ -53,6 +53,7 @@ class ApprovedChapterHistoryDetailResponse(BaseModel):
     foreshadow_changes: list[ChapterHistoryChange]
     critic_summary: str | None = None
     character_arc_summary: str | None = None
+    execution_context: dict | None = None
 
 
 class NextChapterPrepCharacter(BaseModel):

@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
@@ -72,6 +72,65 @@ def _outline_context_payload(outline) -> dict:
     }
 
 
+def _approved_chapter_count(db: Session, world_id: int) -> int:
+    return db.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id).where(Chapter.status == 'approved')) or 0
+
+
+def build_manual_execution_context(db: Session, world: World, chapter_goal: str) -> dict:
+    return {
+        'source': 'manual',
+        'source_world_version': world.world_version,
+        'next_chapter_number': _approved_chapter_count(db, world.id) + 1,
+        'goal': chapter_goal,
+        'recommended_pov': {'character_id': None, 'name': None},
+        'source_signals': ['manual'],
+        'priority_characters': [],
+        'priority_foreshadows': [],
+        'progression_hints': [],
+        'continuity_warnings': [],
+        'recent_events': [],
+    }
+
+
+def normalize_execution_context(db: Session, world: World, chapter_goal: str, execution_context) -> dict:
+    if execution_context is None:
+        context = build_manual_execution_context(db, world, chapter_goal)
+    elif hasattr(execution_context, 'model_dump'):
+        context = execution_context.model_dump(mode='json')
+    else:
+        context = dict(execution_context)
+    context['goal'] = chapter_goal
+    return context
+
+
+def format_execution_context_for_prompt(execution_context: dict | None) -> str:
+    if not execution_context:
+        return '本章执行上下文：无\n'
+    pov = execution_context.get('recommended_pov') or {}
+    lines = [
+        '本章执行上下文：',
+        f"- 来源：{execution_context.get('source', 'manual')}",
+        f"- 源世界版本：{execution_context.get('source_world_version', '未知')}",
+        f"- 推荐 POV：{pov.get('name') or '暂无'}",
+    ]
+    characters = execution_context.get('priority_characters') or []
+    if characters:
+        lines.append('- 优先角色：' + '；'.join(f"{c.get('name')}（理由：{c.get('reason')}）" for c in characters))
+    foreshadows = execution_context.get('priority_foreshadows') or []
+    if foreshadows:
+        lines.append('- 优先伏笔：' + '；'.join(f"{f.get('title')}（urgency {f.get('urgency_level')}，理由：{f.get('reason')}）" for f in foreshadows))
+    hints = execution_context.get('progression_hints') or []
+    if hints:
+        lines.append('- 推进提示：' + '；'.join(f"{h.get('title')} → {h.get('suggested_next_beat')}" for h in hints))
+    warnings = execution_context.get('continuity_warnings') or []
+    if warnings:
+        lines.append('- 连续性提醒：' + '；'.join(str(w.get('message')) for w in warnings))
+    recent_events = execution_context.get('recent_events') or []
+    if recent_events:
+        lines.append('- 近期事件：' + '；'.join(f"{e.get('event_type')} 世界 {e.get('world_version_before')}→{e.get('world_version_after')}" for e in recent_events))
+    return '\n'.join(lines) + '\n'
+
+
 def _draft_payload(chapter: Chapter, draft: ChapterDraft) -> dict:
     return {
         'chapter_id': chapter.id,
@@ -92,6 +151,7 @@ def _draft_payload(chapter: Chapter, draft: ChapterDraft) -> dict:
         'outline_beats': chapter.outline_beats,
         'outline_context': chapter.outline_context,
         'critique_report': chapter.critique_report,
+        'execution_context': draft.execution_context or chapter.execution_context,
     }
 
 
@@ -101,6 +161,7 @@ def build_outline_messages(
     foreshadows: list[Foreshadow],
     chapter_goal: str,
     chapter_context: str | None = None,
+    execution_context: dict | None = None,
 ) -> list[dict[str, str]]:
     character_lines = '\n'.join(f'- {c.id}: {c.name}, status={c.status}, goals={c.current_goals}' for c in characters)
     foreshadow_lines = '\n'.join(f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}' for f in foreshadows[:3])
@@ -124,6 +185,7 @@ def build_outline_messages(
                 f'紧迫伏笔：\n{foreshadow_lines}\n'
                 f'本章目标：{chapter_goal}\n'
                 f'用户额外上下文：{chapter_context or "无"}\n'
+                f'{format_execution_context_for_prompt(execution_context)}'
                 '请输出 beat cards，不要写正文。'
             ),
         },
@@ -137,6 +199,7 @@ def build_generation_messages(
     chapter_goal: str,
     outline_beats: list[dict] | None = None,
     outline_context: dict | None = None,
+    execution_context: dict | None = None,
 ) -> list[dict[str, str]]:
     character_lines = '\n'.join(f'- {c.id}: {c.name}, status={c.status}, goals={c.current_goals}' for c in characters)
     foreshadow_lines = '\n'.join(f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}' for f in foreshadows)
@@ -164,8 +227,9 @@ def build_generation_messages(
                 f'角色：\n{character_lines}\n'
                 f'伏笔：\n{foreshadow_lines}\n'
                 f'本章目标：{chapter_goal}\n'
+                f'{format_execution_context_for_prompt(execution_context)}'
                 f'{outline_lines}\n'
-                '请基于本章目标与 Outliner 节拍生成章节正文，返回 JSON。'
+                '请基于本章目标、执行上下文与 Outliner 节拍生成章节正文。优先满足执行上下文中的 POV、优先角色、优先伏笔、推进提示和连续性提醒。返回 JSON。'
             ),
         },
     ]
@@ -192,6 +256,7 @@ def _create_draft_version(
         change_type=change_type,
         change_summary=change_summary,
         parent_draft_version=previous_draft.draft_version,
+        execution_context=previous_draft.execution_context,
     )
     chapter.draft_version = next_version
     db.add(draft)
@@ -422,9 +487,17 @@ def validate_generation_ids(generation: ChapterGeneration, characters: list[Char
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
 
 
-def create_chapter_session(db: Session, user: User, world_id: int, chapter_goal: str, title: str | None = None) -> Chapter:
+def create_chapter_session(
+    db: Session,
+    user: User,
+    world_id: int,
+    chapter_goal: str,
+    title: str | None = None,
+    execution_context=None,
+) -> Chapter:
     world = require_owned_world(db, user, world_id)
     characters, _ = _load_world_context(db, world)
+    context = normalize_execution_context(db, world, chapter_goal, execution_context)
     chapter = Chapter(
         world_id=world.id,
         title=title or chapter_goal[:80],
@@ -437,6 +510,7 @@ def create_chapter_session(db: Session, user: User, world_id: int, chapter_goal:
         outline_context={},
         critique_report={},
         character_arc_report={},
+        execution_context=context,
     )
     db.add(chapter)
     db.commit()
@@ -460,7 +534,14 @@ def generate_chapter_outline(
     client = _model_client(llm_client)
     try:
         outline = client.generate_outline(
-            build_outline_messages(world, characters, foreshadows, chapter.chapter_goal or chapter.title, chapter_context)
+            build_outline_messages(
+                world,
+                characters,
+                foreshadows,
+                chapter.chapter_goal or chapter.title,
+                chapter_context,
+                chapter.execution_context,
+            )
         )
     except (TimeoutError, ValueError, RuntimeError) as exc:
         raise _map_model_error(exc) from exc
@@ -482,13 +563,17 @@ def create_chapter_draft(
     user: User,
     world_id: int,
     chapter_goal: str,
+    execution_context=None,
     llm_client: LLMClient | None = None,
 ) -> dict:
     world = require_owned_world(db, user, world_id)
     characters, foreshadows = _load_world_context(db, world)
+    context = normalize_execution_context(db, world, chapter_goal, execution_context)
     client = _model_client(llm_client)
     try:
-        generation = client.generate_chapter(build_generation_messages(world, characters, foreshadows, chapter_goal))
+        generation = client.generate_chapter(
+            build_generation_messages(world, characters, foreshadows, chapter_goal, execution_context=context)
+        )
     except (TimeoutError, ValueError, RuntimeError) as exc:
         raise _map_model_error(exc) from exc
     validate_generation_ids(generation, characters, foreshadows)
@@ -505,6 +590,7 @@ def create_chapter_draft(
         outline_context={},
         critique_report={},
         character_arc_report={},
+        execution_context=context,
     )
     db.add(chapter)
     db.flush()
@@ -520,6 +606,7 @@ def create_chapter_draft(
         review_hints=generation.review_hints,
         proposed_changes=proposed_changes,
         source_world_version=world.world_version,
+        execution_context=context,
     )
     db.add(draft)
     db.commit()
@@ -555,6 +642,7 @@ def write_chapter_from_outline(
                 chapter.chapter_goal or chapter.title,
                 chapter.outline_beats,
                 chapter.outline_context,
+                chapter.execution_context,
             )
         )
     except (TimeoutError, ValueError, RuntimeError) as exc:
@@ -569,13 +657,21 @@ def write_chapter_from_outline(
     }
     draft = _latest_draft(db, chapter)
     if draft is None:
-        draft = ChapterDraft(chapter_id=chapter.id, draft_version=chapter.draft_version, content='', context_summary='', source_world_version=world.world_version)
+        draft = ChapterDraft(
+            chapter_id=chapter.id,
+            draft_version=chapter.draft_version,
+            content='',
+            context_summary='',
+            source_world_version=world.world_version,
+            execution_context=chapter.execution_context,
+        )
         db.add(draft)
     draft.content = generation.draft_content
     draft.context_summary = generation.context_summary
     draft.review_hints = generation.review_hints
     draft.proposed_changes = proposed_changes
     draft.source_world_version = world.world_version
+    draft.execution_context = chapter.execution_context
     draft.rejection_feedback = None
     db.commit()
     db.refresh(chapter)

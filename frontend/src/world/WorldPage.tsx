@@ -9,7 +9,7 @@ import {
   getChapterHistoryDetail,
   getNextChapterPrep,
 } from '../api/client';
-import type { ChapterHistoryResponse, NextChapterPrepResponse, StoryArcChapter, WorldCreateRequest, WorldOverview } from '../api/types';
+import type { ChapterExecutionContext, ChapterHistoryResponse, NextChapterPrepResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
@@ -18,9 +18,7 @@ import { NextChapterPrepPanel } from './NextChapterPrepPanel';
 import { WorldArchivePanel } from './WorldArchivePanel';
 import { WorldCreationForm } from './WorldCreationForm';
 
-type EnterStudioOptions = { initialChapterGoal?: string };
-
-type Props = { onEnterStudio: (world: WorldOverview, options?: EnterStudioOptions) => void; autoFocusTitle?: boolean };
+type Props = { onEnterStudio: (world: WorldOverview, context?: StudioLaunchContext) => void; autoFocusTitle?: boolean };
 
 type Tab = 'overview' | 'characters' | 'relations' | 'foreshadows';
 
@@ -122,7 +120,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [nextPrep, setNextPrep] = useState<NextChapterPrepResponse | null>(null);
   const [nextPrepLoading, setNextPrepLoading] = useState(false);
   const [nextPrepError, setNextPrepError] = useState('');
-  const [selectedNextGoal, setSelectedNextGoal] = useState('');
+  const [selectedExecutionContext, setSelectedExecutionContext] = useState<ChapterExecutionContext | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -268,7 +266,10 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 </p>
               )}
               <div className="mt-8 flex flex-wrap gap-3">
-                <button className="primary-button" onClick={() => onEnterStudio(world, { initialChapterGoal: selectedNextGoal || undefined })}>
+                <button className="primary-button" onClick={() => onEnterStudio(world, {
+                  initialChapterGoal: selectedExecutionContext?.goal,
+                  executionContext: selectedExecutionContext ?? undefined,
+                })}>
                   进入创作台
                 </button>
                 <button className="secondary-button" disabled={arcLoading} onClick={runStoryArcPlanner}>
@@ -333,14 +334,17 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 <p className="chapter-kicker">Narrative Console</p>
                 <h2 className="mt-2 text-3xl font-black text-[#34210f]">Narrative Control Center</h2>
                 <p className="manuscript mt-2 text-sm text-[#5e3b1c]">查看已批准章节历史，并准备下一章目标。</p>
-                {selectedNextGoal && <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已设为下一章目标：{selectedNextGoal}</p>}
+                {selectedExecutionContext && <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已设为下一章目标：{selectedExecutionContext.goal}</p>}
               </div>
               <NextChapterPrepPanel
                 prep={nextPrep}
                 loading={nextPrepLoading}
                 error={nextPrepError}
-                onUseGoal={setSelectedNextGoal}
-                onEnterStudioWithGoal={(goal) => onEnterStudio(world, { initialChapterGoal: goal })}
+                onUseContext={setSelectedExecutionContext}
+                onEnterStudioWithContext={(context) => onEnterStudio(world, {
+                  initialChapterGoal: context.goal,
+                  executionContext: context,
+                })}
               />
               <WorldArchivePanel
                 onCreateSnapshot={() => createWorldSnapshot(world.id)}

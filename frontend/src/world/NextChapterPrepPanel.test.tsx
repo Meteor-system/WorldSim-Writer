@@ -67,10 +67,10 @@ const prep: NextChapterPrepResponse = {
 describe('NextChapterPrepPanel', () => {
   it('renders next chapter prep signals and uses suggested goal callback', async () => {
     const user = userEvent.setup();
-    const onUseGoal = vi.fn();
-    const onEnterStudioWithGoal = vi.fn();
+    const onUseContext = vi.fn();
+    const onEnterStudioWithContext = vi.fn();
 
-    render(<NextChapterPrepPanel prep={prep} onUseGoal={onUseGoal} onEnterStudioWithGoal={onEnterStudioWithGoal} />);
+    render(<NextChapterPrepPanel prep={prep} onUseContext={onUseContext} onEnterStudioWithContext={onEnterStudioWithContext} />);
 
     expect(screen.getByText('下一章准备台')).toBeInTheDocument();
     expect(screen.getByText('第 2 章建议目标')).toBeInTheDocument();
@@ -83,10 +83,17 @@ describe('NextChapterPrepPanel', () => {
     expect(screen.getByText('chapter_approved · 世界 1 → 2')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '用作下一章目标' }));
-    expect(onUseGoal).toHaveBeenCalledWith('林砚带着湿信赴城主府外墙，并设置一次试探。');
+    expect(onUseContext).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'next_chapter_prep',
+      goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+      recommended_pov: { character_id: 1, name: '林砚' },
+    }));
 
     await user.click(screen.getByRole('button', { name: '进入创作台并使用此目标' }));
-    expect(onEnterStudioWithGoal).toHaveBeenCalledWith('林砚带着湿信赴城主府外墙，并设置一次试探。');
+    expect(onEnterStudioWithContext).toHaveBeenCalledWith(expect.objectContaining({
+      source: 'next_chapter_prep',
+      goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+    }));
   });
 
   it('renders loading and error states', () => {

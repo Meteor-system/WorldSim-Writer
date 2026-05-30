@@ -6,7 +6,7 @@ from app.auth.models import User
 from app.character.models import Character
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow
-from app.narrative.models import Chapter
+from app.narrative.models import Chapter, ChapterDraft
 from app.world.models import World
 from app.world.service import count_approved_chapters, require_owned_world
 
@@ -98,6 +98,14 @@ def _world_version_after(events: list[EventLog], chapter: Chapter) -> int:
 
 def _latest_approved_chapter(db: Session, world_id: int) -> Chapter | None:
     return db.scalar(_approved_chapters_query(world_id).order_by(desc(Chapter.id)))
+
+
+def _latest_draft(db: Session, chapter: Chapter) -> ChapterDraft | None:
+    return db.scalar(
+        select(ChapterDraft)
+        .where(ChapterDraft.chapter_id == chapter.id)
+        .where(ChapterDraft.draft_version == chapter.draft_version)
+    )
 
 
 def _select_progression_hint(chapter: Chapter | None) -> dict | None:
@@ -320,6 +328,7 @@ def get_approved_chapter_history_detail(db: Session, user: User, chapter_id: int
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='CHAPTER_NOT_APPROVED')
 
     events = _chapter_events(db, chapter.id)
+    latest_draft = _latest_draft(db, chapter)
     character_changes = [_event_change(event) for event in events if event.event_type == 'character_change']
     foreshadow_changes = [_event_change(event) for event in events if event.event_type == 'foreshadow_change']
     return {
@@ -337,6 +346,7 @@ def get_approved_chapter_history_detail(db: Session, user: User, chapter_id: int
         'foreshadow_changes': foreshadow_changes,
         'critic_summary': (chapter.critique_report or {}).get('summary'),
         'character_arc_summary': (chapter.character_arc_report or {}).get('summary'),
+        'execution_context': latest_draft.execution_context if latest_draft and latest_draft.execution_context else chapter.execution_context,
     }
 
 

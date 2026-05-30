@@ -1,11 +1,12 @@
-import type { NextChapterPrepResponse } from '../api/types';
+import type { ChapterExecutionContext, NextChapterPrepResponse } from '../api/types';
+import { buildExecutionContextFromPrep } from './chapterExecutionContext';
 
 type Props = {
   prep: NextChapterPrepResponse | null;
   loading?: boolean;
   error?: string;
-  onUseGoal?: (goal: string) => void;
-  onEnterStudioWithGoal?: (goal: string) => void;
+  onUseContext?: (context: ChapterExecutionContext) => void;
+  onEnterStudioWithContext?: (context: ChapterExecutionContext) => void;
 };
 
 const WARNING_CLASS: Record<string, string> = {
@@ -25,7 +26,7 @@ function signalLabel(signal: string): string {
   return labels[signal] ?? signal;
 }
 
-export function NextChapterPrepPanel({ prep, loading, error, onUseGoal, onEnterStudioWithGoal }: Props) {
+export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnterStudioWithContext }: Props) {
   if (loading) {
     return (
       <section className="book-card p-5">
@@ -50,6 +51,8 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseGoal, onEnterS
     );
   }
 
+  const context = buildExecutionContextFromPrep(prep);
+
   return (
     <section className="book-card space-y-4 p-5">
       <div>
@@ -69,13 +72,13 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseGoal, onEnterS
           ))}
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          {onUseGoal && (
-            <button className="secondary-button" onClick={() => onUseGoal(prep.suggested_goal)}>
+          {onUseContext && (
+            <button className="secondary-button" onClick={() => onUseContext(context)}>
               用作下一章目标
             </button>
           )}
-          {onEnterStudioWithGoal && (
-            <button className="primary-button" onClick={() => onEnterStudioWithGoal(prep.suggested_goal)}>
+          {onEnterStudioWithContext && (
+            <button className="primary-button" onClick={() => onEnterStudioWithContext(context)}>
               进入创作台并使用此目标
             </button>
           )}
