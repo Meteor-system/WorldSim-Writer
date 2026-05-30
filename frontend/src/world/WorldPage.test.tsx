@@ -162,6 +162,9 @@ describe('WorldPage Narrative Control Center', () => {
     await user.click(screen.getByRole('button', { name: '伏笔账本' }));
     expect(screen.getAllByText('伏笔账本').length).toBeGreaterThanOrEqual(2);
     expect(getForeshadows).toHaveBeenCalledWith(7);
+    expect(await screen.findByText('Foreshadow Ledger')).toBeInTheDocument();
+    expect(screen.getByText('伏笔治理台')).toBeInTheDocument();
+    expect(screen.getByText('总数：1')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '+ 新增伏笔' })).toBeInTheDocument();
   });
 

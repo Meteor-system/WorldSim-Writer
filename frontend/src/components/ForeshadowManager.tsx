@@ -50,6 +50,32 @@ const URGENCY_LABELS: Record<number, string> = {
   5: '极高',
 };
 
+type LedgerFilter = 'all' | 'unresolved' | 'stale' | 'overdue' | 'resolved' | 'dropped';
+
+const FILTER_LABELS: Record<LedgerFilter, string> = {
+  all: '全部',
+  unresolved: '未收束',
+  stale: 'Stale',
+  overdue: 'Overdue',
+  resolved: '已收束',
+  dropped: '已放弃',
+};
+
+const LIFECYCLE_LABELS: Record<ForeshadowStatus, string> = {
+  planted: '已埋设',
+  advanced: '活跃推进',
+  resolved: '已收束',
+  expired: '已放弃',
+};
+
+function isUnresolved(statusValue: ForeshadowStatus) {
+  return statusValue === 'planted' || statusValue === 'advanced';
+}
+
+function canDropStatus(statusValue: ForeshadowStatus) {
+  return statusValue === 'planted' || statusValue === 'advanced';
+}
+
 type FormData = {
   title: string;
   description: string;
@@ -118,6 +144,7 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [draggingId, setDraggingId] = useState<number | null>(null);
   const [deleteReason, setDeleteReason] = useState('');
+  const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('all');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -204,6 +231,17 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
     }
   }
 
+  async function dropForeshadow(f: Foreshadow) {
+    if (!canDropStatus(f.status)) return;
+    try {
+      await updateForeshadow(f.id, { status: 'expired' });
+      await load();
+      await onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '放弃伏笔失败');
+    }
+  }
+
   async function dropOnStatus(statusValue: ForeshadowStatus) {
     if (draggingId === null) return;
     const source = foreshadows.find((item) => item.id === draggingId);
@@ -233,6 +271,8 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
 
   function renderForeshadowCard(f: Foreshadow) {
     const next = nextForwardStatus(f.status);
+    const staleItem = staleById.get(f.id);
+    const isOverdue = overdueIds.has(f.id);
     return (
       <article
         key={f.id}
@@ -269,6 +309,33 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
           )}
         </div>
 
+        <div className="grid gap-2 rounded-2xl bg-amber-50/60 p-3 text-xs ink-muted">
+          <p>
+            <span className="font-semibold text-[#4a321e]">生命周期：</span>
+            {LIFECYCLE_LABELS[f.status]}
+          </p>
+          <p>
+            <span className="font-semibold text-[#4a321e]">状态：</span>
+            {f.status}
+          </p>
+          <p>
+            <span className="font-semibold text-[#4a321e]">来源章节：</span>
+            {f.source_chapter_id ? `#${f.source_chapter_id}` : '未绑定来源章节'}
+          </p>
+          <p>
+            <span className="font-semibold text-[#4a321e]">收束窗口：</span>
+            {f.expected_resolution_window ?? '未设定收束窗口'}
+          </p>
+        </div>
+
+        {(staleItem || f.urgency_level >= 4) && (
+          <div className="flex flex-wrap gap-2 text-xs font-black">
+            {f.urgency_level >= 4 && <span className="rounded-full border border-red-700/25 bg-red-100 px-2 py-0.5 text-red-800">高紧迫</span>}
+            {staleItem && <span className="rounded-full border border-amber-700/25 bg-amber-100 px-2 py-0.5 text-amber-900">Stale · {staleItem.chapters_since_planted} 章未推进</span>}
+            {isOverdue && <span className="rounded-full border border-red-700/25 bg-red-100 px-2 py-0.5 text-red-800">Overdue</span>}
+          </div>
+        )}
+
         {f.related_character_ids.length > 0 && (
           <p className="text-xs ink-muted">
             <span className="font-semibold">关联角色：</span>
@@ -285,6 +352,11 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
           <button className="secondary-button text-sm" onClick={() => openEdit(f)}>
             编辑
           </button>
+          {canDropStatus(f.status) && (
+            <button className="ghost-button text-sm text-red-700/80" onClick={() => void dropForeshadow(f)}>
+              放弃伏笔
+            </button>
+          )}
           {confirmDelete === f.id ? (
             <div className="w-full space-y-2">
               <input
@@ -323,6 +395,33 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
   const staleMinChapters = staleForeshadows.length
     ? Math.min(...staleForeshadows.map((item) => item.chapters_since_planted))
     : 0;
+  const staleById = new Map(staleForeshadows.map((item) => [item.foreshadow.id, item]));
+  const overdueIds = new Set(staleForeshadows.filter((item) => item.alert_level === 'critical').map((item) => item.foreshadow.id));
+  const summary = {
+    total: foreshadows.length,
+    unresolved: foreshadows.filter((item) => isUnresolved(item.status)).length,
+    stale: staleForeshadows.length,
+    overdue: overdueIds.size,
+    highUrgency: foreshadows.filter((item) => item.urgency_level >= 4).length,
+    resolved: foreshadows.filter((item) => item.status === 'resolved').length,
+    dropped: foreshadows.filter((item) => item.status === 'expired').length,
+  };
+  const visibleForeshadows = foreshadows.filter((item) => {
+    if (ledgerFilter === 'unresolved') return isUnresolved(item.status);
+    if (ledgerFilter === 'stale') return staleById.has(item.id);
+    if (ledgerFilter === 'overdue') return overdueIds.has(item.id);
+    if (ledgerFilter === 'resolved') return item.status === 'resolved';
+    if (ledgerFilter === 'dropped') return item.status === 'expired';
+    return true;
+  });
+  const filterCounts: Record<LedgerFilter, number> = {
+    all: summary.total,
+    unresolved: summary.unresolved,
+    stale: summary.stale,
+    overdue: summary.overdue,
+    resolved: summary.resolved,
+    dropped: summary.dropped,
+  };
 
   return (
     <div>
@@ -344,6 +443,34 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
         这些编辑会正式写入世界状态，并使 world_version 增长。
       </p>
 
+      <section className="mt-4 rounded-3xl border border-amber-900/15 bg-amber-50/50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="chapter-kicker">Foreshadow Ledger</p>
+            <h2 className="text-2xl font-black text-[#34210f]">伏笔治理台</h2>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs font-black text-[#5e3b1c]">
+            <span className="rounded-full bg-white/70 px-3 py-1">总数：{summary.total}</span>
+            <span className="rounded-full bg-white/70 px-3 py-1">未收束：{summary.unresolved}</span>
+            <span className="rounded-full bg-white/70 px-3 py-1">Stale：{summary.stale}</span>
+            <span className="rounded-full bg-white/70 px-3 py-1">Overdue：{summary.overdue}</span>
+            <span className="rounded-full bg-white/70 px-3 py-1">高紧迫：{summary.highUrgency}</span>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {(Object.keys(FILTER_LABELS) as LedgerFilter[]).map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              className={ledgerFilter === filter ? 'primary-button text-sm' : 'secondary-button text-sm'}
+              onClick={() => setLedgerFilter(filter)}
+            >
+              {FILTER_LABELS[filter]} {filterCounts[filter]}
+            </button>
+          ))}
+        </div>
+      </section>
+
       {staleForeshadows.length > 0 && (
         <button
           type="button"
@@ -362,14 +489,16 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
 
       {foreshadows.length === 0 ? (
         <p className="manuscript mt-6 ink-muted">还没有伏笔，点击上方按钮埋设第一条线索。</p>
+      ) : visibleForeshadows.length === 0 ? (
+        <p className="manuscript mt-6 ink-muted">当前筛选下没有伏笔。</p>
       ) : viewMode === 'list' ? (
         <div className="mt-6 grid gap-4 md:grid-cols-2">
-          {foreshadows.map((f) => renderForeshadowCard(f))}
+          {visibleForeshadows.map((f) => renderForeshadowCard(f))}
         </div>
       ) : (
         <div className="mt-6 grid gap-4 lg:grid-cols-4">
           {STATUS_OPTIONS.map((statusValue) => {
-            const items = foreshadows.filter((item) => item.status === statusValue);
+            const items = visibleForeshadows.filter((item) => item.status === statusValue);
             return (
               <section
                 key={statusValue}
