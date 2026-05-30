@@ -211,6 +211,25 @@ export type BeatCard = {
   key_dialogue_hints: string[];
 };
 
+export type ChapterExecutionContext = {
+  source: 'next_chapter_prep' | 'manual';
+  source_world_version: number;
+  next_chapter_number: number | null;
+  goal: string;
+  recommended_pov: { character_id: number | null; name: string | null };
+  source_signals: string[];
+  priority_characters: NextChapterPrepCharacter[];
+  priority_foreshadows: NextChapterPrepForeshadow[];
+  progression_hints: ChapterProgressionHint[];
+  continuity_warnings: NextChapterPrepWarning[];
+  recent_events: Array<Omit<NextChapterPrepEvent, 'payload'>>;
+};
+
+export type StudioLaunchContext = {
+  initialChapterGoal?: string;
+  executionContext?: ChapterExecutionContext;
+};
+
 export type ChapterPipelineResponse = {
   id: number;
   world_id: number;
@@ -224,6 +243,7 @@ export type ChapterPipelineResponse = {
   outline_beats: BeatCard[];
   outline_context: Record<string, unknown>;
   critique_report: Record<string, unknown>;
+  execution_context: ChapterExecutionContext | null;
 };
 
 export type OutlineResponse = {
@@ -386,6 +406,7 @@ export type ChapterHistoryDetailResponse = {
   foreshadow_changes: ChapterHistoryChange[];
   critic_summary: string | null;
   character_arc_summary: string | null;
+  execution_context: ChapterExecutionContext | null;
 };
 
 export type ApprovedChapterHistoryResponse = ChapterHistoryResponse;
@@ -503,6 +524,7 @@ export type DraftResponse = {
   outline_beats?: BeatCard[];
   outline_context?: Record<string, unknown>;
   critique_report?: CritiqueReport;
+  execution_context?: ChapterExecutionContext | null;
 };
 
 export type ParagraphReviseRequest = {

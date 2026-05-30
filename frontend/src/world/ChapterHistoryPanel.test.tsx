@@ -66,6 +66,19 @@ const detail: ApprovedChapterHistoryDetailResponse = {
   ],
   critic_summary: '章节冲突清晰，但第二段信息揭示偏快。',
   character_arc_summary: '本章推动林砚从被动等待转向主动追查。',
+  execution_context: {
+    source: 'next_chapter_prep',
+    source_world_version: 2,
+    next_chapter_number: 2,
+    goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+    recommended_pov: { character_id: 1, name: '林砚' },
+    source_signals: ['character_arc_progression_hint'],
+    priority_characters: [{ character_id: 1, name: '林砚', role_type: 'protagonist', status: '开始调查密信', reason: '上一章提示。' }],
+    priority_foreshadows: [{ foreshadow_id: 1, title: '裂纹玉佩', status: 'advanced', urgency_level: 4, reason: '该伏笔需要推进。' }],
+    progression_hints: [],
+    continuity_warnings: [{ severity: 'medium', category: 'character_arc', message: '下一章需要补足试探过程。', related_character_ids: [1], related_foreshadow_ids: [] }],
+    recent_events: [],
+  },
 };
 
 describe('ChapterHistoryPanel', () => {
@@ -95,6 +108,10 @@ describe('ChapterHistoryPanel', () => {
     expect(screen.getByText('chapter_approved · 世界 1 → 2')).toBeInTheDocument();
     expect(screen.getByText('Critic：章节冲突清晰，但第二段信息揭示偏快。')).toBeInTheDocument();
     expect(screen.getByText('角色弧线：本章推动林砚从被动等待转向主动追查。')).toBeInTheDocument();
+    expect(screen.getByText('执行上下文快照')).toBeInTheDocument();
+    expect(screen.getByText('目标：林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
+    expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
+    expect(screen.getByText('优先伏笔：裂纹玉佩')).toBeInTheDocument();
   });
 
   it('renders empty, loading, and error states', () => {

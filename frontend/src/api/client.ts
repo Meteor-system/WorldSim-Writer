@@ -2,6 +2,7 @@ import type {
   ApprovalPreviewResponse,
   BeatCard,
   ChapterHistoryDetailResponse,
+  ChapterExecutionContext,
   ChapterHistoryResponse,
   ChapterPipelineResponse,
   Character,
@@ -108,7 +109,7 @@ export function suggestGoal(worldId: number) {
 
 /* ── Narrative pipeline ── */
 
-export function createChapter(worldId: number, data: { chapter_goal: string; title?: string }) {
+export function createChapter(worldId: number, data: { chapter_goal: string; title?: string; execution_context?: ChapterExecutionContext }) {
   return apiRequest<ChapterPipelineResponse>(`/worlds/${worldId}/chapters`, {
     method: 'POST',
     body: JSON.stringify(data),

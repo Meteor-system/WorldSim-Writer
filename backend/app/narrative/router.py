@@ -51,7 +51,7 @@ def create_chapter(
     db: Session = Depends(get_db),
 ) -> ChapterPipelineResponse:
     return ChapterPipelineResponse.model_validate(
-        create_chapter_session(db, current_user, world_id, payload.chapter_goal, payload.title)
+        create_chapter_session(db, current_user, world_id, payload.chapter_goal, payload.title, payload.execution_context)
     )
 
 
@@ -62,7 +62,7 @@ def draft_chapter(
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> DraftResponse:
-    return DraftResponse.model_validate(create_chapter_draft(db, current_user, world_id, payload.chapter_goal))
+    return DraftResponse.model_validate(create_chapter_draft(db, current_user, world_id, payload.chapter_goal, payload.execution_context))
 
 
 @router.post('/chapters/{chapter_id}/outline', response_model=OutlineResponse)

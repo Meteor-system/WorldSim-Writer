@@ -29,6 +29,7 @@ class Chapter(Base):
     outline_context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     critique_report: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     character_arc_report: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    execution_context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
     world: Mapped['World'] = relationship('World', back_populates='chapters')
     drafts: Mapped[list['ChapterDraft']] = relationship('ChapterDraft', back_populates='chapter', cascade='all, delete-orphan')
@@ -50,5 +51,6 @@ class ChapterDraft(Base):
     change_type: Mapped[str] = mapped_column(String(40), nullable=False, default='generated')
     change_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     parent_draft_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    execution_context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
     chapter: Mapped['Chapter'] = relationship('Chapter', back_populates='drafts')

@@ -1,15 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import type { WorldOverview } from './api/types';
+import type { StudioLaunchContext, WorldOverview } from './api/types';
 import { AuthPage } from './auth/AuthPage';
 import { StudioPage } from './studio/StudioPage';
 import { WorldPage } from './world/WorldPage';
 
-type EnterStudioOptions = { initialChapterGoal?: string };
-
 export function App() {
   const [userEmail, setUserEmail] = useState(localStorage.getItem('worldsim_token') ? '已登录用户' : '');
   const [studioWorld, setStudioWorld] = useState<WorldOverview | null>(null);
-  const [studioInitialGoal, setStudioInitialGoal] = useState('');
+  const [studioLaunchContext, setStudioLaunchContext] = useState<StudioLaunchContext>({});
   const [approvedWorld, setApprovedWorld] = useState<WorldOverview | null>(null);
   const successRef = useRef<HTMLDivElement>(null);
 
@@ -17,9 +15,9 @@ export function App() {
     if (approvedWorld) successRef.current?.focus();
   }, [approvedWorld]);
 
-  function enterStudio(world: WorldOverview, options?: EnterStudioOptions) {
+  function enterStudio(world: WorldOverview, context: StudioLaunchContext = {}) {
     setStudioWorld(world);
-    setStudioInitialGoal(options?.initialChapterGoal ?? '');
+    setStudioLaunchContext(context);
   }
 
   if (!userEmail) return <AuthPage onAuth={setUserEmail} />;
@@ -29,15 +27,15 @@ export function App() {
       <main className="book-app">
         <StudioPage
           world={studioWorld}
-          initialChapterGoal={studioInitialGoal}
+          launchContext={studioLaunchContext}
           onBack={() => {
             setStudioWorld(null);
-            setStudioInitialGoal('');
+            setStudioLaunchContext({});
           }}
           onApproved={(world) => {
             setApprovedWorld(world);
             setStudioWorld(null);
-            setStudioInitialGoal('');
+            setStudioLaunchContext({});
           }}
         />
       </main>

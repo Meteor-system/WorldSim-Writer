@@ -13,6 +13,10 @@ function formatJson(value: Record<string, unknown> | null): string {
   return JSON.stringify(value);
 }
 
+function contextNames(values: Array<{ name?: string; title?: string }>): string {
+  return values.map((value) => value.name ?? value.title).filter(Boolean).join('、') || '无';
+}
+
 function ChangeList({ title, changes }: { title: string; changes: ChapterHistoryChange[] }) {
   return (
     <div className="rounded-2xl bg-white/35 p-4">
@@ -120,6 +124,16 @@ export function ChapterHistoryPanel({ history, loading, error, onLoadDetail }: P
             <h4 className="font-black text-[#3b2511]">批准正文</h4>
             <p className="manuscript mt-3 whitespace-pre-wrap">{selectedDetail.approved_content}</p>
           </div>
+
+          {selectedDetail.execution_context && (
+            <div className="rounded-2xl bg-white/35 p-4">
+              <h4 className="font-black text-[#3b2511]">执行上下文快照</h4>
+              <p className="manuscript mt-2 text-sm">目标：{selectedDetail.execution_context.goal}</p>
+              <p className="manuscript mt-1 text-sm">推荐 POV：{selectedDetail.execution_context.recommended_pov.name ?? '暂无'}</p>
+              <p className="manuscript mt-1 text-sm">优先角色：{contextNames(selectedDetail.execution_context.priority_characters)}</p>
+              <p className="manuscript mt-1 text-sm">优先伏笔：{contextNames(selectedDetail.execution_context.priority_foreshadows)}</p>
+            </div>
+          )}
 
           {selectedDetail.critic_summary && <p className="manuscript rounded-2xl bg-white/35 p-3">Critic：{selectedDetail.critic_summary}</p>}
           {selectedDetail.character_arc_summary && <p className="manuscript rounded-2xl bg-white/35 p-3">角色弧线：{selectedDetail.character_arc_summary}</p>}

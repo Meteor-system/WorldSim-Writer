@@ -5,13 +5,77 @@ from pydantic import BaseModel, Field
 from app.llm.schemas import BeatCard
 
 
+class ExecutionContextPov(BaseModel):
+    character_id: int | None = None
+    name: str | None = None
+
+
+class ExecutionContextPriorityCharacter(BaseModel):
+    character_id: int
+    name: str
+    role_type: str
+    status: str
+    reason: str
+
+
+class ExecutionContextPriorityForeshadow(BaseModel):
+    foreshadow_id: int
+    title: str
+    status: str
+    urgency_level: int
+    reason: str
+
+
+class ExecutionContextProgressionHint(BaseModel):
+    hint_type: str
+    priority: str
+    title: str
+    rationale: str
+    suggested_next_beat: str
+    related_character_ids: list[int] = Field(default_factory=list)
+    related_foreshadow_ids: list[int] = Field(default_factory=list)
+    can_seed_next_chapter_goal: bool = False
+
+
+class ExecutionContextContinuityWarning(BaseModel):
+    severity: str
+    category: str
+    message: str
+    related_character_ids: list[int] = Field(default_factory=list)
+    related_foreshadow_ids: list[int] = Field(default_factory=list)
+
+
+class ExecutionContextRecentEvent(BaseModel):
+    id: int
+    event_type: str
+    world_version_before: int
+    world_version_after: int
+    created_at: str
+
+
+class ChapterExecutionContext(BaseModel):
+    source: Literal['next_chapter_prep', 'manual'] = 'manual'
+    source_world_version: int
+    next_chapter_number: int | None = None
+    goal: str = Field(min_length=3)
+    recommended_pov: ExecutionContextPov = Field(default_factory=ExecutionContextPov)
+    source_signals: list[str] = Field(default_factory=list)
+    priority_characters: list[ExecutionContextPriorityCharacter] = Field(default_factory=list)
+    priority_foreshadows: list[ExecutionContextPriorityForeshadow] = Field(default_factory=list)
+    progression_hints: list[ExecutionContextProgressionHint] = Field(default_factory=list)
+    continuity_warnings: list[ExecutionContextContinuityWarning] = Field(default_factory=list)
+    recent_events: list[ExecutionContextRecentEvent] = Field(default_factory=list)
+
+
 class DraftRequest(BaseModel):
     chapter_goal: str = Field(min_length=3)
+    execution_context: ChapterExecutionContext | None = None
 
 
 class CreateChapterRequest(BaseModel):
     chapter_goal: str = Field(min_length=3)
     title: str | None = None
+    execution_context: ChapterExecutionContext | None = None
 
 
 class OutlineRequest(BaseModel):
@@ -41,6 +105,7 @@ class DraftResponse(BaseModel):
     outline_beats: list[dict] | None = None
     outline_context: dict | None = None
     critique_report: dict | None = None
+    execution_context: dict | None = None
 
 
 class RejectRequest(BaseModel):
@@ -75,6 +140,7 @@ class ChapterPipelineResponse(BaseModel):
     outline_beats: list[dict]
     outline_context: dict
     critique_report: dict
+    execution_context: dict | None = None
 
     model_config = {'from_attributes': True}
 
@@ -130,5 +196,6 @@ class ChapterResponse(BaseModel):
     outline_beats: list[dict] | None = None
     outline_context: dict | None = None
     critique_report: dict | None = None
+    execution_context: dict | None = None
 
     model_config = {'from_attributes': True}

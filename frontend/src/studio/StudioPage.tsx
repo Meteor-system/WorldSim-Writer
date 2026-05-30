@@ -12,11 +12,12 @@ import {
   suggestGoal,
   writeChapter,
 } from '../api/client';
-import type { ApprovalPreviewResponse, BeatCard, ChapterPipelineResponse, CharacterArcReportResponse, CriticReportResponse, DraftDiffResponse, DraftResponse, WorldOverview } from '../api/types';
+import type { ApprovalPreviewResponse, BeatCard, ChapterExecutionContext, ChapterPipelineResponse, CharacterArcReportResponse, CriticReportResponse, DraftDiffResponse, DraftResponse, StudioLaunchContext, WorldOverview } from '../api/types';
+import { withEditedGoal } from '../world/chapterExecutionContext';
 import { CharacterArcPanel } from './CharacterArcPanel';
 import { CriticReportPanel } from './CriticReportPanel';
 
-type Props = { world: WorldOverview; initialChapterGoal?: string; onBack: () => void; onApproved: (world: WorldOverview) => void };
+type Props = { world: WorldOverview; launchContext?: StudioLaunchContext; onBack: () => void; onApproved: (world: WorldOverview) => void };
 
 function dialogueToText(beat: BeatCard): string {
   return beat.key_dialogue_hints.join('\n');
@@ -29,8 +30,62 @@ function textToDialogue(value: string): string[] {
     .filter(Boolean);
 }
 
-export function StudioPage({ world, initialChapterGoal, onBack, onApproved }: Props) {
-  const [goal, setGoal] = useState(initialChapterGoal ?? '');
+function sourceLabel(source: ChapterExecutionContext['source']): string {
+  return source === 'next_chapter_prep' ? '下一章准备台' : '手动';
+}
+
+function names(values: Array<{ name?: string; title?: string }>): string {
+  return values.map((value) => value.name ?? value.title).filter(Boolean).join('、') || '无';
+}
+
+function ExecutionContextSummary({ context, frozen }: { context?: ChapterExecutionContext | null; frozen?: boolean }) {
+  if (!context) {
+    return (
+      <div className="book-card p-5">
+        <h2 className="font-black text-[#3b2511]">本章执行上下文</h2>
+        <p className="mt-3 ink-muted">本章暂无 NCC 执行上下文。创建章节时会根据当前目标生成手动上下文快照。</p>
+      </div>
+    );
+  }
+  return (
+    <div className="book-card p-5">
+      <h2 className="font-black text-[#3b2511]">本章执行上下文</h2>
+      {frozen && <p className="mt-2 text-sm font-bold text-[#5e3b1c]">已冻结执行上下文：{context.source} · v{context.source_world_version}</p>}
+      <p className="mt-3 ink-muted">来源：{sourceLabel(context.source)}</p>
+      <p className="mt-2 ink-muted">源世界版本：v{context.source_world_version}</p>
+      <p className="mt-2 ink-muted">建议章节：第 {context.next_chapter_number ?? '?'} 章</p>
+      <p className="mt-2 ink-muted">推荐 POV：{context.recommended_pov.name ?? '暂无'}</p>
+      <p className="mt-2 ink-muted">优先角色：{names(context.priority_characters)}</p>
+      <p className="mt-2 ink-muted">优先伏笔：{names(context.priority_foreshadows)}</p>
+      <p className="mt-2 ink-muted">推进提示：{context.progression_hints.length} 条</p>
+      <p className="mt-2 ink-muted">连续性提醒：{context.continuity_warnings.length} 条</p>
+    </div>
+  );
+}
+
+function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionContext | null }) {
+  if (!context) return null;
+  return (
+    <section className="space-y-3 rounded-2xl bg-white/35 p-4">
+      <h3 className="font-black text-[#3b2511]">执行上下文快照</h3>
+      <p className="manuscript text-sm">来源：{sourceLabel(context.source)} · v{context.source_world_version}</p>
+      <p className="manuscript text-sm">目标：{context.goal}</p>
+      <p className="manuscript text-sm">推荐 POV：{context.recommended_pov.name ?? '暂无'}</p>
+      <p className="manuscript text-sm">优先角色：{names(context.priority_characters)}</p>
+      <p className="manuscript text-sm">优先伏笔：{names(context.priority_foreshadows)}</p>
+      {context.progression_hints.map((hint) => (
+        <p key={hint.title} className="manuscript text-sm">推进提示：{hint.title}</p>
+      ))}
+      {context.continuity_warnings.map((warning, index) => (
+        <p key={`${warning.category}-${index}`} className="manuscript text-sm">连续性提醒：{warning.message}</p>
+      ))}
+    </section>
+  );
+}
+
+export function StudioPage({ world, launchContext, onBack, onApproved }: Props) {
+  const [goal, setGoal] = useState(launchContext?.initialChapterGoal ?? '');
+  const [executionContext] = useState(launchContext?.executionContext);
   const [chapter, setChapter] = useState<ChapterPipelineResponse | null>(null);
   const [outlineBeats, setOutlineBeats] = useState<BeatCard[]>([]);
   const [outlineContext, setOutlineContext] = useState<Record<string, unknown>>({});
@@ -53,11 +108,11 @@ export function StudioPage({ world, initialChapterGoal, onBack, onApproved }: Pr
   }, []);
 
   useEffect(() => {
-    if (initialChapterGoal || chapter || goal.trim().length > 0) return;
+    if (launchContext?.initialChapterGoal || chapter || goal.trim().length > 0) return;
     const nextChapterNumber = world.approved_chapter_count + 1;
     const nextArcChapter = world.story_arc.find((item) => item.chapter_number === nextChapterNumber);
     if (nextArcChapter) setGoal(nextArcChapter.summary);
-  }, [chapter, goal, initialChapterGoal, world.approved_chapter_count, world.story_arc]);
+  }, [chapter, goal, launchContext?.initialChapterGoal, world.approved_chapter_count, world.story_arc]);
 
   useEffect(() => {
     if (draft) draftTitleRef.current?.focus();
@@ -116,7 +171,12 @@ export function StudioPage({ world, initialChapterGoal, onBack, onApproved }: Pr
     setWorking(true);
     setError('');
     try {
-      const created = await createChapterRequest(world.id, { chapter_goal: goal, title: goal.slice(0, 40) });
+      const frozenContext = withEditedGoal(executionContext, world, goal);
+      const created = await createChapterRequest(world.id, {
+        chapter_goal: goal,
+        title: goal.slice(0, 40),
+        execution_context: frozenContext,
+      });
       setChapter(created);
       setOutlineBeats(created.outline_beats);
       setOutlineContext(created.outline_context);
@@ -341,6 +401,7 @@ export function StudioPage({ world, initialChapterGoal, onBack, onApproved }: Pr
             <p className="mt-2 ink-muted">POV：{world.characters[0]?.name ?? '未设置'}</p>
             <p className="mt-2 ink-muted">故事大纲进度：下一章第 {world.approved_chapter_count + 1} 章</p>
           </div>
+          <ExecutionContextSummary context={chapter?.execution_context ?? executionContext} frozen={Boolean(chapter?.execution_context)} />
           <div className="book-card p-5">
             <h3 className="font-black text-[#3b2511]">紧迫伏笔</h3>
             <div className="mt-3 space-y-2">
@@ -468,6 +529,7 @@ export function StudioPage({ world, initialChapterGoal, onBack, onApproved }: Pr
                 <div className="rounded-2xl bg-white/35 p-4"><h3 className="font-black text-[#3b2511]">上下文摘要</h3><p className="manuscript mt-2">{draft.context_summary}</p></div>
                 <div className="rounded-2xl bg-white/35 p-4"><h3 className="font-black text-[#3b2511]">审核提示</h3>{draft.review_hints.map((hint) => <p key={hint} className="manuscript mt-2">{hint}</p>)}</div>
               </div>
+              <ExecutionContextSnapshot context={draft.execution_context ?? chapter?.execution_context} />
               <section className="space-y-3 rounded-2xl bg-white/35 p-4">
                 <h3 className="font-black text-[#3b2511]">版本差异</h3>
                 {draftDiff ? (

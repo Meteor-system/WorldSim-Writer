@@ -2,9 +2,23 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { generateCharacterArcReport, writeChapter } from '../api/client';
-import type { DraftResponse, WorldOverview } from '../api/types';
+import { createChapter, generateCharacterArcReport, writeChapter } from '../api/client';
+import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
+
+const executionContext: ChapterExecutionContext = {
+  source: 'next_chapter_prep',
+  source_world_version: 2,
+  next_chapter_number: 2,
+  goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+  recommended_pov: { character_id: 1, name: '林砚' },
+  source_signals: ['character_arc_progression_hint'],
+  priority_characters: [{ character_id: 1, name: '林砚', role_type: 'protagonist', status: '开始调查密信', reason: '上一章提示。' }],
+  priority_foreshadows: [{ foreshadow_id: 1, title: '裂纹玉佩', status: 'advanced', urgency_level: 4, reason: '该伏笔需要推进。' }],
+  progression_hints: [{ hint_type: 'character', priority: 'high', title: '试探沈微霜是否可信', rationale: '上一章已经建立湿信线索。', suggested_next_beat: '林砚带着湿信赴城主府外墙，并设置一次试探。', related_character_ids: [1], related_foreshadow_ids: [1], can_seed_next_chapter_goal: true }],
+  continuity_warnings: [{ severity: 'medium', category: 'character_arc', message: '下一章需要补足试探过程。', related_character_ids: [1], related_foreshadow_ids: [] }],
+  recent_events: [{ id: 4, event_type: 'chapter_approved', world_version_before: 1, world_version_after: 2, created_at: '2026-05-30T00:00:00Z' }],
+};
 
 const draftResponse: DraftResponse = {
   chapter_id: 11,
@@ -23,6 +37,7 @@ const draftResponse: DraftResponse = {
   change_summary: null,
   parent_draft_version: null,
   status: 'reviewing',
+  execution_context: executionContext,
 };
 
 vi.mock('../api/client', () => ({
@@ -40,6 +55,7 @@ vi.mock('../api/client', () => ({
     outline_beats: [],
     outline_context: {},
     critique_report: {},
+    execution_context: executionContext,
   })),
   generateOutline: vi.fn(async () => ({
     chapter_id: 11,
@@ -198,7 +214,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     render(
       <StudioPage
         world={{ ...world, story_arc: [{ chapter_number: 1, title: '备用大纲', summary: '不应覆盖初始目标', core_conflict: '冲突', pov_suggestion: '林砚', foreshadow_hints: [] }] }}
-        initialChapterGoal="林砚带着湿信赴城主府外墙，并设置一次试探。"
+        launchContext={{ initialChapterGoal: '林砚带着湿信赴城主府外墙，并设置一次试探。', executionContext }}
         onBack={vi.fn()}
         onApproved={vi.fn()}
       />,
@@ -211,6 +227,62 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.clear(goal);
     await user.type(goal, '用户修改后的下一章目标');
     expect(goal).toHaveValue('用户修改后的下一章目标');
+  });
+
+  it('shows launch execution context summary and submits edited context when creating chapter', async () => {
+    const user = userEvent.setup();
+    render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext }} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    expect(screen.getByText('本章执行上下文')).toBeInTheDocument();
+    expect(screen.getByText('来源：下一章准备台')).toBeInTheDocument();
+    expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
+    expect(screen.getByText('优先角色：林砚')).toBeInTheDocument();
+    expect(screen.getByText('优先伏笔：裂纹玉佩')).toBeInTheDocument();
+
+    const goal = screen.getByLabelText('章节目标');
+    await user.clear(goal);
+    await user.type(goal, '用户编辑后的执行目标');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+
+    expect(createChapter).toHaveBeenCalledWith(7, expect.objectContaining({
+      chapter_goal: '用户编辑后的执行目标',
+      execution_context: expect.objectContaining({
+        source: 'next_chapter_prep',
+        goal: '用户编辑后的执行目标',
+        recommended_pov: { character_id: 1, name: '林砚' },
+      }),
+    }));
+    expect(await screen.findByText('已冻结执行上下文：next_chapter_prep · v2')).toBeInTheDocument();
+  });
+
+  it('creates manual context when Studio opens without NCC execution context', async () => {
+    const user = userEvent.setup();
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    expect(screen.getByText('本章暂无 NCC 执行上下文。创建章节时会根据当前目标生成手动上下文快照。')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('章节目标'), '手动输入章节目标');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+
+    expect(createChapter).toHaveBeenCalledWith(7, expect.objectContaining({
+      execution_context: expect.objectContaining({
+        source: 'manual',
+        goal: '手动输入章节目标',
+        source_signals: ['manual'],
+      }),
+    }));
+  });
+
+  it('shows frozen execution context snapshot after drafting', async () => {
+    const user = userEvent.setup();
+    render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext }} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+
+    expect(await screen.findByText('执行上下文快照')).toBeInTheDocument();
+    expect(screen.getByText('目标：林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
+    expect(screen.getByText('连续性提醒：下一章需要补足试探过程。')).toBeInTheDocument();
   });
 
   it('renders version selector, stash, paragraph controls, diff, and approval preview after drafting', async () => {
