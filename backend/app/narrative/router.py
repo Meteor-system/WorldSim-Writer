@@ -5,6 +5,7 @@ from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
 from app.narrative.schemas import (
+    ApprovalReadinessResponse,
     ChapterPipelineResponse,
     ChapterResponse,
     CharacterArcReportResponse,
@@ -31,6 +32,7 @@ from app.narrative.service import (
     generate_chapter_outline,
     generate_critic_report,
     get_approval_preview,
+    get_approval_readiness,
     get_character_arc_report,
     get_critic_report,
     get_draft_diff,
@@ -183,6 +185,15 @@ def approval_preview(
     db: Session = Depends(get_db),
 ) -> dict:
     return get_approval_preview(db, current_user, chapter_id)
+
+
+@router.get('/chapters/{chapter_id}/approval-readiness', response_model=ApprovalReadinessResponse)
+def approval_readiness(
+    chapter_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> ApprovalReadinessResponse:
+    return ApprovalReadinessResponse.model_validate(get_approval_readiness(db, current_user, chapter_id))
 
 
 @router.post('/chapters/{chapter_id}/draft/stash', response_model=DraftResponse)

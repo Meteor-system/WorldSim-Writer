@@ -565,3 +565,33 @@ export type ApprovalPreviewResponse = {
   character_changes: Array<ApprovalPreviewChange & { character_id: number; name: string }>;
   foreshadow_changes: Array<ApprovalPreviewChange & { foreshadow_id: number; title: string }>;
 };
+
+export type ApprovalReadinessStatus = 'ready' | 'needs_review' | 'blocked';
+export type ApprovalReadinessCheckStatus = 'pass' | 'warning' | 'fail';
+
+export type ApprovalReadinessCheck = {
+  key: string;
+  label: string;
+  status: ApprovalReadinessCheckStatus;
+  message: string;
+  details: Record<string, unknown> | unknown[] | null;
+};
+
+export type ApprovalReadinessResponse = {
+  chapter_id: number;
+  draft_version: number;
+  status: ApprovalReadinessStatus;
+  summary: string;
+  world_version: {
+    source_world_version: number;
+    current_world_version: number;
+    matches: boolean;
+  };
+  checks: ApprovalReadinessCheck[];
+  high_risk_items: Array<{
+    source: string;
+    severity: string;
+    message: string;
+    details: Record<string, unknown>;
+  }>;
+};

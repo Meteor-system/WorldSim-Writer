@@ -1,5 +1,6 @@
 import type {
   ApprovalPreviewResponse,
+  ApprovalReadinessResponse,
   BeatCard,
   ChapterHistoryDetailResponse,
   ChapterExecutionContext,
@@ -151,6 +152,10 @@ export function getDraftDiff(chapterId: number, fromVersion: number, toVersion: 
 
 export function getApprovalPreview(chapterId: number) {
   return apiRequest<ApprovalPreviewResponse>(`/chapters/${chapterId}/approval-preview`);
+}
+
+export function getApprovalReadiness(chapterId: number) {
+  return apiRequest<ApprovalReadinessResponse>(`/chapters/${chapterId}/approval-readiness`);
 }
 
 function legacyCritiqueToCriticReport(chapterId: number, response: CritiqueResponse): CriticReportResponse {

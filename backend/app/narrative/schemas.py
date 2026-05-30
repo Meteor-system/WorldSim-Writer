@@ -183,6 +183,30 @@ class CharacterArcReportResponse(BaseModel):
     created_at: str
 
 
+class ApprovalReadinessWorldVersion(BaseModel):
+    source_world_version: int
+    current_world_version: int
+    matches: bool
+
+
+class ApprovalReadinessCheck(BaseModel):
+    key: str
+    label: str
+    status: Literal['pass', 'warning', 'fail']
+    message: str
+    details: dict | list | None = None
+
+
+class ApprovalReadinessResponse(BaseModel):
+    chapter_id: int
+    draft_version: int
+    status: Literal['ready', 'needs_review', 'blocked']
+    summary: str
+    world_version: ApprovalReadinessWorldVersion
+    checks: list[ApprovalReadinessCheck]
+    high_risk_items: list[dict] = Field(default_factory=list)
+
+
 class ChapterResponse(BaseModel):
     id: int
     world_id: int

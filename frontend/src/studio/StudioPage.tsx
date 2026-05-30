@@ -6,14 +6,16 @@ import {
   generateCriticReport,
   generateOutline,
   getApprovalPreview,
+  getApprovalReadiness,
   getDraftDiff,
   reviseParagraph,
   stashDraft,
   suggestGoal,
   writeChapter,
 } from '../api/client';
-import type { ApprovalPreviewResponse, BeatCard, ChapterExecutionContext, ChapterPipelineResponse, CharacterArcReportResponse, CriticReportResponse, DraftDiffResponse, DraftResponse, StudioLaunchContext, WorldOverview } from '../api/types';
+import type { ApprovalPreviewResponse, ApprovalReadinessResponse, BeatCard, ChapterExecutionContext, ChapterPipelineResponse, CharacterArcReportResponse, CriticReportResponse, DraftDiffResponse, DraftResponse, StudioLaunchContext, WorldOverview } from '../api/types';
 import { withEditedGoal } from '../world/chapterExecutionContext';
+import { ApprovalReadinessPanel } from './ApprovalReadinessPanel';
 import { CharacterArcPanel } from './CharacterArcPanel';
 import { CriticReportPanel } from './CriticReportPanel';
 
@@ -93,6 +95,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [draftVersions, setDraftVersions] = useState<number[]>([]);
   const [draftDiff, setDraftDiff] = useState<DraftDiffResponse | null>(null);
   const [approvalPreview, setApprovalPreview] = useState<ApprovalPreviewResponse | null>(null);
+  const [approvalReadiness, setApprovalReadiness] = useState<ApprovalReadinessResponse | null>(null);
   const [critique, setCritique] = useState<CriticReportResponse | null>(null);
   const [characterArcReport, setCharacterArcReport] = useState<CharacterArcReportResponse | null>(null);
   const [working, setWorking] = useState(false);
@@ -143,6 +146,11 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     } catch {
       setApprovalPreview(null);
     }
+    try {
+      setApprovalReadiness(await getApprovalReadiness(nextDraft.chapter_id));
+    } catch {
+      setApprovalReadiness(null);
+    }
     if (nextDraft.parent_draft_version) {
       try {
         setDraftDiff(await getDraftDiff(nextDraft.chapter_id, nextDraft.parent_draft_version, nextDraft.draft_version));
@@ -181,6 +189,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setOutlineBeats(created.outline_beats);
       setOutlineContext(created.outline_context);
       setDraft(null);
+      setApprovalReadiness(null);
       setCritique(null);
       setCharacterArcReport(null);
     } catch (err) {
@@ -200,6 +209,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setOutlineContext(outline.outline_context);
       setChapter({ ...chapter, status: outline.status, outline_beats: outline.outline_beats, outline_context: outline.outline_context });
       setDraft(null);
+      setApprovalReadiness(null);
       setCritique(null);
       setCharacterArcReport(null);
     } catch (err) {
@@ -249,6 +259,11 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       const report = await generateCriticReport(chapter.id);
       setCritique(report);
       setChapter({ ...chapter, critique_report: report });
+      try {
+        setApprovalReadiness(await getApprovalReadiness(chapter.id));
+      } catch {
+        setApprovalReadiness(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成 Critic 报告失败');
     } finally {
@@ -262,6 +277,11 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setError('');
     try {
       setCharacterArcReport(await generateCharacterArcReport(chapter.id));
+      try {
+        setApprovalReadiness(await getApprovalReadiness(chapter.id));
+      } catch {
+        setApprovalReadiness(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成角色弧线报告失败');
     } finally {
@@ -530,6 +550,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                 <div className="rounded-2xl bg-white/35 p-4"><h3 className="font-black text-[#3b2511]">审核提示</h3>{draft.review_hints.map((hint) => <p key={hint} className="manuscript mt-2">{hint}</p>)}</div>
               </div>
               <ExecutionContextSnapshot context={draft.execution_context ?? chapter?.execution_context} />
+              {approvalReadiness && <ApprovalReadinessPanel readiness={approvalReadiness} />}
               <section className="space-y-3 rounded-2xl bg-white/35 p-4">
                 <h3 className="font-black text-[#3b2511]">版本差异</h3>
                 {draftDiff ? (

@@ -920,6 +920,206 @@ def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
     }
 
 
+def _readiness_check(key: str, label: str, check_status: str, message: str, details=None) -> dict:
+    return {
+        'key': key,
+        'label': label,
+        'status': check_status,
+        'message': message,
+        'details': details,
+    }
+
+
+def _report_is_stale(report: dict, current_draft_version: int) -> bool:
+    return bool(report.get('is_stale')) or int(report.get('draft_version', current_draft_version)) != current_draft_version
+
+
+def _approval_readiness_summary(checks: list[dict]) -> tuple[str, str]:
+    statuses = {check['status'] for check in checks}
+    if 'fail' in statuses:
+        return 'blocked', '存在阻塞项，暂不可批准。'
+    if 'warning' in statuses:
+        return 'needs_review', '存在建议复核项，请确认后再批准。'
+    return 'ready', '草稿已通过所有审批准备检查。'
+
+
+def get_approval_readiness(db: Session, user: User, chapter_id: int) -> dict:
+    chapter = _require_owned_chapter(db, user, chapter_id)
+    draft = _latest_draft(db, chapter)
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    world = db.get(World, chapter.world_id)
+    assert world is not None
+
+    checks = []
+    high_risk_items = []
+    world_version_matches = draft.source_world_version == world.world_version
+    checks.append(
+        _readiness_check(
+            'world_version',
+            '世界版本一致',
+            'pass' if world_version_matches else 'fail',
+            '草稿基于当前世界版本。' if world_version_matches else '世界版本已变化，请重新生成草稿后再批准。',
+            {'source_world_version': draft.source_world_version, 'current_world_version': world.world_version},
+        )
+    )
+
+    execution_context = draft.execution_context or chapter.execution_context or {}
+    has_context_version = bool(execution_context) and execution_context.get('source_world_version') is not None
+    checks.append(
+        _readiness_check(
+            'execution_context',
+            '执行上下文',
+            'pass' if has_context_version else 'warning',
+            '草稿包含冻结执行上下文。' if has_context_version else '草稿缺少可核验的执行上下文快照。',
+            {'source': execution_context.get('source'), 'source_world_version': execution_context.get('source_world_version')}
+            if execution_context
+            else {},
+        )
+    )
+
+    proposed_changes = draft.proposed_changes or {}
+    proposed_character_ids = {change.get('character_id') for change in proposed_changes.get('characters', [])}
+    proposed_foreshadow_ids = {change.get('foreshadow_id') for change in proposed_changes.get('foreshadows', [])}
+    priority_character_ids = {item.get('character_id') for item in execution_context.get('priority_characters', [])}
+    priority_foreshadow_ids = {item.get('foreshadow_id') for item in execution_context.get('priority_foreshadows', [])}
+    hint_character_ids = {
+        character_id
+        for hint in execution_context.get('progression_hints', [])
+        for character_id in hint.get('related_character_ids', [])
+    }
+    hint_foreshadow_ids = {
+        foreshadow_id
+        for hint in execution_context.get('progression_hints', [])
+        for foreshadow_id in hint.get('related_foreshadow_ids', [])
+    }
+    expected_character_ids = priority_character_ids | hint_character_ids
+    expected_foreshadow_ids = priority_foreshadow_ids | hint_foreshadow_ids
+    missing_character_ids = sorted(character_id for character_id in expected_character_ids - proposed_character_ids if character_id is not None)
+    missing_foreshadow_ids = sorted(foreshadow_id for foreshadow_id in expected_foreshadow_ids - proposed_foreshadow_ids if foreshadow_id is not None)
+    priority_has_gaps = bool(missing_character_ids or missing_foreshadow_ids)
+    checks.append(
+        _readiness_check(
+            'priority_coverage',
+            '优先项覆盖',
+            'warning' if priority_has_gaps else 'pass',
+            '部分优先角色、伏笔或推进提示未出现在拟提交变化中。' if priority_has_gaps else '优先角色、伏笔和推进提示已覆盖或无需覆盖。',
+            {
+                'missing_character_ids': missing_character_ids,
+                'missing_foreshadow_ids': missing_foreshadow_ids,
+                'proposed_character_ids': sorted(character_id for character_id in proposed_character_ids if character_id is not None),
+                'proposed_foreshadow_ids': sorted(foreshadow_id for foreshadow_id in proposed_foreshadow_ids if foreshadow_id is not None),
+            },
+        )
+    )
+
+    continuity_warnings = execution_context.get('continuity_warnings', [])
+    checks.append(
+        _readiness_check(
+            'continuity_warnings',
+            '连续性提醒',
+            'warning' if continuity_warnings else 'pass',
+            f'执行上下文包含 {len(continuity_warnings)} 条连续性提醒。' if continuity_warnings else '执行上下文未记录连续性提醒。',
+            continuity_warnings,
+        )
+    )
+
+    critic_report = chapter.critique_report or {}
+    if not critic_report:
+        checks.append(_readiness_check('critic_high_risk', 'Critic 高风险', 'warning', '尚未生成 Critic 报告。', {}))
+    elif _report_is_stale(critic_report, draft.draft_version):
+        checks.append(_readiness_check('critic_high_risk', 'Critic 高风险', 'warning', 'Critic 报告不是基于当前草稿版本。', critic_report))
+    else:
+        critic_high_issues = [issue for issue in critic_report.get('issues', []) if issue.get('severity') == 'high']
+        for issue in critic_high_issues:
+            high_risk_items.append(
+                {
+                    'source': 'critic',
+                    'severity': 'high',
+                    'message': issue.get('message', ''),
+                    'details': {'dimension': issue.get('dimension'), 'paragraph_index': issue.get('paragraph_index')},
+                }
+            )
+        checks.append(
+            _readiness_check(
+                'critic_high_risk',
+                'Critic 高风险',
+                'warning' if critic_high_issues else 'pass',
+                f'Critic 发现 {len(critic_high_issues)} 条高风险问题。' if critic_high_issues else 'Critic 未发现高风险问题。',
+                critic_high_issues,
+            )
+        )
+
+    arc_report = chapter.character_arc_report or {}
+    if not arc_report:
+        checks.append(_readiness_check('character_arc_risk', '角色弧线风险', 'warning', '尚未生成角色弧线报告。', {}))
+    elif _report_is_stale(arc_report, draft.draft_version):
+        checks.append(_readiness_check('character_arc_risk', '角色弧线风险', 'warning', '角色弧线报告不是基于当前草稿版本。', arc_report))
+    else:
+        high_arc_risks = [arc for arc in arc_report.get('character_arcs', []) if arc.get('continuity_risk') == 'high']
+        high_relation_risks = [note for note in arc_report.get('relationship_notes', []) if note.get('risk_level') == 'high']
+        for arc in high_arc_risks:
+            risk_reason = arc.get('risk_reason')
+            high_risk_items.append(
+                {
+                    'source': 'character_arc',
+                    'severity': 'high',
+                    'message': f"{arc.get('name', '角色')}：{risk_reason or '角色弧线存在高风险。'}",
+                    'details': {'character_id': arc.get('character_id'), 'risk_reason': risk_reason},
+                }
+            )
+        for note in high_relation_risks:
+            risk_reason = note.get('risk_reason')
+            high_risk_items.append(
+                {
+                    'source': 'character_arc',
+                    'severity': 'high',
+                    'message': f"{note.get('source_name', '角色')} → {note.get('target_name', '角色')}：{risk_reason or '关系推进存在高风险。'}",
+                    'details': {
+                        'source_character_id': note.get('source_character_id'),
+                        'target_character_id': note.get('target_character_id'),
+                        'risk_reason': risk_reason,
+                    },
+                }
+            )
+        arc_risk_count = len(high_arc_risks) + len(high_relation_risks)
+        checks.append(
+            _readiness_check(
+                'character_arc_risk',
+                '角色弧线风险',
+                'warning' if arc_risk_count else 'pass',
+                f'角色弧线报告发现 {arc_risk_count} 条高风险。' if arc_risk_count else '角色弧线报告未发现高风险。',
+                {'character_arcs': high_arc_risks, 'relationship_notes': high_relation_risks},
+            )
+        )
+
+    proposed_change_count = len(proposed_changes.get('characters', [])) + len(proposed_changes.get('foreshadows', []))
+    checks.append(
+        _readiness_check(
+            'proposed_changes',
+            '拟提交变化',
+            'pass' if proposed_change_count else 'warning',
+            f'草稿包含 {proposed_change_count} 条拟提交世界状态变化。' if proposed_change_count else '草稿未包含拟提交世界状态变化，请确认这是预期结果。',
+            {'count': proposed_change_count, 'proposed_changes': proposed_changes},
+        )
+    )
+
+    readiness_status, summary = _approval_readiness_summary(checks)
+    return {
+        'chapter_id': chapter.id,
+        'draft_version': draft.draft_version,
+        'status': readiness_status,
+        'summary': summary,
+        'world_version': {
+            'source_world_version': draft.source_world_version,
+            'current_world_version': world.world_version,
+            'matches': world_version_matches,
+        },
+        'checks': checks,
+        'high_risk_items': high_risk_items,
+    }
+
+
 def revise_chapter_paragraph(
     db: Session,
     user: User,

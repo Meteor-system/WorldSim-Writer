@@ -1,5 +1,6 @@
 from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
 from app.narrative import service as narrative_service
+from app.narrative.models import Chapter
 from app.world.models import World
 
 
@@ -148,3 +149,175 @@ def test_approve_rejects_world_version_mismatch(client, monkeypatch, db_session)
 
     assert response.status_code == 409
     assert response.json()['detail'] == 'WORLD_VERSION_MISMATCH'
+
+
+def readiness_execution_context(source_world_version: int = 1) -> dict:
+    return {
+        'source': 'next_chapter_prep',
+        'source_world_version': source_world_version,
+        'next_chapter_number': 1,
+        'goal': '推进玉佩线索',
+        'recommended_pov': {'character_id': 1, 'name': '林砚'},
+        'source_signals': ['character_arc_progression_hint'],
+        'priority_characters': [
+            {'character_id': 1, 'name': '林砚', 'role_type': 'protagonist', 'status': 'active', 'reason': '主角需要推进'}
+        ],
+        'priority_foreshadows': [
+            {'foreshadow_id': 1, 'title': '裂纹玉佩', 'status': 'planted', 'urgency_level': 3, 'reason': '伏笔需要推进'}
+        ],
+        'progression_hints': [
+            {
+                'hint_type': 'character',
+                'priority': 'high',
+                'title': '追查玉佩来源',
+                'rationale': '上一章已经设置玉佩线索',
+                'suggested_next_beat': '林砚带着玉佩询问沈微霜',
+                'related_character_ids': [1],
+                'related_foreshadow_ids': [1],
+                'can_seed_next_chapter_goal': True,
+            }
+        ],
+        'continuity_warnings': [],
+        'recent_events': [],
+    }
+
+
+def add_current_review_reports(db_session, chapter_id: int, high_risk: bool = False) -> None:
+    chapter = db_session.get(Chapter, chapter_id)
+    assert chapter is not None
+    critic_issue = {
+        'severity': 'high' if high_risk else 'medium',
+        'dimension': 'character_consistency',
+        'message': '林砚突然信任沈微霜，与当前谨慎状态冲突。',
+        'paragraph_index': 0,
+        'suggested_action': '补足信任建立过程。',
+    }
+    chapter.critique_report = {
+        'chapter_id': chapter.id,
+        'draft_version': chapter.draft_version,
+        'current_draft_version': chapter.draft_version,
+        'is_stale': False,
+        'overall_score': 82,
+        'summary': '整体可批准。',
+        'dimensions': {},
+        'issues': [critic_issue] if high_risk else [],
+        'suggestions': [],
+        'created_at': '2026-05-30T00:00:00Z',
+    }
+    chapter.character_arc_report = {
+        'chapter_id': chapter.id,
+        'draft_version': chapter.draft_version,
+        'current_draft_version': chapter.draft_version,
+        'is_stale': False,
+        'summary': '角色弧线连续。',
+        'character_arcs': [
+            {
+                'character_id': 1,
+                'name': '林砚',
+                'continuity_risk': 'high' if high_risk else 'low',
+                'risk_reason': '选择转折缺少铺垫。' if high_risk else None,
+            }
+        ],
+        'relationship_notes': [],
+        'progression_hints': [],
+        'created_at': '2026-05-30T00:00:00Z',
+    }
+    db_session.commit()
+
+
+def test_approval_readiness_ready_when_all_checks_pass(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索', 'execution_context': readiness_execution_context()},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+    add_current_review_reports(db_session, draft['chapter_id'])
+
+    response = client.get(f"/chapters/{draft['chapter_id']}/approval-readiness", headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'ready'
+    assert body['summary'] == '草稿已通过所有审批准备检查。'
+    assert body['world_version']['matches'] is True
+    assert {check['status'] for check in body['checks']} == {'pass'}
+
+
+def test_approval_readiness_blocks_world_version_mismatch(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索', 'execution_context': readiness_execution_context()},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+    world = db_session.get(World, world_id)
+    world.world_version = 2
+    db_session.commit()
+
+    response = client.get(f"/chapters/{draft['chapter_id']}/approval-readiness", headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'blocked'
+    version_check = next(check for check in body['checks'] if check['key'] == 'world_version')
+    assert version_check['status'] == 'fail'
+    assert version_check['message'] == '世界版本已变化，请重新生成草稿后再批准。'
+
+
+def test_approval_readiness_needs_review_for_missing_reports_and_uncovered_priorities(client, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    context = readiness_execution_context()
+    context['priority_characters'].append(
+        {'character_id': 2, 'name': '沈微霜', 'role_type': 'ally', 'status': 'active', 'reason': '需要回应主角试探'}
+    )
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索', 'execution_context': context},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+
+    response = client.get(f"/chapters/{draft['chapter_id']}/approval-readiness", headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'needs_review'
+    priority_check = next(check for check in body['checks'] if check['key'] == 'priority_coverage')
+    assert priority_check['status'] == 'warning'
+    assert priority_check['details']['missing_character_ids'] == [2]
+    assert next(check for check in body['checks'] if check['key'] == 'critic_high_risk')['status'] == 'warning'
+    assert next(check for check in body['checks'] if check['key'] == 'character_arc_risk')['status'] == 'warning'
+
+
+def test_approval_readiness_reports_high_risk_items(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索', 'execution_context': readiness_execution_context()},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+    add_current_review_reports(db_session, draft['chapter_id'], high_risk=True)
+
+    response = client.get(f"/chapters/{draft['chapter_id']}/approval-readiness", headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['status'] == 'needs_review'
+    assert body['high_risk_items'] == [
+        {
+            'source': 'critic',
+            'severity': 'high',
+            'message': '林砚突然信任沈微霜，与当前谨慎状态冲突。',
+            'details': {'dimension': 'character_consistency', 'paragraph_index': 0},
+        },
+        {
+            'source': 'character_arc',
+            'severity': 'high',
+            'message': '林砚：选择转折缺少铺垫。',
+            'details': {'character_id': 1, 'risk_reason': '选择转折缺少铺垫。'},
+        },
+    ]

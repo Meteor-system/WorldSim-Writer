@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createChapter, generateCharacterArcReport, writeChapter } from '../api/client';
+import { createChapter, generateCharacterArcReport, getApprovalReadiness, writeChapter } from '../api/client';
 import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -181,6 +181,18 @@ vi.mock('../api/client', () => ({
       { foreshadow_id: 1, title: '裂纹玉佩', before: { status: 'planted' }, after: { status: 'advanced', description: '审核备注：湿信推进玉佩线索' } },
     ],
   })),
+  getApprovalReadiness: vi.fn(async () => ({
+    chapter_id: 11,
+    draft_version: 1,
+    status: 'needs_review',
+    summary: '存在建议复核项，请确认后再批准。',
+    world_version: { source_world_version: 1, current_world_version: 1, matches: true },
+    checks: [
+      { key: 'world_version', label: '世界版本一致', status: 'pass', message: '草稿基于当前世界版本。', details: {} },
+      { key: 'critic_high_risk', label: 'Critic 高风险', status: 'warning', message: '尚未生成 Critic 报告。', details: {} },
+    ],
+    high_risk_items: [],
+  })),
 }));
 
 const world: WorldOverview = {
@@ -206,6 +218,7 @@ const world: WorldOverview = {
 afterEach(() => {
   cleanup();
   vi.mocked(writeChapter).mockClear();
+  vi.mocked(getApprovalReadiness).mockClear();
 });
 
 describe('StudioPage Review Studio 2.0 controls', () => {
@@ -301,6 +314,10 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('版本差异')).toBeInTheDocument();
     expect(screen.getByText('通过后将提交')).toBeInTheDocument();
     expect(screen.getByText('世界版本：1 → 2')).toBeInTheDocument();
+    expect(screen.getByText('Approval Readiness')).toBeInTheDocument();
+    expect(screen.getByText('建议复核后批准')).toBeInTheDocument();
+    expect(screen.getByText('Critic 高风险')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '通过并更新世界' })).toBeEnabled();
 
     await user.click(screen.getByRole('button', { name: '生成 Critic 报告' }));
     expect(await screen.findByText('总评分：78/100')).toBeInTheDocument();
@@ -340,9 +357,36 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.click(screen.getByRole('button', { name: '生成角色弧线报告' }));
 
     expect(generateCharacterArcReport).toHaveBeenCalledWith(11);
+    expect(getApprovalReadiness).toHaveBeenCalledTimes(2);
     expect(await screen.findByText('角色弧线报告')).toBeInTheDocument();
     expect(screen.getByText('本章推动林砚从被动等待转向主动追查湿信来源。')).toBeInTheDocument();
     expect(screen.getByText('林砚 · protagonist')).toBeInTheDocument();
     expect(screen.getByText('让林砚做出是否相信沈微霜的选择')).toBeInTheDocument();
+  });
+
+  it('shows blocked approval readiness without changing approve controls', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getApprovalReadiness).mockResolvedValueOnce({
+      chapter_id: 11,
+      draft_version: 1,
+      status: 'blocked',
+      summary: '存在阻塞项，暂不可批准。',
+      world_version: { source_world_version: 1, current_world_version: 2, matches: false },
+      checks: [
+        { key: 'world_version', label: '世界版本一致', status: 'fail', message: '世界版本已变化，请重新生成草稿后再批准。', details: {} },
+      ],
+      high_risk_items: [],
+    });
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+
+    expect(await screen.findByText('暂不可批准')).toBeInTheDocument();
+    expect(screen.getByText('世界版本：v1 → v2')).toBeInTheDocument();
+    expect(screen.getByText('世界版本已变化，请重新生成草稿后再批准。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '通过并更新世界' })).toBeEnabled();
   });
 });
