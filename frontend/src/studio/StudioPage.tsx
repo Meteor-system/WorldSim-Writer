@@ -16,7 +16,7 @@ import type { ApprovalPreviewResponse, BeatCard, ChapterPipelineResponse, Charac
 import { CharacterArcPanel } from './CharacterArcPanel';
 import { CriticReportPanel } from './CriticReportPanel';
 
-type Props = { world: WorldOverview; onBack: () => void; onApproved: (world: WorldOverview) => void };
+type Props = { world: WorldOverview; initialChapterGoal?: string; onBack: () => void; onApproved: (world: WorldOverview) => void };
 
 function dialogueToText(beat: BeatCard): string {
   return beat.key_dialogue_hints.join('\n');
@@ -29,8 +29,8 @@ function textToDialogue(value: string): string[] {
     .filter(Boolean);
 }
 
-export function StudioPage({ world, onBack, onApproved }: Props) {
-  const [goal, setGoal] = useState('');
+export function StudioPage({ world, initialChapterGoal, onBack, onApproved }: Props) {
+  const [goal, setGoal] = useState(initialChapterGoal ?? '');
   const [chapter, setChapter] = useState<ChapterPipelineResponse | null>(null);
   const [outlineBeats, setOutlineBeats] = useState<BeatCard[]>([]);
   const [outlineContext, setOutlineContext] = useState<Record<string, unknown>>({});
@@ -53,11 +53,11 @@ export function StudioPage({ world, onBack, onApproved }: Props) {
   }, []);
 
   useEffect(() => {
-    if (chapter || goal.trim().length > 0) return;
+    if (initialChapterGoal || chapter || goal.trim().length > 0) return;
     const nextChapterNumber = world.approved_chapter_count + 1;
     const nextArcChapter = world.story_arc.find((item) => item.chapter_number === nextChapterNumber);
     if (nextArcChapter) setGoal(nextArcChapter.summary);
-  }, [chapter, goal, world.approved_chapter_count, world.story_arc]);
+  }, [chapter, goal, initialChapterGoal, world.approved_chapter_count, world.story_arc]);
 
   useEffect(() => {
     if (draft) draftTitleRef.current?.focus();

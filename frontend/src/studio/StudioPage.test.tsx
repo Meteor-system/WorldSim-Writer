@@ -193,6 +193,26 @@ afterEach(() => {
 });
 
 describe('StudioPage Review Studio 2.0 controls', () => {
+  it('initializes the chapter goal from initialChapterGoal and keeps it editable', async () => {
+    const user = userEvent.setup();
+    render(
+      <StudioPage
+        world={{ ...world, story_arc: [{ chapter_number: 1, title: '备用大纲', summary: '不应覆盖初始目标', core_conflict: '冲突', pov_suggestion: '林砚', foreshadow_hints: [] }] }}
+        initialChapterGoal="林砚带着湿信赴城主府外墙，并设置一次试探。"
+        onBack={vi.fn()}
+        onApproved={vi.fn()}
+      />,
+    );
+
+    const goal = screen.getByLabelText('章节目标');
+    expect(goal).toHaveValue('林砚带着湿信赴城主府外墙，并设置一次试探。');
+    expect(goal).not.toHaveValue('不应覆盖初始目标');
+
+    await user.clear(goal);
+    await user.type(goal, '用户修改后的下一章目标');
+    expect(goal).toHaveValue('用户修改后的下一章目标');
+  });
+
   it('renders version selector, stash, paragraph controls, diff, and approval preview after drafting', async () => {
     const user = userEvent.setup();
     render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);

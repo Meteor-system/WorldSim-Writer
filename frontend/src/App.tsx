@@ -4,15 +4,23 @@ import { AuthPage } from './auth/AuthPage';
 import { StudioPage } from './studio/StudioPage';
 import { WorldPage } from './world/WorldPage';
 
+type EnterStudioOptions = { initialChapterGoal?: string };
+
 export function App() {
   const [userEmail, setUserEmail] = useState(localStorage.getItem('worldsim_token') ? '已登录用户' : '');
   const [studioWorld, setStudioWorld] = useState<WorldOverview | null>(null);
+  const [studioInitialGoal, setStudioInitialGoal] = useState('');
   const [approvedWorld, setApprovedWorld] = useState<WorldOverview | null>(null);
   const successRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (approvedWorld) successRef.current?.focus();
   }, [approvedWorld]);
+
+  function enterStudio(world: WorldOverview, options?: EnterStudioOptions) {
+    setStudioWorld(world);
+    setStudioInitialGoal(options?.initialChapterGoal ?? '');
+  }
 
   if (!userEmail) return <AuthPage onAuth={setUserEmail} />;
 
@@ -21,10 +29,15 @@ export function App() {
       <main className="book-app">
         <StudioPage
           world={studioWorld}
-          onBack={() => setStudioWorld(null)}
+          initialChapterGoal={studioInitialGoal}
+          onBack={() => {
+            setStudioWorld(null);
+            setStudioInitialGoal('');
+          }}
           onApproved={(world) => {
             setApprovedWorld(world);
             setStudioWorld(null);
+            setStudioInitialGoal('');
           }}
         />
       </main>
@@ -39,7 +52,7 @@ export function App() {
           <span>{userEmail}</span>
         </header>
         {approvedWorld && <div ref={successRef} tabIndex={-1} className="paper-success px-6 py-3" role="status" aria-live="polite">章节已通过，世界版本更新为 {approvedWorld.world_version}</div>}
-        <WorldPage onEnterStudio={setStudioWorld} autoFocusTitle={!approvedWorld} />
+        <WorldPage onEnterStudio={enterStudio} autoFocusTitle={!approvedWorld} />
       </div>
     </main>
   );
