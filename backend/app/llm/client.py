@@ -312,6 +312,16 @@ class LLMClient:
             return ChapterGeneration.model_validate(mock_data)
         return parse_chapter_generation(self._post_json(messages, temperature=0.7))
 
+    def revise_chapter(self, messages: list[dict[str, str]]) -> ChapterGeneration:
+        if self.mock:
+            mock_data = dict(MOCK_CHAPTER)
+            mock_data['title'] = f"{mock_data['title']}（修订版）"
+            mock_data['draft_content'] = f"修订版：{mock_data['draft_content']}"
+            mock_data['context_summary'] = '根据审稿意见和人工指令完成整稿修订。'
+            mock_data['review_hints'] = ['重新生成 Critic 报告确认修订效果']
+            return ChapterGeneration.model_validate(mock_data)
+        return parse_chapter_generation(self._post_json(messages, temperature=0.6))
+
     def suggest_goal(self, messages: list[dict[str, str]]) -> dict:
         if self.mock:
             return {'goal': '主角在旧工业区偶遇关键人物，通过一场意外对话揭开隐藏在身份背后的秘密，并决定下一步行动。'}

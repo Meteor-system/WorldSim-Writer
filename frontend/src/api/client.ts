@@ -27,6 +27,7 @@ import type {
   NextChapterPrepResponse,
   OutlineResponse,
   ParagraphReviseRequest,
+  ReviseDraftRequest,
   StaleForeshadow,
   StoryArcResponse,
   WorldCreateRequest,
@@ -143,6 +144,17 @@ export function reviseParagraph(chapterId: number, data: ParagraphReviseRequest)
     method: 'POST',
     body: JSON.stringify(data),
   });
+}
+
+export function reviseDraft(chapterId: number, data: ReviseDraftRequest) {
+  return apiRequest<DraftResponse>(`/chapters/${chapterId}/draft/revise`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function getDraftVersion(chapterId: number, draftVersion: number) {
+  return apiRequest<DraftResponse>(`/chapters/${chapterId}/drafts/${draftVersion}`);
 }
 
 export function getDraftDiff(chapterId: number, fromVersion: number, toVersion: number) {

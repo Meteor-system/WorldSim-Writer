@@ -1120,6 +1120,122 @@ def get_approval_readiness(db: Session, user: User, chapter_id: int) -> dict:
     }
 
 
+def _jsonish(value) -> str:
+    return str(value or {})
+
+
+def _approval_readiness_for_revision(db: Session, user: User, chapter_id: int) -> dict:
+    try:
+        return get_approval_readiness(db, user, chapter_id)
+    except HTTPException:
+        return {}
+
+
+def build_revision_messages(
+    world: World,
+    characters: list[Character],
+    foreshadows: list[Foreshadow],
+    chapter: Chapter,
+    draft: ChapterDraft,
+    approval_readiness: dict,
+    instruction: str,
+) -> list[dict[str, str]]:
+    character_lines = '\n'.join(f'- {c.id}: {c.name}, status={c.status}, goals={c.current_goals}' for c in characters)
+    foreshadow_lines = '\n'.join(
+        f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}, description={f.description}' for f in foreshadows
+    )
+    return [
+        {
+            'role': 'system',
+            'content': (
+                '你是 WorldSim-Writer 的 Draft Revision Agent。必须只返回合法 JSON，字段结构与 Writer Agent 相同：'
+                '{"title":"章节标题","draft_content":"完整修订后正文","context_summary":"摘要",'
+                '"review_hints":["提示"],'
+                '"proposed_character_changes":[{"character_id":整数,"status":"新状态","current_goals":["目标"]}],'
+                '"proposed_foreshadow_changes":[{"foreshadow_id":整数,"status":"advanced|resolved|expired","description_note":"备注"}]}。'
+                '你必须输出完整新版正文，不要输出 diff、patch 或说明文字。'
+                '拟提交变化只是草稿建议，不能自动提交世界状态。不要编造不存在的角色 ID 或伏笔 ID。'
+            ),
+        },
+        {
+            'role': 'user',
+            'content': (
+                f'世界设定：{world.truth_canon}\n'
+                f'世界版本：{world.world_version}\n'
+                f'角色：\n{character_lines}\n'
+                f'伏笔：\n{foreshadow_lines}\n'
+                f'章节标题：{chapter.title}\n'
+                f'章节目标：{chapter.chapter_goal or chapter.title}\n'
+                f'{format_execution_context_for_prompt(draft.execution_context or chapter.execution_context)}'
+                f'Outliner上下文：{_jsonish(chapter.outline_context)}\n'
+                f'Outliner节拍：{_jsonish(chapter.outline_beats)}\n'
+                f'当前草稿版本：v{draft.draft_version}\n'
+                f'当前草稿拟提交变化：{_jsonish(draft.proposed_changes)}\n'
+                f'当前正文：\n{draft.content}\n'
+                f'Critic报告：{_jsonish(chapter.critique_report)}\n'
+                f'角色弧线报告：{_jsonish(chapter.character_arc_report)}\n'
+                f'审批准备度：{_jsonish(approval_readiness)}\n'
+                f'人工修订指令：{instruction.strip()}\n'
+                '请根据人工修订指令、Critic问题、角色弧线风险和审批准备度，生成完整修订版章节正文。'
+            ),
+        },
+    ]
+
+
+def revise_chapter_draft(
+    db: Session,
+    user: User,
+    chapter_id: int,
+    instruction: str,
+    llm_client: LLMClient | None = None,
+) -> dict:
+    chapter = _require_owned_chapter(db, user, chapter_id)
+    if chapter.status == 'approved':
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
+    draft = _latest_draft(db, chapter)
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    world = db.get(World, chapter.world_id)
+    assert world is not None
+    characters, foreshadows = _load_world_context(db, world)
+    readiness = _approval_readiness_for_revision(db, user, chapter.id)
+    client = _model_client(llm_client)
+    try:
+        generation = client.revise_chapter(
+            build_revision_messages(world, characters, foreshadows, chapter, draft, readiness, instruction)
+        )
+    except (TimeoutError, ValueError, RuntimeError) as exc:
+        raise _map_model_error(exc) from exc
+    validate_generation_ids(generation, characters, foreshadows)
+
+    proposed_changes = {
+        'characters': [change.model_dump(exclude_none=True) for change in generation.proposed_character_changes],
+        'foreshadows': [change.model_dump(exclude_none=True) for change in generation.proposed_foreshadow_changes],
+    }
+    new_draft = _create_draft_version(db, chapter, draft, generation.draft_content, 'revision', instruction.strip())
+    chapter.title = generation.title
+    chapter.status = 'reviewing'
+    new_draft.context_summary = generation.context_summary
+    new_draft.review_hints = generation.review_hints
+    new_draft.proposed_changes = proposed_changes
+    db.commit()
+    db.refresh(chapter)
+    db.refresh(new_draft)
+    return _draft_payload(chapter, new_draft)
+
+
+def get_chapter_draft_version(db: Session, user: User, chapter_id: int, draft_version: int) -> dict:
+    chapter = _require_owned_chapter(db, user, chapter_id)
+    draft = db.scalar(
+        select(ChapterDraft)
+        .where(ChapterDraft.chapter_id == chapter.id)
+        .where(ChapterDraft.draft_version == draft_version)
+    )
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    return _draft_payload(chapter, draft)
+
+
 def revise_chapter_paragraph(
     db: Session,
     user: User,

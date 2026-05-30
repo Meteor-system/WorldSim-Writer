@@ -13,7 +13,9 @@ import {
   getCriticReport,
   getNextChapterPrep,
   getDraftDiff,
+  getDraftVersion,
   getRelations,
+  reviseDraft,
   reviseParagraph,
   stashDraft,
   updateRelation,
@@ -114,17 +116,21 @@ describe('draft versioning API helpers', () => {
     vi.restoreAllMocks();
   });
 
-  it('calls draft stash, paragraph revision, diff, and approval preview endpoints', async () => {
+  it('calls draft stash, paragraph revision, full revision, exact version, diff, and approval preview endpoints', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ draft_version: 2 }))
       .mockResolvedValueOnce(jsonResponse({ draft_version: 3 }))
+      .mockResolvedValueOnce(jsonResponse({ draft_version: 4 }))
+      .mockResolvedValueOnce(jsonResponse({ draft_version: 1 }))
       .mockResolvedValueOnce(jsonResponse({ diff_lines: [] }))
       .mockResolvedValueOnce(jsonResponse({ version_conflict: false }));
     vi.stubGlobal('fetch', fetchMock);
 
     await stashDraft(11, { note: '暂存当前草稿' });
     await reviseParagraph(11, { paragraph_index: 1, mode: 'rewrite', instruction: '增强悬念' });
+    await reviseDraft(11, { instruction: '补足试探过程' });
+    await getDraftVersion(11, 1);
     await getDraftDiff(11, 1, 3);
     await getApprovalPreview(11);
 
@@ -141,8 +147,14 @@ describe('draft versioning API helpers', () => {
         body: JSON.stringify({ paragraph_index: 1, mode: 'rewrite', instruction: '增强悬念' }),
       }),
     );
-    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8000/chapters/11/drafts/diff?from=1&to=3', expect.any(Object));
-    expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://localhost:8000/chapters/11/approval-preview', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:8000/chapters/11/draft/revise',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ instruction: '补足试探过程' }) }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://localhost:8000/chapters/11/drafts/1', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, 'http://localhost:8000/chapters/11/drafts/diff?from=1&to=3', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, 'http://localhost:8000/chapters/11/approval-preview', expect.any(Object));
   });
 
   it('calls critic report generate and fetch endpoints', async () => {

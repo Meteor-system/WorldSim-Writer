@@ -533,6 +533,10 @@ export type ParagraphReviseRequest = {
   instruction?: string;
 };
 
+export type ReviseDraftRequest = {
+  instruction: string;
+};
+
 export type DraftDiffLine = {
   type: 'added' | 'removed' | 'unchanged';
   text: string;

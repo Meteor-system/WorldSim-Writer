@@ -1,5 +1,6 @@
 from sqlalchemy import select
 
+from app.event.models import EventLog
 from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter, ChapterDraft
@@ -30,6 +31,22 @@ class DraftVersioningLLMClient:
                 'revision_note': '增强第二段的悬念与人物试探。',
             },
         )()
+
+    def revise_chapter(self, messages):
+        self.revision_messages = messages
+        joined = '\n'.join(message['content'] for message in messages)
+        return ChapterGeneration(
+            title='第一章 雨巷密谈（修订版）',
+            draft_content=f'修订版正文：{joined[:24]}',
+            context_summary='根据审稿意见强化林砚的试探过程。',
+            review_hints=['确认修订后 Critic 高风险是否解除'],
+            proposed_character_changes=[
+                ProposedCharacterChange(character_id=1, status='谨慎试探沈微霜', current_goals=['验证湿信来源'])
+            ],
+            proposed_foreshadow_changes=[
+                ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='修订版继续推进玉佩线索')
+            ],
+        )
 
 
 def register_and_create_world(client):
@@ -213,3 +230,159 @@ def test_approval_preview_describes_world_state_changes_before_commit(client, mo
     assert foreshadow_change['before']['status'] == 'planted'
     assert foreshadow_change['after']['status'] == 'advanced'
     assert '湿信推进玉佩线索' in foreshadow_change['after']['description']
+
+
+def test_full_draft_revision_creates_new_version_from_review_context_without_mutating_world(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    fake_client = DraftVersioningLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: fake_client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: fake_client)
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    chapter.critique_report = {
+        'chapter_id': chapter.id,
+        'draft_version': 1,
+        'current_draft_version': 1,
+        'is_stale': False,
+        'overall_score': 71,
+        'summary': '人物信任转折过快。',
+        'dimensions': {},
+        'issues': [
+            {
+                'severity': 'high',
+                'dimension': 'character_consistency',
+                'message': '林砚突然信任沈微霜。',
+                'paragraph_index': 0,
+                'suggested_action': '补足试探。',
+            }
+        ],
+        'suggestions': ['增加试探动作。'],
+        'created_at': '2026-05-30T00:00:00Z',
+    }
+    chapter.character_arc_report = {
+        'chapter_id': chapter.id,
+        'draft_version': 1,
+        'current_draft_version': 1,
+        'is_stale': False,
+        'summary': '角色弧线需要补足选择铺垫。',
+        'character_arcs': [
+            {
+                'character_id': 1,
+                'name': '林砚',
+                'continuity_risk': 'high',
+                'risk_reason': '选择缺少铺垫。',
+                'suggested_revision': '加入试探沈微霜。',
+            }
+        ],
+        'relationship_notes': [],
+        'progression_hints': [],
+        'created_at': '2026-05-30T00:00:00Z',
+    }
+    db_session.commit()
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/draft/revise",
+        json={'instruction': '保留雨巷会面，但补足林砚试探沈微霜的过程。'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['draft_version'] == 2
+    assert payload['parent_draft_version'] == 1
+    assert payload['change_type'] == 'revision'
+    assert payload['change_summary'] == '保留雨巷会面，但补足林砚试探沈微霜的过程。'
+    assert payload['title'] == '第一章 雨巷密谈（修订版）'
+    assert payload['proposed_changes']['characters'][0]['status'] == '谨慎试探沈微霜'
+
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    drafts = get_drafts_for_chapter(db_session, draft['chapter_id'])
+    event_count = db_session.query(EventLog).filter_by(world_id=world_id).count()
+
+    assert world.world_version == 1
+    assert chapter.draft_version == 2
+    assert chapter.status == 'reviewing'
+    assert [item.draft_version for item in drafts] == [1, 2]
+    assert drafts[0].content == draft['content']
+    assert drafts[1].change_type == 'revision'
+    assert event_count == 0
+
+    joined_messages = '\n'.join(message['content'] for message in fake_client.revision_messages)
+    assert '保留雨巷会面，但补足林砚试探沈微霜的过程。' in joined_messages
+    assert '人物信任转折过快。' in joined_messages
+    assert '角色弧线需要补足选择铺垫。' in joined_messages
+    assert '存在建议复核项，请确认后再批准。' in joined_messages
+    assert '本章执行上下文' in joined_messages
+
+
+def test_get_exact_draft_version_returns_requested_version(client, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    edited_content = (
+        '第一段：林砚停在雨巷口，掌心的玉佩微微发烫。\n\n'
+        '第二段：沈微霜递来一封湿透的信。\n\n'
+        '第三段：远处城主府钟声响起。'
+    )
+    client.put(
+        f"/chapters/{draft['chapter_id']}/draft",
+        json={'content': edited_content, 'change_summary': '强化第一段玉佩反应'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    first = client.get(f"/chapters/{draft['chapter_id']}/drafts/1", headers={'Authorization': f'Bearer {token}'})
+    second = client.get(f"/chapters/{draft['chapter_id']}/drafts/2", headers={'Authorization': f'Bearer {token}'})
+    missing = client.get(f"/chapters/{draft['chapter_id']}/drafts/99", headers={'Authorization': f'Bearer {token}'})
+
+    assert first.status_code == 200
+    assert first.json()['draft_version'] == 1
+    assert first.json()['content'] == draft['content']
+    assert second.status_code == 200
+    assert second.json()['draft_version'] == 2
+    assert second.json()['content'] == edited_content
+    assert missing.status_code == 404
+
+
+def test_revision_rejects_approved_chapter(client, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    approve = client.post(f"/chapters/{draft['chapter_id']}/approve", headers={'Authorization': f'Bearer {token}'})
+    assert approve.status_code == 200
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/draft/revise",
+        json={'instruction': '批准后不允许再修订。'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 409
+    assert response.json()['detail'] == 'ALREADY_APPROVED'
+
+
+def test_revision_rejects_model_changes_for_unknown_ids(client, monkeypatch):
+    class InvalidRevisionLLM(DraftVersioningLLMClient):
+        def revise_chapter(self, messages):
+            return ChapterGeneration(
+                title='错误修订版',
+                draft_content='错误修订正文。',
+                context_summary='包含不存在角色。',
+                review_hints=[],
+                proposed_character_changes=[ProposedCharacterChange(character_id=999, status='不存在')],
+                proposed_foreshadow_changes=[],
+            )
+
+    token, world_id = register_and_create_world(client)
+    invalid_client = InvalidRevisionLLM()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: invalid_client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: invalid_client)
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/draft/revise",
+        json={'instruction': '触发非法角色 ID。'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 502
+    assert response.json()['detail'] == 'MODEL_RESPONSE_INVALID'

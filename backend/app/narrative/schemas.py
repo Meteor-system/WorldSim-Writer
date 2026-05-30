@@ -127,6 +127,10 @@ class ParagraphDraftRequest(BaseModel):
     instruction: str | None = None
 
 
+class ReviseDraftRequest(BaseModel):
+    instruction: str = Field(min_length=3)
+
+
 class ChapterPipelineResponse(BaseModel):
     id: int
     world_id: int

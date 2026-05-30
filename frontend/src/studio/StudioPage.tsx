@@ -8,6 +8,8 @@ import {
   getApprovalPreview,
   getApprovalReadiness,
   getDraftDiff,
+  getDraftVersion,
+  reviseDraft,
   reviseParagraph,
   stashDraft,
   suggestGoal,
@@ -98,6 +100,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [approvalReadiness, setApprovalReadiness] = useState<ApprovalReadinessResponse | null>(null);
   const [critique, setCritique] = useState<CriticReportResponse | null>(null);
   const [characterArcReport, setCharacterArcReport] = useState<CharacterArcReportResponse | null>(null);
+  const [latestDraftVersion, setLatestDraftVersion] = useState<number | null>(null);
+  const [revisionInstruction, setRevisionInstruction] = useState('');
   const [working, setWorking] = useState(false);
   const [suggestingGoal, setSuggestingGoal] = useState(false);
   const [error, setError] = useState('');
@@ -139,7 +143,10 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
 
   async function refreshReviewStudioPanels(nextDraft: DraftResponse) {
     const version = resolveDraftVersion(nextDraft);
-    setDraftVersions((versions) => Array.from(new Set([...versions, version])).sort((a, b) => a - b));
+    const knownVersions = [version];
+    if (nextDraft.parent_draft_version) knownVersions.push(nextDraft.parent_draft_version);
+    setDraftVersions((versions) => Array.from(new Set([...versions, ...knownVersions])).sort((a, b) => a - b));
+    setLatestDraftVersion((current) => Math.max(current ?? version, version));
     try {
       const preview = await getApprovalPreview(nextDraft.chapter_id);
       setApprovalPreview(preview);
@@ -231,6 +238,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       const nextDraft = normalizeDraft(await writeChapter(chapter.id, { outline_beats: outlineBeats }));
       setDraft(nextDraft);
       setDraftVersions([nextDraft.draft_version]);
+      setLatestDraftVersion(nextDraft.draft_version);
       await refreshReviewStudioPanels(nextDraft);
       setCritique(null);
       setCharacterArcReport(null);
@@ -287,6 +295,11 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     } finally {
       setWorking(false);
     }
+  }
+
+  function isViewingLatestDraft(): boolean {
+    if (!draft) return false;
+    return latestDraftVersion === null || resolveDraftVersion(draft) === latestDraftVersion;
   }
 
   function useHintAsGoal(nextGoal: string) {
@@ -392,6 +405,60 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setCharacterArcReport(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '段落修订失败');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function runFullDraftRevision() {
+    if (!draft) return;
+    const instruction = revisionInstruction.trim();
+    if (instruction.length < 3) {
+      setError('修订指令至少需要3个字符');
+      return;
+    }
+    setWorking(true);
+    setError('');
+    try {
+      const updated = normalizeDraft(await reviseDraft(draft.chapter_id, { instruction }));
+      setDraft(updated);
+      await refreshReviewStudioPanels(updated);
+      setRevisionInstruction('');
+      setCritique(null);
+      setCharacterArcReport(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成修订版失败');
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function switchDraftVersion(value: string) {
+    if (!draft) return;
+    const selected = Number(value);
+    if (!Number.isFinite(selected) || selected === resolveDraftVersion(draft)) return;
+    setWorking(true);
+    setError('');
+    try {
+      const selectedDraft = normalizeDraft(await getDraftVersion(draft.chapter_id, selected));
+      setDraft(selectedDraft);
+      if (selectedDraft.parent_draft_version) {
+        try {
+          setDraftDiff(await getDraftDiff(selectedDraft.chapter_id, selectedDraft.parent_draft_version, selectedDraft.draft_version));
+        } catch {
+          setDraftDiff(null);
+        }
+      } else if (latestDraftVersion && selectedDraft.draft_version !== latestDraftVersion) {
+        try {
+          setDraftDiff(await getDraftDiff(selectedDraft.chapter_id, selectedDraft.draft_version, latestDraftVersion));
+        } catch {
+          setDraftDiff(null);
+        }
+      } else {
+        setDraftDiff(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '切换草稿版本失败');
     } finally {
       setWorking(false);
     }
@@ -506,14 +573,36 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                 <div className="mt-4 flex flex-wrap items-end gap-3">
                   <label className="block">
                     <span className="text-sm font-bold text-[#5e3b1c]">草稿版本</span>
-                    <select className="paper-input mt-1" aria-label="草稿版本" value={resolveDraftVersion(draft)} onChange={() => undefined}>
+                    <select className="paper-input mt-1" aria-label="草稿版本" value={resolveDraftVersion(draft)} onChange={(event) => void switchDraftVersion(event.target.value)}>
                       {draftVersions.map((version) => <option key={`draft-version-${version}`} value={version}>v{version}</option>)}
                     </select>
                   </label>
-                  <button className="secondary-button" disabled={working} onClick={saveStash}>暂存当前草稿</button>
+                  <button className="secondary-button" disabled={working || !isViewingLatestDraft()} onClick={saveStash}>暂存当前草稿</button>
                   {draft.change_summary && <p className="manuscript text-sm">最近修改：{draft.change_summary}</p>}
                 </div>
               </div>
+              <section className="space-y-3 rounded-2xl border border-amber-900/15 bg-amber-50/45 p-4">
+                <div>
+                  <p className="chapter-kicker">Draft Revision Loop</p>
+                  <h3 className="font-black text-[#3b2511]">整稿修订</h3>
+                  <p className="manuscript mt-2 text-sm">当前草稿：v{resolveDraftVersion(draft)}</p>
+                  {draft.parent_draft_version && <p className="manuscript mt-1 text-sm">父版本：v{draft.parent_draft_version}</p>}
+                  <p className="manuscript mt-1 text-sm">修订类型：{draft.change_type}</p>
+                </div>
+                <label className="block">
+                  <span className="text-sm font-semibold text-[#4a321e]">修订指令</span>
+                  <textarea
+                    className="paper-input mt-1 min-h-24"
+                    aria-label="修订指令"
+                    value={revisionInstruction}
+                    onChange={(event) => setRevisionInstruction(event.target.value)}
+                    placeholder="例如：保留雨巷会面，但补足林砚试探沈微霜的过程。"
+                    disabled={working || !isViewingLatestDraft()}
+                  />
+                </label>
+                <button className="secondary-button" disabled={working || !isViewingLatestDraft()} onClick={runFullDraftRevision}>生成修订版</button>
+                {!isViewingLatestDraft() && <p className="paper-error">正在查看历史版本，切回最新版本后才能批准。</p>}
+              </section>
               {draft.rejection_feedback && (
                 <div className="rounded-2xl border-2 border-red-400 bg-red-50 p-4">
                   <h3 className="font-black text-red-900">驳回反馈</h3>
@@ -538,8 +627,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                     <div key={`${index}-${paragraph.slice(0, 24)}`} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
                       <p className="manuscript whitespace-pre-wrap text-sm leading-relaxed">第 {index + 1} 段：{paragraph}</p>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <button className="secondary-button" disabled={working} onClick={() => reviseDraftParagraph(index, 'rewrite')}>重写本段</button>
-                        <button className="secondary-button" disabled={working} onClick={() => reviseDraftParagraph(index, 'polish')}>润色本段</button>
+                        <button className="secondary-button" disabled={working || !isViewingLatestDraft()} onClick={() => reviseDraftParagraph(index, 'rewrite')}>重写本段</button>
+                        <button className="secondary-button" disabled={working || !isViewingLatestDraft()} onClick={() => reviseDraftParagraph(index, 'polish')}>润色本段</button>
                       </div>
                     </div>
                   ))}
@@ -634,9 +723,9 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
 
           {draft && (
             <div className="flex flex-wrap gap-3">
-              <button className="primary-button" disabled={working} onClick={approveDraft}>通过并更新世界</button>
-              <button className="secondary-button" disabled={working || editMode} onClick={rejectDraft}>驳回</button>
-              <button className="secondary-button" disabled={working || editMode} onClick={startEdit}>编辑正文</button>
+              <button className="primary-button" disabled={working || !isViewingLatestDraft()} onClick={approveDraft}>通过并更新世界</button>
+              <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={rejectDraft}>驳回</button>
+              <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={startEdit}>编辑正文</button>
             </div>
           )}
         </div>

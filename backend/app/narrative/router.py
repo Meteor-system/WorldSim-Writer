@@ -19,6 +19,7 @@ from app.narrative.schemas import (
     OutlineResponse,
     ParagraphDraftRequest,
     RejectRequest,
+    ReviseDraftRequest,
     StashDraftRequest,
     WriteRequest,
 )
@@ -33,10 +34,12 @@ from app.narrative.service import (
     generate_critic_report,
     get_approval_preview,
     get_approval_readiness,
+    get_chapter_draft_version,
     get_character_arc_report,
     get_critic_report,
     get_draft_diff,
     reject_chapter,
+    revise_chapter_draft,
     revise_chapter_paragraph,
     stash_chapter_draft,
     write_chapter_from_outline,
@@ -167,6 +170,16 @@ def edit_draft(
     )
 
 
+@router.post('/chapters/{chapter_id}/draft/revise', response_model=DraftResponse)
+def revise_draft(
+    chapter_id: int,
+    payload: ReviseDraftRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> DraftResponse:
+    return DraftResponse.model_validate(revise_chapter_draft(db, current_user, chapter_id, payload.instruction))
+
+
 @router.get('/chapters/{chapter_id}/drafts/diff')
 def draft_diff(
     chapter_id: int,
@@ -176,6 +189,16 @@ def draft_diff(
     db: Session = Depends(get_db),
 ) -> dict:
     return get_draft_diff(db, current_user, chapter_id, from_version, to_version)
+
+
+@router.get('/chapters/{chapter_id}/drafts/{draft_version}', response_model=DraftResponse)
+def read_draft_version(
+    chapter_id: int,
+    draft_version: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> DraftResponse:
+    return DraftResponse.model_validate(get_chapter_draft_version(db, current_user, chapter_id, draft_version))
 
 
 @router.get('/chapters/{chapter_id}/approval-preview')

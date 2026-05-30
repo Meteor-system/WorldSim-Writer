@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createChapter, generateCharacterArcReport, getApprovalReadiness, writeChapter } from '../api/client';
+import { createChapter, generateCharacterArcReport, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
 import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -153,6 +153,32 @@ vi.mock('../api/client', () => ({
     change_summary: '重写第 1 段',
     parent_draft_version: 1,
   })),
+  reviseDraft: vi.fn(async () => ({
+    ...draftResponse,
+    draft_id: 102,
+    draft_version: 2,
+    title: '第一章 雨巷密谈（修订版）',
+    content: '修订版第一段：林砚没有立刻信任沈微霜，而是先以湿信试探她。\n\n第二段：沈微霜递来一封湿透的信。',
+    context_summary: '修订版补足林砚试探过程。',
+    review_hints: ['重新生成 Critic 报告确认高风险是否解除'],
+    change_type: 'revision',
+    change_summary: '补足林砚试探沈微霜的过程',
+    parent_draft_version: 1,
+  })),
+  getDraftVersion: vi.fn(async (_chapterId: number, draftVersion: number) => (
+    draftVersion === 1
+      ? draftResponse
+      : {
+          ...draftResponse,
+          draft_id: 102,
+          draft_version: 2,
+          title: '第一章 雨巷密谈（修订版）',
+          content: '修订版第一段：林砚没有立刻信任沈微霜，而是先以湿信试探她。\n\n第二段：沈微霜递来一封湿透的信。',
+          change_type: 'revision',
+          change_summary: '补足林砚试探沈微霜的过程',
+          parent_draft_version: 1,
+        }
+  )),
   getDraftDiff: vi.fn(async () => ({
     chapter_id: 11,
     from_version: 1,
@@ -219,6 +245,8 @@ afterEach(() => {
   cleanup();
   vi.mocked(writeChapter).mockClear();
   vi.mocked(getApprovalReadiness).mockClear();
+  vi.mocked(reviseDraft).mockClear();
+  vi.mocked(getDraftVersion).mockClear();
 });
 
 describe('StudioPage Review Studio 2.0 controls', () => {
@@ -388,5 +416,46 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('世界版本：v1 → v2')).toBeInTheDocument();
     expect(screen.getByText('世界版本已变化，请重新生成草稿后再批准。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '通过并更新世界' })).toBeEnabled();
+  });
+
+  it('generates a full-draft revision from review context and shows parent diff', async () => {
+    const user = userEvent.setup();
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+
+    expect(await screen.findByText('Draft Revision Loop')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('修订指令'), '补足林砚试探沈微霜的过程');
+    await user.click(screen.getByRole('button', { name: '生成修订版' }));
+
+    expect(reviseDraft).toHaveBeenCalledWith(11, { instruction: '补足林砚试探沈微霜的过程' });
+    expect(await screen.findByText('第一章 雨巷密谈（修订版）')).toBeInTheDocument();
+    expect(screen.getByText('当前草稿：v2')).toBeInTheDocument();
+    expect(screen.getByText('父版本：v1')).toBeInTheDocument();
+    expect(screen.getByText('最近修改：补足林砚试探沈微霜的过程')).toBeInTheDocument();
+    expect(screen.getByText('v1 → v2')).toBeInTheDocument();
+    expect(getApprovalReadiness).toHaveBeenCalledTimes(2);
+  });
+
+  it('switches to parent draft as a read-only historical version and disables approval', async () => {
+    const user = userEvent.setup();
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.type(await screen.findByLabelText('修订指令'), '补足林砚试探沈微霜的过程');
+    await user.click(screen.getByRole('button', { name: '生成修订版' }));
+
+    await user.selectOptions(await screen.findByLabelText('草稿版本'), '1');
+
+    expect(getDraftVersion).toHaveBeenCalledWith(11, 1);
+    expect(await screen.findByText('第一段：林砚停在雨巷口。')).toBeInTheDocument();
+    expect(screen.getByText('正在查看历史版本，切回最新版本后才能批准。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '通过并更新世界' })).toBeDisabled();
   });
 });
