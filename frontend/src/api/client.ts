@@ -41,6 +41,7 @@ import type {
   TagDetailResponse,
   TagListResponse,
   TagResponse,
+  TagUpdateRequest,
   WorldCreateRequest,
   WorldMarkdownExportResponse,
   WorldPulseResponse,
@@ -148,6 +149,13 @@ export function listWorldTags(worldId: number) {
 export function createWorldTag(worldId: number, data: { name: string; color?: string }) {
   return apiRequest<TagResponse>(`/worlds/${worldId}/tags`, {
     method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateWorldTag(worldId: number, tagId: number, data: TagUpdateRequest) {
+  return apiRequest<TagResponse>(`/worlds/${worldId}/tags/${tagId}`, {
+    method: 'PATCH',
     body: JSON.stringify(data),
   });
 }

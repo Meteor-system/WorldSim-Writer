@@ -29,6 +29,26 @@ class TagCreateRequest(BaseModel):
         return stripped or None
 
 
+class TagUpdateRequest(BaseModel):
+    name: str | None = None
+    color: str | None = None
+
+    @field_validator('name')
+    @classmethod
+    def validate_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return _strip_required(value)
+
+    @field_validator('color')
+    @classmethod
+    def normalize_color(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
 class ObjectTagAssignRequest(BaseModel):
     object_type: str
     object_id: int

@@ -60,6 +60,7 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof WorldTagsPan
       onListTags={vi.fn().mockResolvedValue(listResponse)}
       onCreateTag={vi.fn().mockResolvedValue(tag)}
       onLoadTag={vi.fn().mockResolvedValue(detailResponse)}
+      onUpdateTag={vi.fn().mockResolvedValue(tag)}
       onAssignTag={vi.fn().mockResolvedValue(assignment)}
       onBulkAssignTag={vi.fn().mockResolvedValue(bulkAssignment)}
       onUnassignTag={vi.fn().mockResolvedValue(undefined)}
@@ -137,6 +138,48 @@ describe('WorldTagsPanel', () => {
 
     expect(onBulkAssignTag).not.toHaveBeenCalled();
     expect(await screen.findByRole('alert')).toHaveTextContent('请输入有效对象 ID 列表');
+  });
+
+  it('edits the selected tag name and clears color', async () => {
+    const user = userEvent.setup();
+    const updatedTag: TagResponse = { ...tag, name: '主线压力', slug: '主线压力', color: null };
+    const updatedDetail: TagDetailResponse = {
+      ...detailResponse,
+      tag: { ...detailResponse.tag, name: '主线压力', slug: '主线压力', color: null },
+    };
+    const onUpdateTag = vi.fn().mockResolvedValue(updatedTag);
+    const onLoadTag = vi.fn()
+      .mockResolvedValueOnce(detailResponse)
+      .mockResolvedValueOnce(updatedDetail);
+    renderPanel({ onUpdateTag, onLoadTag });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    expect(await screen.findByText('编辑标签')).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText('编辑标签名称'));
+    await user.type(screen.getByLabelText('编辑标签名称'), ' 主线压力 ');
+    await user.clear(screen.getByLabelText('编辑标签颜色'));
+    await user.click(screen.getByRole('button', { name: '保存标签修改' }));
+
+    expect(onUpdateTag).toHaveBeenCalledWith(7, 3, { name: '主线压力', color: null });
+    expect(await screen.findByText('标签已更新。')).toBeInTheDocument();
+    await waitFor(() => expect(onLoadTag).toHaveBeenLastCalledWith(7, 3));
+  });
+
+  it('requires a name before updating a tag', async () => {
+    const user = userEvent.setup();
+    const onUpdateTag = vi.fn().mockResolvedValue(tag);
+    renderPanel({ onUpdateTag });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    await screen.findByText('编辑标签');
+    await user.clear(screen.getByLabelText('编辑标签名称'));
+    await user.click(screen.getByRole('button', { name: '保存标签修改' }));
+
+    expect(onUpdateTag).not.toHaveBeenCalled();
+    expect(await screen.findByRole('alert')).toHaveTextContent('请输入标签名称');
   });
 
   it('shows empty and error states', async () => {

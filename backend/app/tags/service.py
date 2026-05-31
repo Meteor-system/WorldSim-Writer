@@ -13,7 +13,7 @@ from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow
 from app.narrative.models import Chapter
 from app.tags.models import ObjectTag, Tag
-from app.tags.schemas import ObjectTagAssignRequest, ObjectTagBulkAssignRequest, TagCreateRequest
+from app.tags.schemas import ObjectTagAssignRequest, ObjectTagBulkAssignRequest, TagCreateRequest, TagUpdateRequest
 from app.world.service import require_owned_world
 
 SUPPORTED_OBJECT_TYPES = {'character', 'foreshadow', 'chapter', 'event'}
@@ -136,6 +136,24 @@ def create_tag(db: Session, user: User, world_id: int, data: TagCreateRequest) -
     name = data.name.strip()
     tag = Tag(world_id=world.id, name=name, slug=_slugify(name), color=data.color)
     db.add(tag)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='TAG_ALREADY_EXISTS') from exc
+    db.refresh(tag)
+    return tag
+
+
+def update_tag(db: Session, user: User, world_id: int, tag_id: int, data: TagUpdateRequest) -> Tag:
+    world = require_owned_world(db, user, world_id)
+    tag = _require_tag(db, world.id, tag_id)
+    if data.name is not None:
+        name = data.name.strip()
+        tag.name = name
+        tag.slug = _slugify(name)
+    if 'color' in data.model_fields_set:
+        tag.color = data.color
     try:
         db.commit()
     except IntegrityError as exc:

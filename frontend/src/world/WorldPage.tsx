@@ -27,6 +27,7 @@ import {
   listWorldTags,
   searchWorld,
   unassignWorldTag,
+  updateWorldTag,
 } from '../api/client';
 import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
@@ -491,6 +492,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 onListTags={listWorldTags}
                 onCreateTag={createWorldTag}
                 onLoadTag={getWorldTag}
+                onUpdateTag={updateWorldTag}
                 onAssignTag={assignWorldTag}
                 onBulkAssignTag={bulkAssignWorldTag}
                 onUnassignTag={unassignWorldTag}

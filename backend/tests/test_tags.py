@@ -90,6 +90,74 @@ def test_create_and_list_world_tags(client):
     assert tags['tags'][0]['object_type_counts'] == {}
 
 
+def test_update_tag_name_and_color_preserves_assignments(client):
+    token = register(client, 'tags-update@example.com')
+    world = create_world(client, token)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    tag = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '旧标签', 'color': 'gray'}).json()
+    client.post(
+        f"/worlds/{world['id']}/tags/{tag['id']}/objects",
+        headers=auth(token),
+        json={'object_type': 'character', 'object_id': overview['characters'][0]['id']},
+    )
+
+    response = client.patch(
+        f"/worlds/{world['id']}/tags/{tag['id']}",
+        headers=auth(token),
+        json={'name': ' 新标签 ', 'color': ' amber '},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['name'] == '新标签'
+    assert payload['slug'] == '新标签'
+    assert payload['color'] == 'amber'
+    detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
+    assert detail['tag']['name'] == '新标签'
+    assert detail['tag']['assignment_count'] == 1
+    assert detail['objects'][0]['object_type'] == 'character'
+    assert detail['objects'][0]['object_id'] == overview['characters'][0]['id']
+
+
+def test_update_tag_duplicate_name_is_rejected_per_world(client):
+    token = register(client, 'tags-update-duplicate@example.com')
+    world = create_world(client, token)
+    first = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '主线'}).json()
+    second = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '支线'}).json()
+
+    response = client.patch(
+        f"/worlds/{world['id']}/tags/{second['id']}",
+        headers=auth(token),
+        json={'name': ' 主线 '},
+    )
+
+    assert response.status_code == 409
+    assert response.json()['detail'] == 'TAG_ALREADY_EXISTS'
+    unchanged = client.get(f"/worlds/{world['id']}/tags/{second['id']}", headers=auth(token)).json()
+    assert unchanged['tag']['name'] == '支线'
+    assert first['slug'] == '主线'
+
+
+def test_update_tag_can_clear_color_without_incrementing_world_version(client):
+    token = register(client, 'tags-update-version@example.com')
+    world = create_world(client, token)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    tag = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '临时标签', 'color': 'red'}).json()
+
+    response = client.patch(
+        f"/worlds/{world['id']}/tags/{tag['id']}",
+        headers=auth(token),
+        json={'color': '   '},
+    )
+    after = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    events = client.get(f"/worlds/{world['id']}/events", headers=auth(token)).json()
+
+    assert response.status_code == 200
+    assert response.json()['color'] is None
+    assert after['world_version'] == overview['world_version']
+    assert events['summary']['event_type_counts'] == {'WORLD_CREATED': 1}
+
+
 def test_duplicate_tag_names_are_rejected_per_world(client):
     token = register(client, 'tags-duplicate@example.com')
     world = create_world(client, token)

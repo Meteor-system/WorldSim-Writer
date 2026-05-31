@@ -266,6 +266,11 @@ export type TagResponse = {
   created_at: string;
 };
 
+export type TagUpdateRequest = {
+  name?: string;
+  color?: string | null;
+};
+
 export type TagSummaryResponse = TagResponse & {
   assignment_count: number;
   object_type_counts: Record<string, number>;

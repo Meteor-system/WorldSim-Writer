@@ -1,11 +1,12 @@
 import { FormEvent, useEffect, useState } from 'react';
-import type { ObjectTagBulkAssignResponse, ObjectTagResponse, TagDetailResponse, TagListResponse, TagResponse, TagSummaryResponse } from '../api/types';
+import type { ObjectTagBulkAssignResponse, ObjectTagResponse, TagDetailResponse, TagListResponse, TagResponse, TagSummaryResponse, TagUpdateRequest } from '../api/types';
 
 type Props = {
   worldId: number;
   onListTags: (worldId: number) => Promise<TagListResponse>;
   onCreateTag: (worldId: number, data: { name: string; color?: string }) => Promise<TagResponse>;
   onLoadTag: (worldId: number, tagId: number) => Promise<TagDetailResponse>;
+  onUpdateTag: (worldId: number, tagId: number, data: TagUpdateRequest) => Promise<TagResponse>;
   onAssignTag: (worldId: number, tagId: number, data: { object_type: string; object_id: number }) => Promise<ObjectTagResponse>;
   onBulkAssignTag?: (worldId: number, tagId: number, data: { object_type: string; object_ids: number[] }) => Promise<ObjectTagBulkAssignResponse>;
   onUnassignTag: (worldId: number, tagId: number, objectType: string, objectId: number) => Promise<unknown>;
@@ -25,7 +26,7 @@ function countText(tag: TagSummaryResponse): string {
   return counts.map(([type, count]) => `${type} ${count}`).join(' · ');
 }
 
-export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
+export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onUpdateTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
   const [tags, setTags] = useState<TagSummaryResponse[]>([]);
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
   const [detail, setDetail] = useState<TagDetailResponse | null>(null);
@@ -35,6 +36,9 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
   const [error, setError] = useState('');
   const [tagName, setTagName] = useState('');
   const [tagColor, setTagColor] = useState('');
+  const [editTagName, setEditTagName] = useState('');
+  const [editTagColor, setEditTagColor] = useState('');
+  const [editNotice, setEditNotice] = useState('');
   const [objectType, setObjectType] = useState('character');
   const [objectId, setObjectId] = useState('1');
   const [bulkObjectIds, setBulkObjectIds] = useState('');
@@ -59,7 +63,11 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
     setDetailLoading(true);
     setError('');
     try {
-      setDetail(await onLoadTag(worldId, tagId));
+      const loaded = await onLoadTag(worldId, tagId);
+      setDetail(loaded);
+      setEditTagName(loaded.tag.name);
+      setEditTagColor(loaded.tag.color ?? '');
+      setEditNotice('');
     } catch (err) {
       setDetail(null);
       setError(err instanceof Error ? err.message : '标签详情暂不可用');
@@ -88,6 +96,29 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       await loadTags();
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建标签失败');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitTagUpdate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (selectedTagId === null) return;
+    const name = editTagName.trim();
+    if (!name) {
+      setError('请输入标签名称');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setEditNotice('');
+    try {
+      await onUpdateTag(worldId, selectedTagId, { name, color: editTagColor.trim() || null });
+      await loadTags();
+      await loadTag(selectedTagId);
+      setEditNotice('标签已更新。');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '更新标签失败');
     } finally {
       setSaving(false);
     }
@@ -233,6 +264,20 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
             </div>
             <button className="secondary-button" disabled={saving} onClick={deleteSelectedTag}>删除当前标签</button>
           </div>
+
+          <form className="grid gap-3 rounded-2xl bg-amber-50/60 p-4 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitTagUpdate}>
+            <p className="text-sm font-black text-[#3b2511] md:col-span-3">编辑标签</p>
+            <label className="text-sm font-bold text-[#3b2511]">
+              编辑标签名称
+              <input className="paper-input mt-1" value={editTagName} onChange={(event) => setEditTagName(event.target.value)} />
+            </label>
+            <label className="text-sm font-bold text-[#3b2511]">
+              编辑标签颜色
+              <input className="paper-input mt-1" value={editTagColor} onChange={(event) => setEditTagColor(event.target.value)} placeholder="留空清除颜色" />
+            </label>
+            <button className="primary-button self-end" disabled={saving} type="submit">保存标签修改</button>
+            {editNotice && <p className="ink-muted text-sm md:col-span-3">{editNotice}</p>}
+          </form>
 
           <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitAssignment}>
             <label className="text-sm font-bold text-[#3b2511]">
