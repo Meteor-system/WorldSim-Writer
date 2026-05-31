@@ -2,14 +2,17 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, createSampleWorld, createWorld, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getRelations, getWorldEvents, searchWorld } from '../api/client';
+import { apiRequest, compareWorldSnapshots, createSampleWorld, createWorld, createWorldSnapshot, exportWorldArchiveMarkdown, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getRelations, getWorldEvents, listWorldSnapshots, searchWorld } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
 vi.mock('../api/client', () => ({
   apiRequest: vi.fn(),
   createSampleWorld: vi.fn(),
+  compareWorldSnapshots: vi.fn(),
   createWorld: vi.fn(),
+  createWorldSnapshot: vi.fn(),
+  exportWorldArchiveMarkdown: vi.fn(),
   generateStoryArc: vi.fn(),
   getChapterHistory: vi.fn(),
   getChapterHistoryDetail: vi.fn(),
@@ -21,6 +24,7 @@ vi.mock('../api/client', () => ({
   getForeshadowLedger: vi.fn(),
   getForeshadowTimeline: vi.fn(),
   getRelations: vi.fn(),
+  listWorldSnapshots: vi.fn(),
 }));
 
 const world: WorldOverview = {
@@ -51,14 +55,18 @@ afterEach(() => cleanup());
 
 beforeEach(() => {
   vi.mocked(apiRequest).mockReset();
+  vi.mocked(compareWorldSnapshots).mockReset();
   vi.mocked(createSampleWorld).mockReset();
   vi.mocked(createWorld).mockReset();
+  vi.mocked(createWorldSnapshot).mockReset();
+  vi.mocked(exportWorldArchiveMarkdown).mockReset();
   vi.mocked(getChapterHistory).mockReset();
   vi.mocked(getChapterHistoryDetail).mockReset();
   vi.mocked(getNextChapterPrep).mockReset();
   vi.mocked(getNarrativeHealth).mockReset();
   vi.mocked(getWorldEvents).mockReset();
   vi.mocked(searchWorld).mockReset();
+  vi.mocked(listWorldSnapshots).mockReset();
   vi.mocked(getCharacters).mockReset();
   vi.mocked(getForeshadowLedger).mockReset();
   vi.mocked(getRelations).mockReset();
@@ -158,6 +166,22 @@ beforeEach(() => {
     offset: 0,
     summary: { total: 1, event_type_counts: { WORLD_CREATED: 1 }, latest_world_version: 2 },
   });
+  vi.mocked(createWorldSnapshot).mockResolvedValue({ id: 12, world_id: 7, world_version: 2, label: null, note: null, created_at: '2026-05-31T00:00:00Z' });
+  vi.mocked(exportWorldArchiveMarkdown).mockResolvedValue({ world_id: 7, world_version: 2, generated_at: '2026-05-31T00:00:00Z', archive_filename: 'WorldSim-test.zip', archive_base64: 'emlw', files: [] });
+  vi.mocked(listWorldSnapshots).mockResolvedValue({
+    world_id: 7,
+    snapshots: [
+      { id: 12, world_id: 7, world_version: 1, label: 'Before', note: null, created_at: '2026-05-31T00:00:00Z' },
+      { id: 13, world_id: 7, world_version: 2, label: 'After', note: null, created_at: '2026-05-31T00:00:00Z' },
+    ],
+  });
+  vi.mocked(compareWorldSnapshots).mockResolvedValue({
+    world_id: 7,
+    base_snapshot: { id: 12, world_id: 7, world_version: 1, label: 'Before', note: null, created_at: '2026-05-31T00:00:00Z' },
+    target_snapshot: { id: 13, world_id: 7, world_version: 2, label: 'After', note: null, created_at: '2026-05-31T00:00:00Z' },
+    summary: { total_changes: 1, object_type_counts: { character: 1 } },
+    changes: { world: [], characters: [], relations: [], foreshadows: [], chapters: [], events: [] },
+  });
 });
 
 describe('WorldPage world creation', () => {
@@ -212,6 +236,8 @@ describe('WorldPage Narrative Control Center', () => {
     expect(await screen.findByText('Timeline Explorer')).toBeInTheDocument();
     expect(getWorldEvents).toHaveBeenCalledWith(7, { limit: 20 });
     expect(await screen.findByText('Global Search')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '加载快照列表' }));
+    expect(listWorldSnapshots).toHaveBeenCalledWith(7);
 
     await user.click(screen.getByRole('button', { name: '用作下一章目标' }));
     expect(screen.getByText('已设为下一章目标：林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();

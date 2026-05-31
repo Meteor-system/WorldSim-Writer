@@ -25,11 +25,63 @@ const markdownExport = {
   ],
 };
 
+const snapshots = [
+  { ...snapshot, id: 12, world_version: 2, label: 'Before reveal' },
+  { ...snapshot, id: 13, world_version: 3, label: 'After reveal' },
+];
+
+const compareResponse = {
+  world_id: 7,
+  base_snapshot: snapshots[0],
+  target_snapshot: snapshots[1],
+  summary: { total_changes: 2, object_type_counts: { character: 1, foreshadow: 1 } },
+  changes: {
+    world: [],
+    characters: [
+      {
+        object_type: 'character',
+        object_id: 1,
+        change_type: 'changed' as const,
+        title: '林砚',
+        fields_changed: ['status'],
+        before: { status: '调查湿信' },
+        after: { status: '追查档案门廊' },
+      },
+    ],
+    relations: [],
+    foreshadows: [
+      {
+        object_type: 'foreshadow',
+        object_id: 9,
+        change_type: 'added' as const,
+        title: '雨巷铜铃',
+        fields_changed: [],
+        before: null,
+        after: { title: '雨巷铜铃' },
+      },
+    ],
+    chapters: [],
+    events: [],
+  },
+};
+
+function renderArchivePanel(overrides = {}) {
+  return render(
+    <WorldArchivePanel
+      onCreateSnapshot={vi.fn()}
+      onExportMarkdown={vi.fn()}
+      onListSnapshots={vi.fn(async () => ({ world_id: 7, snapshots }))}
+      onCompareSnapshots={vi.fn(async () => compareResponse)}
+      {...overrides}
+    />,
+  );
+}
+
 afterEach(() => cleanup());
 
 describe('WorldArchivePanel', () => {
   it('renders archive controls', () => {
-    render(<WorldArchivePanel onCreateSnapshot={vi.fn()} onExportMarkdown={vi.fn()} />);
+    renderArchivePanel();
 
     expect(screen.getByText('World Archive')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '创建世界快照' })).toBeInTheDocument();
@@ -40,7 +92,7 @@ describe('WorldArchivePanel', () => {
     const user = userEvent.setup();
     const onCreateSnapshot = vi.fn(async () => snapshot);
 
-    render(<WorldArchivePanel onCreateSnapshot={onCreateSnapshot} onExportMarkdown={vi.fn()} />);
+    renderArchivePanel({ onCreateSnapshot });
 
     await user.click(screen.getByRole('button', { name: '创建世界快照' }));
 
@@ -55,7 +107,7 @@ describe('WorldArchivePanel', () => {
       throw new Error('boom');
     });
 
-    render(<WorldArchivePanel onCreateSnapshot={onCreateSnapshot} onExportMarkdown={vi.fn()} />);
+    renderArchivePanel({ onCreateSnapshot });
 
     await user.click(screen.getByRole('button', { name: '创建世界快照' }));
 
@@ -69,7 +121,7 @@ describe('WorldArchivePanel', () => {
     const revokeObjectURL = vi.fn();
     vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
 
-    render(<WorldArchivePanel onCreateSnapshot={vi.fn()} onExportMarkdown={onExportMarkdown} />);
+    renderArchivePanel({ onExportMarkdown });
 
     await user.click(screen.getByRole('button', { name: '导出世界档案' }));
 
@@ -88,10 +140,51 @@ describe('WorldArchivePanel', () => {
       throw new Error('boom');
     });
 
-    render(<WorldArchivePanel onCreateSnapshot={vi.fn()} onExportMarkdown={onExportMarkdown} />);
+    renderArchivePanel({ onExportMarkdown });
 
     await user.click(screen.getByRole('button', { name: '导出世界档案' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('导出世界档案失败');
+  });
+
+  it('loads snapshots, compares two selected snapshots, and renders diff results', async () => {
+    const user = userEvent.setup();
+    const onListSnapshots = vi.fn(async () => ({ world_id: 7, snapshots }));
+    const onCompareSnapshots = vi.fn(async () => compareResponse);
+
+    renderArchivePanel({ onListSnapshots, onCompareSnapshots });
+
+    expect(screen.getByText('快照对比')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '对比快照' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: '加载快照列表' }));
+    await user.selectOptions(await screen.findByLabelText('基准快照'), '12');
+    await user.selectOptions(screen.getByLabelText('目标快照'), '13');
+    await user.click(screen.getByRole('button', { name: '对比快照' }));
+
+    expect(onListSnapshots).toHaveBeenCalledOnce();
+    expect(onCompareSnapshots).toHaveBeenCalledWith(12, 13);
+    expect(await screen.findByText('总变更：2')).toBeInTheDocument();
+    expect(screen.getByText('character：1')).toBeInTheDocument();
+    expect(screen.getByText('林砚')).toBeInTheDocument();
+    expect(screen.getByText('字段：status')).toBeInTheDocument();
+    expect(screen.getByText('雨巷铜铃')).toBeInTheDocument();
+  });
+
+  it('shows snapshot compare error state', async () => {
+    const user = userEvent.setup();
+    const onListSnapshots = vi.fn(async () => ({ world_id: 7, snapshots }));
+    const onCompareSnapshots = vi.fn(async () => {
+      throw new Error('boom');
+    });
+
+    renderArchivePanel({ onListSnapshots, onCompareSnapshots });
+
+    await user.click(screen.getByRole('button', { name: '加载快照列表' }));
+    await user.selectOptions(await screen.findByLabelText('基准快照'), '12');
+    await user.selectOptions(screen.getByLabelText('目标快照'), '13');
+    await user.click(screen.getByRole('button', { name: '对比快照' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('对比快照失败');
   });
 });

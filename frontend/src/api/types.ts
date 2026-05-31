@@ -594,6 +594,29 @@ export type WorldSnapshotDetailResponse = WorldSnapshotSummary & {
   payload: WorldSnapshotPayload;
 };
 
+export type WorldSnapshotCompareChange = {
+  object_type: string;
+  object_id: number | null;
+  change_type: 'added' | 'removed' | 'changed';
+  title: string;
+  fields_changed: string[];
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+};
+
+export type WorldSnapshotCompareSummary = {
+  total_changes: number;
+  object_type_counts: Record<string, number>;
+};
+
+export type WorldSnapshotCompareResponse = {
+  world_id: number;
+  base_snapshot: WorldSnapshotSummary;
+  target_snapshot: WorldSnapshotSummary;
+  summary: WorldSnapshotCompareSummary;
+  changes: Record<string, WorldSnapshotCompareChange[]>;
+};
+
 export type MarkdownExportFile = {
   path: string;
   content: string;

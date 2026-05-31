@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
+  compareWorldSnapshots,
   createSampleWorld,
   createWorld,
   createWorldSnapshot,
@@ -11,6 +12,7 @@ import {
   getNarrativeHealth,
   getNextChapterPrep,
   getWorldEvents,
+  listWorldSnapshots,
   searchWorld,
 } from '../api/client';
 import type { ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview } from '../api/types';
@@ -387,6 +389,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               <WorldArchivePanel
                 onCreateSnapshot={() => createWorldSnapshot(world.id)}
                 onExportMarkdown={() => exportWorldArchiveMarkdown(world.id)}
+                onListSnapshots={() => listWorldSnapshots(world.id)}
+                onCompareSnapshots={compareWorldSnapshots}
               />
               <ChapterHistoryPanel
                 history={chapterHistory}

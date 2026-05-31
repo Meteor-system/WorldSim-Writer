@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkApprovalConsistency,
+  compareWorldSnapshots,
   createRelation,
   createSampleWorld,
   createWorld,
@@ -128,6 +129,30 @@ describe('world search API helper', () => {
       expect.any(Object),
     );
     expect(response.object_type_counts).toEqual({ character: 1 });
+  });
+});
+
+describe('world snapshot compare API helper', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('calls snapshot compare endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      world_id: 7,
+      base_snapshot: { id: 12, world_id: 7, world_version: 2, label: null, note: null, created_at: '2026-05-31T00:00:00Z' },
+      target_snapshot: { id: 13, world_id: 7, world_version: 3, label: null, note: null, created_at: '2026-05-31T00:00:00Z' },
+      summary: { total_changes: 1, object_type_counts: { character: 1 } },
+      changes: { world: [], characters: [], relations: [], foreshadows: [], chapters: [], events: [] },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await compareWorldSnapshots(12, 13);
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/snapshots/12/compare/13', expect.any(Object));
+    expect(response.summary.total_changes).toBe(1);
   });
 });
 

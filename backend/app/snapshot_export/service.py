@@ -104,6 +104,150 @@ def get_world_snapshot_detail(db: Session, user: User, snapshot_id: int) -> Worl
     return snapshot
 
 
+WORLD_COMPARE_FIELDS = [
+    'title',
+    'genre_template',
+    'truth_canon',
+    'truth_canon_version',
+    'world_version',
+    'status',
+    'tone_profile',
+    'story_arc',
+]
+
+
+def _change_item(
+    object_type: str,
+    object_id: int | None,
+    change_type: str,
+    title: str,
+    fields_changed: list[str],
+    before: dict[str, Any] | None,
+    after: dict[str, Any] | None,
+) -> dict[str, Any]:
+    return {
+        'object_type': object_type,
+        'object_id': object_id,
+        'change_type': change_type,
+        'title': title,
+        'fields_changed': fields_changed,
+        'before': before,
+        'after': after,
+    }
+
+
+def _object_title(object_type: str, item: dict[str, Any] | None, fallback_id: int | None) -> str:
+    if not item:
+        return f'{object_type} {fallback_id or ""}'.strip()
+    if object_type == 'character':
+        return str(item.get('name') or f'Character {fallback_id}')
+    if object_type == 'relation':
+        return str(item.get('relation_type') or f'Relation {fallback_id}')
+    if object_type == 'foreshadow':
+        return str(item.get('title') or f'Foreshadow {fallback_id}')
+    if object_type == 'chapter':
+        return str(item.get('title') or f'Chapter {fallback_id}')
+    if object_type == 'event':
+        return str(item.get('event_type') or f'Event {fallback_id}')
+    return str(item.get('title') or f'{object_type} {fallback_id}')
+
+
+def _index_by_id(items: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    return {int(item['id']): item for item in items if item.get('id') is not None}
+
+
+def _diff_world(base_payload: dict[str, Any], target_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    base_world = base_payload.get('world') or {}
+    target_world = target_payload.get('world') or {}
+    fields_changed = [field for field in WORLD_COMPARE_FIELDS if base_world.get(field) != target_world.get(field)]
+    if not fields_changed:
+        return []
+    return [
+        _change_item(
+            'world',
+            None,
+            'changed',
+            str(target_world.get('title') or base_world.get('title') or 'World'),
+            fields_changed,
+            {field: base_world.get(field) for field in fields_changed},
+            {field: target_world.get(field) for field in fields_changed},
+        )
+    ]
+
+
+def _diff_collection(
+    base_payload: dict[str, Any],
+    target_payload: dict[str, Any],
+    payload_key: str,
+    object_type: str,
+) -> list[dict[str, Any]]:
+    base_by_id = _index_by_id(base_payload.get(payload_key) or [])
+    target_by_id = _index_by_id(target_payload.get(payload_key) or [])
+    changes: list[dict[str, Any]] = []
+    for object_id in sorted(set(base_by_id) | set(target_by_id)):
+        before = base_by_id.get(object_id)
+        after = target_by_id.get(object_id)
+        if before is None and after is not None:
+            changes.append(_change_item(object_type, object_id, 'added', _object_title(object_type, after, object_id), [], None, after))
+            continue
+        if before is not None and after is None:
+            changes.append(_change_item(object_type, object_id, 'removed', _object_title(object_type, before, object_id), [], before, None))
+            continue
+        if before is None or after is None or before == after:
+            continue
+        fields_changed = sorted({key for key in set(before) | set(after) if before.get(key) != after.get(key)})
+        changes.append(
+            _change_item(
+                object_type,
+                object_id,
+                'changed',
+                _object_title(object_type, after, object_id),
+                fields_changed,
+                before,
+                after,
+            )
+        )
+    return changes
+
+
+def compare_world_snapshots(db: Session, user: User, base_snapshot_id: int, target_snapshot_id: int) -> dict[str, Any]:
+    base_snapshot = db.get(WorldSnapshot, base_snapshot_id)
+    if base_snapshot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    require_owned_world(db, user, base_snapshot.world_id)
+
+    target_snapshot = db.get(WorldSnapshot, target_snapshot_id)
+    if target_snapshot is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    if target_snapshot.world_id != base_snapshot.world_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='FORBIDDEN')
+
+    base_payload = base_snapshot.payload or {}
+    target_payload = target_snapshot.payload or {}
+    changes = {
+        'world': _diff_world(base_payload, target_payload),
+        'characters': _diff_collection(base_payload, target_payload, 'characters', 'character'),
+        'relations': _diff_collection(base_payload, target_payload, 'relations', 'relation'),
+        'foreshadows': _diff_collection(base_payload, target_payload, 'foreshadows', 'foreshadow'),
+        'chapters': _diff_collection(base_payload, target_payload, 'approved_chapters', 'chapter'),
+        'events': _diff_collection(base_payload, target_payload, 'events', 'event'),
+    }
+    object_type_counts: dict[str, int] = {}
+    for items in changes.values():
+        for item in items:
+            object_type_counts[item['object_type']] = object_type_counts.get(item['object_type'], 0) + 1
+    return {
+        'world_id': base_snapshot.world_id,
+        'base_snapshot': base_snapshot,
+        'target_snapshot': target_snapshot,
+        'summary': {
+            'total_changes': sum(object_type_counts.values()),
+            'object_type_counts': object_type_counts,
+        },
+        'changes': changes,
+    }
+
+
 def _markdown_value(value: Any) -> str:
     if value is None:
         return ''

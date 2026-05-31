@@ -37,6 +37,7 @@ import type {
   WorldCreateRequest,
   WorldMarkdownExportResponse,
   WorldSearchResponse,
+  WorldSnapshotCompareResponse,
   WorldSnapshotDetailResponse,
   WorldSnapshotListResponse,
   WorldSnapshotSummary,
@@ -292,6 +293,10 @@ export function listWorldSnapshots(worldId: number) {
 
 export function getWorldSnapshot(snapshotId: number) {
   return apiRequest<WorldSnapshotDetailResponse>(`/snapshots/${snapshotId}`);
+}
+
+export function compareWorldSnapshots(baseSnapshotId: number, targetSnapshotId: number) {
+  return apiRequest<WorldSnapshotCompareResponse>(`/snapshots/${baseSnapshotId}/compare/${targetSnapshotId}`);
 }
 
 export function exportWorldArchiveMarkdown(worldId: number) {

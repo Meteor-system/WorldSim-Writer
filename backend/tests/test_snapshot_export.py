@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 
 from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
 from app.narrative import service as narrative_service
+from app.event.models import EventLog
 from app.snapshot_export.models import WorldSnapshot
 from app.world.models import World
 
@@ -150,6 +151,108 @@ def test_snapshot_detail_rejects_non_owner(client):
     created = client.post(f'/worlds/{world_id}/snapshots', headers=auth_headers(owner_token)).json()
 
     response = client.get(f"/snapshots/{created['id']}", headers=auth_headers(other_token))
+
+    assert response.status_code == 403
+    assert response.json()['detail'] == 'FORBIDDEN'
+
+
+def test_compare_snapshots_returns_grouped_world_archive_diff(client, db_session):
+    token, world_id = register_and_create_world(client, 'snapshot-compare@example.com')
+    base = client.post(
+        f'/worlds/{world_id}/snapshots',
+        json={'label': 'Before reveal'},
+        headers=auth_headers(token),
+    ).json()
+
+    world = db_session.get(World, world_id)
+    first_character = world.current_characters[0]
+    world.title = '青岚城：雨巷之后'
+    world.world_version += 1
+    world.current_characters = [first_character | {'status': '追查档案门廊'}, *world.current_characters[1:]]
+    world.current_foreshadows = world.current_foreshadows + [
+        {
+            'id': 999,
+            'source_chapter_id': None,
+            'title': '雨巷铜铃',
+            'description': '铜铃会在真相逼近时震动。',
+            'foreshadow_type': 'item',
+            'status': 'planted',
+            'urgency_level': 3,
+            'related_character_ids': [first_character['id']],
+            'expected_resolution_window': '第4章',
+        }
+    ]
+    db_session.add(
+        EventLog(
+            world_id=world_id,
+            chapter_id=None,
+            event_type='manual_note',
+            source_type='test',
+            commit_id='snapshot-compare-event',
+            payload={'summary': '雨巷后新增档案线索'},
+            world_version_before=base['world_version'],
+            world_version_after=world.world_version,
+        )
+    )
+    db_session.commit()
+
+    target = client.post(
+        f'/worlds/{world_id}/snapshots',
+        json={'label': 'After reveal'},
+        headers=auth_headers(token),
+    ).json()
+
+    response = client.get(f"/snapshots/{base['id']}/compare/{target['id']}", headers=auth_headers(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['world_id'] == world_id
+    assert payload['base_snapshot']['id'] == base['id']
+    assert payload['target_snapshot']['id'] == target['id']
+    assert payload['summary']['total_changes'] >= 4
+    assert payload['summary']['object_type_counts']['world'] == 1
+    assert payload['summary']['object_type_counts']['character'] == 1
+    assert payload['summary']['object_type_counts']['foreshadow'] == 1
+    assert payload['summary']['object_type_counts']['event'] == 1
+
+    world_change = next(change for change in payload['changes']['world'] if change['object_type'] == 'world')
+    assert world_change['change_type'] == 'changed'
+    assert set(world_change['fields_changed']) >= {'title', 'world_version'}
+    assert world_change['before']['title'] != world_change['after']['title']
+
+    character_change = next(change for change in payload['changes']['characters'] if change['object_id'] == first_character['id'])
+    assert character_change['change_type'] == 'changed'
+    assert character_change['fields_changed'] == ['status']
+    assert character_change['title'] == first_character['name']
+
+    foreshadow_change = next(change for change in payload['changes']['foreshadows'] if change['object_id'] == 999)
+    assert foreshadow_change['change_type'] == 'added'
+    assert foreshadow_change['title'] == '雨巷铜铃'
+
+
+def test_compare_identical_snapshot_returns_zero_changes(client):
+    token, world_id = register_and_create_world(client, 'snapshot-compare-identical@example.com')
+    snapshot = client.post(f'/worlds/{world_id}/snapshots', headers=auth_headers(token)).json()
+
+    response = client.get(f"/snapshots/{snapshot['id']}/compare/{snapshot['id']}", headers=auth_headers(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['summary']['total_changes'] == 0
+    assert payload['summary']['object_type_counts'] == {}
+    assert all(changes == [] for changes in payload['changes'].values())
+
+
+def test_compare_snapshots_rejects_cross_world_targets(client):
+    owner_token, world_id = register_and_create_world(client, 'snapshot-compare-owner@example.com')
+    other_token, other_world_id = register_and_create_world(client, 'snapshot-compare-other@example.com')
+    owner_snapshot = client.post(f'/worlds/{world_id}/snapshots', headers=auth_headers(owner_token)).json()
+    other_snapshot = client.post(f'/worlds/{other_world_id}/snapshots', headers=auth_headers(other_token)).json()
+
+    response = client.get(
+        f"/snapshots/{owner_snapshot['id']}/compare/{other_snapshot['id']}",
+        headers=auth_headers(owner_token),
+    )
 
     assert response.status_code == 403
     assert response.json()['detail'] == 'FORBIDDEN'
@@ -314,6 +417,7 @@ def test_snapshot_export_routes_require_authentication(client):
         client.post(f'/worlds/{world_id}/snapshots'),
         client.get(f'/worlds/{world_id}/snapshots'),
         client.get(f"/snapshots/{created['id']}"),
+        client.get(f"/snapshots/{created['id']}/compare/{created['id']}"),
         client.post(f'/worlds/{world_id}/export/markdown'),
     ]
 
@@ -331,6 +435,7 @@ def test_snapshot_export_routes_reject_non_owner(client):
         client.post(f'/worlds/{world_id}/snapshots', headers=auth_headers(other_token)),
         client.get(f'/worlds/{world_id}/snapshots', headers=auth_headers(other_token)),
         client.get(f"/snapshots/{created['id']}", headers=auth_headers(other_token)),
+        client.get(f"/snapshots/{created['id']}/compare/{created['id']}", headers=auth_headers(other_token)),
         client.post(f'/worlds/{world_id}/export/markdown', headers=auth_headers(other_token)),
     ]
 

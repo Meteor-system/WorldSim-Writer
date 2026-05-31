@@ -29,6 +29,29 @@ class WorldSnapshotDetailResponse(WorldSnapshotSummary):
     payload: dict[str, Any]
 
 
+class WorldSnapshotCompareChange(BaseModel):
+    object_type: str
+    object_id: int | None
+    change_type: str
+    title: str
+    fields_changed: list[str] = Field(default_factory=list)
+    before: dict[str, Any] | None = None
+    after: dict[str, Any] | None = None
+
+
+class WorldSnapshotCompareSummary(BaseModel):
+    total_changes: int
+    object_type_counts: dict[str, int]
+
+
+class WorldSnapshotCompareResponse(BaseModel):
+    world_id: int
+    base_snapshot: WorldSnapshotSummary
+    target_snapshot: WorldSnapshotSummary
+    summary: WorldSnapshotCompareSummary
+    changes: dict[str, list[WorldSnapshotCompareChange]]
+
+
 class MarkdownExportFile(BaseModel):
     path: str
     content: str

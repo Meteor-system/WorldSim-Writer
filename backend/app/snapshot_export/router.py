@@ -6,12 +6,13 @@ from app.auth.models import User
 from app.core.database import get_db
 from app.snapshot_export.schemas import (
     WorldMarkdownExportResponse,
+    WorldSnapshotCompareResponse,
     WorldSnapshotCreate,
     WorldSnapshotDetailResponse,
     WorldSnapshotListResponse,
     WorldSnapshotSummary,
 )
-from app.snapshot_export.service import create_world_snapshot, export_world_markdown, get_world_snapshot_detail, list_world_snapshots
+from app.snapshot_export.service import compare_world_snapshots, create_world_snapshot, export_world_markdown, get_world_snapshot_detail, list_world_snapshots
 
 router = APIRouter(tags=['snapshot-export'])
 
@@ -43,6 +44,18 @@ def get_snapshot(
     db: Session = Depends(get_db),
 ) -> WorldSnapshotDetailResponse:
     return WorldSnapshotDetailResponse.model_validate(get_world_snapshot_detail(db, current_user, snapshot_id))
+
+
+@router.get('/snapshots/{base_snapshot_id}/compare/{target_snapshot_id}', response_model=WorldSnapshotCompareResponse)
+def compare_snapshots(
+    base_snapshot_id: int,
+    target_snapshot_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> WorldSnapshotCompareResponse:
+    return WorldSnapshotCompareResponse.model_validate(
+        compare_world_snapshots(db, current_user, base_snapshot_id, target_snapshot_id)
+    )
 
 
 @router.post('/worlds/{world_id}/export/markdown', response_model=WorldMarkdownExportResponse)
