@@ -6,13 +6,15 @@ from app.auth.models import User
 from app.core.database import get_db
 from app.tags.schemas import (
     ObjectTagAssignRequest,
+    ObjectTagBulkAssignRequest,
+    ObjectTagBulkAssignResponse,
     ObjectTagResponse,
     TagCreateRequest,
     TagDetailResponse,
     TagListResponse,
     TagResponse,
 )
-from app.tags.service import assign_tag, create_tag, delete_tag, get_tag_detail, list_tags, unassign_tag
+from app.tags.service import assign_tag, bulk_assign_tag, create_tag, delete_tag, get_tag_detail, list_tags, unassign_tag
 
 router = APIRouter(tags=['tags'])
 
@@ -65,6 +67,17 @@ def assign_world_tag(
     db: Session = Depends(get_db),
 ) -> ObjectTagResponse:
     return ObjectTagResponse.model_validate(assign_tag(db, current_user, world_id, tag_id, data))
+
+
+@router.post('/worlds/{world_id}/tags/{tag_id}/objects/bulk', response_model=ObjectTagBulkAssignResponse)
+def bulk_assign_world_tag(
+    world_id: int,
+    tag_id: int,
+    data: ObjectTagBulkAssignRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> ObjectTagBulkAssignResponse:
+    return ObjectTagBulkAssignResponse.model_validate(bulk_assign_tag(db, current_user, world_id, tag_id, data))
 
 
 @router.delete('/worlds/{world_id}/tags/{tag_id}/objects/{object_type}/{object_id}', status_code=204)

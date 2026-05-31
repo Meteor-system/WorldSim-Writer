@@ -149,6 +149,74 @@ def test_assigning_same_object_is_idempotent(client):
     assert detail['tag']['assignment_count'] == 1
 
 
+def test_bulk_assign_tag_deduplicates_and_reports_existing_assignments(client, db_session):
+    token = register(client, 'tags-bulk@example.com')
+    world = create_world(client, token)
+    first_chapter = create_approved_chapter(db_session, world['id'])
+    second_chapter = create_approved_chapter(db_session, world['id'])
+    tag = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '章节归档'}).json()
+    existing = {'object_type': 'chapter', 'object_id': first_chapter.id}
+    client.post(f"/worlds/{world['id']}/tags/{tag['id']}/objects", headers=auth(token), json=existing)
+
+    response = client.post(
+        f"/worlds/{world['id']}/tags/{tag['id']}/objects/bulk",
+        headers=auth(token),
+        json={'object_type': 'chapter', 'object_ids': [first_chapter.id, second_chapter.id, second_chapter.id]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == {
+        'world_id': world['id'],
+        'tag_id': tag['id'],
+        'object_type': 'chapter',
+        'requested_count': 3,
+        'assigned_count': 1,
+        'already_assigned_count': 1,
+        'assigned_object_ids': [second_chapter.id],
+        'already_assigned_object_ids': [first_chapter.id],
+    }
+    detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
+    assert detail['tag']['assignment_count'] == 2
+
+
+def test_bulk_assign_validates_all_targets_before_writing(client, db_session):
+    token = register(client, 'tags-bulk-invalid@example.com')
+    world = create_world(client, token)
+    chapter = create_approved_chapter(db_session, world['id'])
+    tag = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '批量边界'}).json()
+
+    response = client.post(
+        f"/worlds/{world['id']}/tags/{tag['id']}/objects/bulk",
+        headers=auth(token),
+        json={'object_type': 'chapter', 'object_ids': [chapter.id, 999999]},
+    )
+
+    assert response.status_code == 404
+    assert response.json()['detail'] == 'TAG_OBJECT_NOT_FOUND'
+    detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
+    assert detail['tag']['assignment_count'] == 0
+
+
+def test_bulk_assign_tag_does_not_increment_world_version(client):
+    token = register(client, 'tags-bulk-version@example.com')
+    world = create_world(client, token)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    tag = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '批量元数据'}).json()
+
+    response = client.post(
+        f"/worlds/{world['id']}/tags/{tag['id']}/objects/bulk",
+        headers=auth(token),
+        json={'object_type': 'character', 'object_ids': [overview['characters'][0]['id']]},
+    )
+    after = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    events = client.get(f"/worlds/{world['id']}/events", headers=auth(token)).json()
+
+    assert response.status_code == 200
+    assert after['world_version'] == overview['world_version']
+    assert events['summary']['event_type_counts'] == {'WORLD_CREATED': 1}
+
+
 def test_tag_assignment_validates_type_and_world_ownership(client):
     owner_token = register(client, 'tags-owner@example.com')
     other_token = register(client, 'tags-other@example.com')
@@ -204,6 +272,7 @@ def test_tag_endpoints_require_login(client):
     create_response = client.post('/worlds/1/tags', json={'name': '主线'})
     detail_response = client.get('/worlds/1/tags/1')
     assign_response = client.post('/worlds/1/tags/1/objects', json={'object_type': 'character', 'object_id': 1})
+    bulk_assign_response = client.post('/worlds/1/tags/1/objects/bulk', json={'object_type': 'character', 'object_ids': [1, 2]})
     unassign_response = client.delete('/worlds/1/tags/1/objects/character/1')
     delete_response = client.delete('/worlds/1/tags/1')
 
@@ -211,5 +280,6 @@ def test_tag_endpoints_require_login(client):
     assert create_response.status_code == 401
     assert detail_response.status_code == 401
     assert assign_response.status_code == 401
+    assert bulk_assign_response.status_code == 401
     assert unassign_response.status_code == 401
     assert delete_response.status_code == 401

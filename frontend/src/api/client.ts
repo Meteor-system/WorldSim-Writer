@@ -36,6 +36,7 @@ import type {
   ReviseDraftRequest,
   StaleForeshadow,
   StoryArcResponse,
+  ObjectTagBulkAssignResponse,
   ObjectTagResponse,
   TagDetailResponse,
   TagListResponse,
@@ -157,6 +158,13 @@ export function getWorldTag(worldId: number, tagId: number) {
 
 export function assignWorldTag(worldId: number, tagId: number, data: { object_type: string; object_id: number }) {
   return apiRequest<ObjectTagResponse>(`/worlds/${worldId}/tags/${tagId}/objects`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function bulkAssignWorldTag(worldId: number, tagId: number, data: { object_type: string; object_ids: number[] }) {
+  return apiRequest<ObjectTagBulkAssignResponse>(`/worlds/${worldId}/tags/${tagId}/objects/bulk`, {
     method: 'POST',
     body: JSON.stringify(data),
   });

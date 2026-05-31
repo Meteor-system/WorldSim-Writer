@@ -8,6 +8,7 @@ import {
   createWorldFromSeed,
   createWorldTag,
   assignWorldTag,
+  bulkAssignWorldTag,
   deleteCharacter,
   deleteForeshadow,
   deleteRelation,
@@ -191,6 +192,7 @@ describe('world tag API helpers', () => {
       .mockResolvedValueOnce(jsonResponse({ id: 3, world_id: 7, name: '主线', slug: '主线', color: 'amber', created_at: '2026-05-31T00:00:00Z' }))
       .mockResolvedValueOnce(jsonResponse({ tag: { id: 3, world_id: 7, name: '主线', slug: '主线', color: 'amber', created_at: '2026-05-31T00:00:00Z', assignment_count: 1, object_type_counts: { character: 1 } }, objects: [] }))
       .mockResolvedValueOnce(jsonResponse({ id: 9, world_id: 7, tag_id: 3, object_type: 'character', object_id: 1, created_at: '2026-05-31T00:00:00Z' }))
+      .mockResolvedValueOnce(jsonResponse({ world_id: 7, tag_id: 3, object_type: 'character', requested_count: 3, assigned_count: 2, already_assigned_count: 1, assigned_object_ids: [2, 3], already_assigned_object_ids: [1] }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -199,6 +201,7 @@ describe('world tag API helpers', () => {
     await createWorldTag(7, { name: '主线', color: 'amber' });
     await getWorldTag(7, 3);
     await assignWorldTag(7, 3, { object_type: 'character', object_id: 1 });
+    const bulk = await bulkAssignWorldTag(7, 3, { object_type: 'character', object_ids: [1, 2, 3] });
     await unassignWorldTag(7, 3, 'character', 1);
     await deleteWorldTag(7, 3);
 
@@ -206,8 +209,10 @@ describe('world tag API helpers', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8000/worlds/7/tags', expect.objectContaining({ method: 'POST', body: JSON.stringify({ name: '主线', color: 'amber' }) }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8000/worlds/7/tags/3', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://localhost:8000/worlds/7/tags/3/objects', expect.objectContaining({ method: 'POST', body: JSON.stringify({ object_type: 'character', object_id: 1 }) }));
-    expect(fetchMock).toHaveBeenNthCalledWith(5, 'http://localhost:8000/worlds/7/tags/3/objects/character/1', expect.objectContaining({ method: 'DELETE' }));
-    expect(fetchMock).toHaveBeenNthCalledWith(6, 'http://localhost:8000/worlds/7/tags/3', expect.objectContaining({ method: 'DELETE' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, 'http://localhost:8000/worlds/7/tags/3/objects/bulk', expect.objectContaining({ method: 'POST', body: JSON.stringify({ object_type: 'character', object_ids: [1, 2, 3] }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, 'http://localhost:8000/worlds/7/tags/3/objects/character/1', expect.objectContaining({ method: 'DELETE' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(7, 'http://localhost:8000/worlds/7/tags/3', expect.objectContaining({ method: 'DELETE' }));
+    expect(bulk.assigned_count).toBe(2);
   });
 });
 

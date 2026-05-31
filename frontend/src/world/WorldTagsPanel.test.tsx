@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ObjectTagResponse, TagDetailResponse, TagListResponse, TagResponse } from '../api/types';
+import type { ObjectTagBulkAssignResponse, ObjectTagResponse, TagDetailResponse, TagListResponse, TagResponse } from '../api/types';
 import { WorldTagsPanel } from './WorldTagsPanel';
 
 const tag: TagResponse = {
@@ -42,6 +42,17 @@ const assignment: ObjectTagResponse = {
   created_at: '2026-05-31T00:00:00Z',
 };
 
+const bulkAssignment: ObjectTagBulkAssignResponse = {
+  world_id: 7,
+  tag_id: 3,
+  object_type: 'foreshadow',
+  requested_count: 3,
+  assigned_count: 2,
+  already_assigned_count: 1,
+  assigned_object_ids: [2, 3],
+  already_assigned_object_ids: [1],
+};
+
 function renderPanel(overrides: Partial<React.ComponentProps<typeof WorldTagsPanel>> = {}) {
   return render(
     <WorldTagsPanel
@@ -50,6 +61,7 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof WorldTagsPan
       onCreateTag={vi.fn().mockResolvedValue(tag)}
       onLoadTag={vi.fn().mockResolvedValue(detailResponse)}
       onAssignTag={vi.fn().mockResolvedValue(assignment)}
+      onBulkAssignTag={vi.fn().mockResolvedValue(bulkAssignment)}
       onUnassignTag={vi.fn().mockResolvedValue(undefined)}
       onDeleteTag={vi.fn().mockResolvedValue(undefined)}
       {...overrides}
@@ -77,13 +89,14 @@ describe('WorldTagsPanel', () => {
     expect(screen.getByText('查明灯塔异常')).toBeInTheDocument();
   });
 
-  it('creates, assigns, unassigns, and deletes tags', async () => {
+  it('creates, assigns, bulk assigns, unassigns, and deletes tags', async () => {
     const user = userEvent.setup();
     const onCreateTag = vi.fn().mockResolvedValue(tag);
     const onAssignTag = vi.fn().mockResolvedValue(assignment);
+    const onBulkAssignTag = vi.fn().mockResolvedValue(bulkAssignment);
     const onUnassignTag = vi.fn().mockResolvedValue(undefined);
     const onDeleteTag = vi.fn().mockResolvedValue(undefined);
-    renderPanel({ onCreateTag, onAssignTag, onUnassignTag, onDeleteTag });
+    renderPanel({ onCreateTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag });
 
     await screen.findByText('灯塔线');
     await user.type(screen.getByLabelText('新标签名称'), '主线压力');
@@ -99,11 +112,31 @@ describe('WorldTagsPanel', () => {
     await user.click(screen.getByRole('button', { name: '添加对象标签' }));
     expect(onAssignTag).toHaveBeenCalledWith(7, 3, { object_type: 'foreshadow', object_id: 2 });
 
+    await user.type(screen.getByLabelText('批量对象 ID'), '1, 2\n3');
+    await user.click(screen.getByRole('button', { name: '批量添加对象标签' }));
+    expect(onBulkAssignTag).toHaveBeenCalledWith(7, 3, { object_type: 'foreshadow', object_ids: [1, 2, 3] });
+    expect(await screen.findByText('批量打标完成：新增 2，已存在 1。')).toBeInTheDocument();
+
     await user.click(screen.getByRole('button', { name: '移除标签' }));
     expect(onUnassignTag).toHaveBeenCalledWith(7, 3, 'character', 1);
 
     await user.click(screen.getByRole('button', { name: '删除当前标签' }));
     expect(onDeleteTag).toHaveBeenCalledWith(7, 3);
+  });
+
+  it('rejects invalid bulk object ID lists', async () => {
+    const user = userEvent.setup();
+    const onBulkAssignTag = vi.fn().mockResolvedValue(bulkAssignment);
+    renderPanel({ onBulkAssignTag });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    await screen.findByText('批量对象 ID');
+    await user.type(screen.getByLabelText('批量对象 ID'), '1, abc');
+    await user.click(screen.getByRole('button', { name: '批量添加对象标签' }));
+
+    expect(onBulkAssignTag).not.toHaveBeenCalled();
+    expect(await screen.findByRole('alert')).toHaveTextContent('请输入有效对象 ID 列表');
   });
 
   it('shows empty and error states', async () => {

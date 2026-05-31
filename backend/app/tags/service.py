@@ -13,7 +13,7 @@ from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow
 from app.narrative.models import Chapter
 from app.tags.models import ObjectTag, Tag
-from app.tags.schemas import ObjectTagAssignRequest, TagCreateRequest
+from app.tags.schemas import ObjectTagAssignRequest, ObjectTagBulkAssignRequest, TagCreateRequest
 from app.world.service import require_owned_world
 
 SUPPORTED_OBJECT_TYPES = {'character', 'foreshadow', 'chapter', 'event'}
@@ -170,6 +170,52 @@ def assign_tag(db: Session, user: User, world_id: int, tag_id: int, data: Object
     db.commit()
     db.refresh(assignment)
     return assignment
+
+
+def _unique_ids(ids: list[int]) -> list[int]:
+    seen = set()
+    unique = []
+    for object_id in ids:
+        if object_id in seen:
+            continue
+        seen.add(object_id)
+        unique.append(object_id)
+    return unique
+
+
+def bulk_assign_tag(db: Session, user: User, world_id: int, tag_id: int, data: ObjectTagBulkAssignRequest) -> dict:
+    world = require_owned_world(db, user, world_id)
+    tag = _require_tag(db, world.id, tag_id)
+    object_type = _validate_object_type(data.object_type)
+    object_ids = _unique_ids(data.object_ids)
+    for object_id in object_ids:
+        _target_object(db, world.id, object_type, object_id)
+
+    existing_rows = list(
+        db.scalars(
+            select(ObjectTag)
+            .where(ObjectTag.tag_id == tag.id)
+            .where(ObjectTag.object_type == object_type)
+            .where(ObjectTag.object_id.in_(object_ids))
+            .order_by(ObjectTag.object_id)
+        )
+    )
+    existing_ids = {row.object_id for row in existing_rows}
+    assigned_ids = [object_id for object_id in object_ids if object_id not in existing_ids]
+    for object_id in assigned_ids:
+        db.add(ObjectTag(world_id=world.id, tag_id=tag.id, object_type=object_type, object_id=object_id))
+    db.commit()
+    already_ids = [object_id for object_id in object_ids if object_id in existing_ids]
+    return {
+        'world_id': world.id,
+        'tag_id': tag.id,
+        'object_type': object_type,
+        'requested_count': len(data.object_ids),
+        'assigned_count': len(assigned_ids),
+        'already_assigned_count': len(already_ids),
+        'assigned_object_ids': assigned_ids,
+        'already_assigned_object_ids': already_ids,
+    }
 
 
 def unassign_tag(db: Session, user: User, world_id: int, tag_id: int, object_type: str, object_id: int) -> None:

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import type { ObjectTagResponse, TagDetailResponse, TagListResponse, TagResponse, TagSummaryResponse } from '../api/types';
+import type { ObjectTagBulkAssignResponse, ObjectTagResponse, TagDetailResponse, TagListResponse, TagResponse, TagSummaryResponse } from '../api/types';
 
 type Props = {
   worldId: number;
@@ -7,6 +7,7 @@ type Props = {
   onCreateTag: (worldId: number, data: { name: string; color?: string }) => Promise<TagResponse>;
   onLoadTag: (worldId: number, tagId: number) => Promise<TagDetailResponse>;
   onAssignTag: (worldId: number, tagId: number, data: { object_type: string; object_id: number }) => Promise<ObjectTagResponse>;
+  onBulkAssignTag?: (worldId: number, tagId: number, data: { object_type: string; object_ids: number[] }) => Promise<ObjectTagBulkAssignResponse>;
   onUnassignTag: (worldId: number, tagId: number, objectType: string, objectId: number) => Promise<unknown>;
   onDeleteTag: (worldId: number, tagId: number) => Promise<unknown>;
 };
@@ -24,7 +25,7 @@ function countText(tag: TagSummaryResponse): string {
   return counts.map(([type, count]) => `${type} ${count}`).join(' · ');
 }
 
-export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onAssignTag, onUnassignTag, onDeleteTag }: Props) {
+export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
   const [tags, setTags] = useState<TagSummaryResponse[]>([]);
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
   const [detail, setDetail] = useState<TagDetailResponse | null>(null);
@@ -36,6 +37,8 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
   const [tagColor, setTagColor] = useState('');
   const [objectType, setObjectType] = useState('character');
   const [objectId, setObjectId] = useState('1');
+  const [bulkObjectIds, setBulkObjectIds] = useState('');
+  const [bulkNotice, setBulkNotice] = useState('');
 
   async function loadTags() {
     setLoading(true);
@@ -100,12 +103,45 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
     }
     setSaving(true);
     setError('');
+    setBulkNotice('');
     try {
       await onAssignTag(worldId, selectedTagId, { object_type: objectType, object_id: parsedObjectId });
       await loadTags();
       await loadTag(selectedTagId);
     } catch (err) {
       setError(err instanceof Error ? err.message : '添加对象标签失败');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function parseBulkIds(): number[] | null {
+    const tokens = bulkObjectIds.split(/[\s,，]+/).map((item) => item.trim()).filter(Boolean);
+    if (tokens.length === 0) return null;
+    const ids = tokens.map((item) => Number(item));
+    if (ids.some((id) => !Number.isInteger(id) || id <= 0)) return null;
+    return ids;
+  }
+
+  async function submitBulkAssignment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (selectedTagId === null || !onBulkAssignTag) return;
+    const ids = parseBulkIds();
+    if (ids === null) {
+      setError('请输入有效对象 ID 列表');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setBulkNotice('');
+    try {
+      const result = await onBulkAssignTag(worldId, selectedTagId, { object_type: objectType, object_ids: ids });
+      setBulkObjectIds('');
+      setBulkNotice(`批量打标完成：新增 ${result.assigned_count}，已存在 ${result.already_assigned_count}。`);
+      await loadTags();
+      await loadTag(selectedTagId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '批量添加对象标签失败');
     } finally {
       setSaving(false);
     }
@@ -211,6 +247,22 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
             </label>
             <button className="primary-button self-end" disabled={saving} type="submit">添加对象标签</button>
           </form>
+
+          {onBulkAssignTag && (
+            <form className="grid gap-3 md:grid-cols-[1fr_auto]" onSubmit={submitBulkAssignment}>
+              <label className="text-sm font-bold text-[#3b2511]">
+                批量对象 ID
+                <textarea
+                  className="paper-input mt-1 min-h-24"
+                  value={bulkObjectIds}
+                  onChange={(event) => setBulkObjectIds(event.target.value)}
+                  placeholder="例如：1, 2, 3"
+                />
+              </label>
+              <button className="primary-button self-end" disabled={saving} type="submit">批量添加对象标签</button>
+            </form>
+          )}
+          {bulkNotice && <p className="ink-muted text-sm">{bulkNotice}</p>}
 
           {detail.objects.length === 0 ? (
             <p className="ink-muted">这个标签还没有关联对象。</p>

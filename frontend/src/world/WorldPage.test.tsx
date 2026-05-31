@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, assignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, searchWorld, unassignWorldTag } from '../api/client';
+import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, searchWorld, unassignWorldTag } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -11,6 +11,7 @@ vi.mock('../api/client', () => ({
   createSampleWorld: vi.fn(),
   compareWorldSnapshots: vi.fn(),
   assignWorldTag: vi.fn(),
+  bulkAssignWorldTag: vi.fn(),
   createWorld: vi.fn(),
   createWorldFromSeed: vi.fn(),
   createWorldSnapshot: vi.fn(),
@@ -71,6 +72,7 @@ beforeEach(() => {
   vi.mocked(createSampleWorld).mockReset();
   vi.mocked(createWorld).mockReset();
   vi.mocked(assignWorldTag).mockReset();
+  vi.mocked(bulkAssignWorldTag).mockReset();
   vi.mocked(createWorldFromSeed).mockReset();
   vi.mocked(createWorldSnapshot).mockReset();
   vi.mocked(createWorldTag).mockReset();
@@ -165,6 +167,7 @@ beforeEach(() => {
     objects: [],
   });
   vi.mocked(assignWorldTag).mockResolvedValue({ id: 9, world_id: 7, tag_id: 3, object_type: 'character', object_id: 1, created_at: '2026-05-31T00:00:00Z' });
+  vi.mocked(bulkAssignWorldTag).mockResolvedValue({ world_id: 7, tag_id: 3, object_type: 'character', requested_count: 2, assigned_count: 2, already_assigned_count: 0, assigned_object_ids: [1, 2], already_assigned_object_ids: [] });
   vi.mocked(unassignWorldTag).mockResolvedValue(undefined);
   vi.mocked(deleteWorldTag).mockResolvedValue(undefined);
   vi.mocked(getWorldSeed).mockResolvedValue({
@@ -406,6 +409,8 @@ describe('WorldPage Narrative Control Center', () => {
     expect(await screen.findByText('Tags / Collections')).toBeInTheDocument();
     await waitFor(() => expect(listWorldTags).toHaveBeenCalledTimes(2));
     expect(listWorldTags).toHaveBeenCalledWith(7);
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    expect(await screen.findByLabelText('批量对象 ID')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '加载快照列表' }));
     expect(listWorldSnapshots).toHaveBeenCalledWith(7);
 

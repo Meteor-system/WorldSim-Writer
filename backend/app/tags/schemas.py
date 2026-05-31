@@ -39,6 +39,34 @@ class ObjectTagAssignRequest(BaseModel):
         return _strip_required(value)
 
 
+class ObjectTagBulkAssignRequest(BaseModel):
+    object_type: str
+    object_ids: list[int]
+
+    @field_validator('object_type')
+    @classmethod
+    def validate_object_type(cls, value: str) -> str:
+        return _strip_required(value)
+
+    @field_validator('object_ids')
+    @classmethod
+    def validate_object_ids(cls, value: list[int]) -> list[int]:
+        if not value or len(value) > 100 or any(object_id <= 0 for object_id in value):
+            raise ValueError('object_ids must contain 1 to 100 positive ids')
+        return value
+
+
+class ObjectTagBulkAssignResponse(BaseModel):
+    world_id: int
+    tag_id: int
+    object_type: str
+    requested_count: int
+    assigned_count: int
+    already_assigned_count: int
+    assigned_object_ids: list[int]
+    already_assigned_object_ids: list[int]
+
+
 class TagResponse(BaseModel):
     id: int
     world_id: int

@@ -289,6 +289,17 @@ export type ObjectTagResponse = {
   created_at: string;
 };
 
+export type ObjectTagBulkAssignResponse = {
+  world_id: number;
+  tag_id: number;
+  object_type: string;
+  requested_count: number;
+  assigned_count: number;
+  already_assigned_count: number;
+  assigned_object_ids: number[];
+  already_assigned_object_ids: number[];
+};
+
 export type TagListResponse = {
   world_id: number;
   tags: TagSummaryResponse[];

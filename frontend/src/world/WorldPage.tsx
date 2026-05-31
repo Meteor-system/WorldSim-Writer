@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
   assignWorldTag,
+  bulkAssignWorldTag,
   compareWorldSnapshots,
   createSampleWorld,
   createWorld,
@@ -491,6 +492,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 onCreateTag={createWorldTag}
                 onLoadTag={getWorldTag}
                 onAssignTag={assignWorldTag}
+                onBulkAssignTag={bulkAssignWorldTag}
                 onUnassignTag={unassignWorldTag}
                 onDeleteTag={deleteWorldTag}
               />
