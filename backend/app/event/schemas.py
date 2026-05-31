@@ -18,8 +18,15 @@ class EventLogResponse(BaseModel):
     model_config = {'from_attributes': True}
 
 
+class EventLogSummaryResponse(BaseModel):
+    total: int
+    event_type_counts: dict[str, int]
+    latest_world_version: int
+
+
 class EventLogListResponse(BaseModel):
     items: list[EventLogResponse]
     total: int
     limit: int
     offset: int
+    summary: EventLogSummaryResponse

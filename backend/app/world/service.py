@@ -249,4 +249,18 @@ def list_world_events(db: Session, user: User, world_id: int, event_type: str | 
         count_query = count_query.where(EventLog.event_type == event_type)
     total = db.scalar(count_query) or 0
     items = list(db.scalars(query.order_by(desc(EventLog.id)).limit(limit).offset(offset)))
-    return {'items': items, 'total': total, 'limit': limit, 'offset': offset}
+    type_rows = db.execute(
+        select(EventLog.event_type, func.count()).where(EventLog.world_id == world.id).group_by(EventLog.event_type)
+    ).all()
+    latest_world_version = db.scalar(select(func.max(EventLog.world_version_after)).where(EventLog.world_id == world.id)) or world.world_version
+    return {
+        'items': items,
+        'total': total,
+        'limit': limit,
+        'offset': offset,
+        'summary': {
+            'total': sum(count for _, count in type_rows),
+            'event_type_counts': {event_type: count for event_type, count in type_rows},
+            'latest_world_version': latest_world_version,
+        },
+    }

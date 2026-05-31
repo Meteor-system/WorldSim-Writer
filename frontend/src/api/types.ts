@@ -210,6 +210,20 @@ export type EventLog = {
   created_at: string;
 };
 
+export type EventLogSummary = {
+  total: number;
+  event_type_counts: Record<string, number>;
+  latest_world_version: number;
+};
+
+export type EventLogListResponse = {
+  items: EventLog[];
+  total: number;
+  limit: number;
+  offset: number;
+  summary: EventLogSummary;
+};
+
 export type StoryArcChapter = {
   chapter_number: number;
   title: string;

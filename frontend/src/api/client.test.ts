@@ -18,6 +18,7 @@ import {
   getForeshadowLedger,
   exportWorldArchiveMarkdown,
   getDraftDiff,
+  getWorldEvents,
   getDraftVersion,
   getRelations,
   reviseDraft,
@@ -72,6 +73,33 @@ describe('world creation API helpers', () => {
       'http://localhost:8000/worlds/from-template',
       expect.objectContaining({ method: 'POST', body: '{}' }),
     );
+  });
+});
+
+describe('world event API helpers', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('calls event list endpoint with filters and pagination', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      items: [],
+      total: 0,
+      limit: 10,
+      offset: 20,
+      summary: { total: 0, event_type_counts: {}, latest_world_version: 1 },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await getWorldEvents(7, { event_type: 'character_change', limit: 10, offset: 20 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/worlds/7/events?event_type=character_change&limit=10&offset=20',
+      expect.any(Object),
+    );
+    expect(response.summary.latest_world_version).toBe(1);
   });
 });
 

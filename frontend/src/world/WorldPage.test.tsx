@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, createSampleWorld, createWorld, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNextChapterPrep, getRelations } from '../api/client';
+import { apiRequest, createSampleWorld, createWorld, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNextChapterPrep, getRelations, getWorldEvents } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -14,6 +14,7 @@ vi.mock('../api/client', () => ({
   getChapterHistory: vi.fn(),
   getChapterHistoryDetail: vi.fn(),
   getNextChapterPrep: vi.fn(),
+  getWorldEvents: vi.fn(),
   getCharacters: vi.fn(),
   getForeshadowLedger: vi.fn(),
   getForeshadowTimeline: vi.fn(),
@@ -53,6 +54,7 @@ beforeEach(() => {
   vi.mocked(getChapterHistory).mockReset();
   vi.mocked(getChapterHistoryDetail).mockReset();
   vi.mocked(getNextChapterPrep).mockReset();
+  vi.mocked(getWorldEvents).mockReset();
   vi.mocked(getCharacters).mockReset();
   vi.mocked(getForeshadowLedger).mockReset();
   vi.mocked(getRelations).mockReset();
@@ -135,6 +137,13 @@ beforeEach(() => {
     continuity_warnings: [],
     recent_events: [],
   });
+  vi.mocked(getWorldEvents).mockResolvedValue({
+    items: [],
+    total: 0,
+    limit: 20,
+    offset: 0,
+    summary: { total: 1, event_type_counts: { WORLD_CREATED: 1 }, latest_world_version: 2 },
+  });
 });
 
 describe('WorldPage world creation', () => {
@@ -184,6 +193,8 @@ describe('WorldPage Narrative Control Center', () => {
     expect(screen.getByText('第一章 雨巷密谈 · v1 · 世界 1 → 2')).toBeInTheDocument();
     expect(screen.getByText('下一章准备台')).toBeInTheDocument();
     expect(screen.getByText('林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
+    expect(await screen.findByText('Timeline Explorer')).toBeInTheDocument();
+    expect(getWorldEvents).toHaveBeenCalledWith(7, { limit: 20 });
 
     await user.click(screen.getByRole('button', { name: '用作下一章目标' }));
     expect(screen.getByText('已设为下一章目标：林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();

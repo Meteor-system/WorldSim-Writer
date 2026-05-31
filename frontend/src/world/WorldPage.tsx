@@ -9,6 +9,7 @@ import {
   getChapterHistory,
   getChapterHistoryDetail,
   getNextChapterPrep,
+  getWorldEvents,
 } from '../api/client';
 import type { ChapterExecutionContext, ChapterHistoryResponse, NextChapterPrepResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
@@ -18,6 +19,7 @@ import { ChapterHistoryPanel } from './ChapterHistoryPanel';
 import { NextChapterPrepPanel } from './NextChapterPrepPanel';
 import { WorldArchivePanel } from './WorldArchivePanel';
 import { WorldCreationForm } from './WorldCreationForm';
+import { WorldTimelinePanel } from './WorldTimelinePanel';
 
 type Props = { onEnterStudio: (world: WorldOverview, context?: StudioLaunchContext) => void; autoFocusTitle?: boolean };
 
@@ -362,6 +364,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   executionContext: context,
                 })}
               />
+              <WorldTimelinePanel worldId={world.id} onLoadEvents={getWorldEvents} />
               <WorldArchivePanel
                 onCreateSnapshot={() => createWorldSnapshot(world.id)}
                 onExportMarkdown={() => exportWorldArchiveMarkdown(world.id)}

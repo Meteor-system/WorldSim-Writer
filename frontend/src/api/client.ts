@@ -20,7 +20,7 @@ import type {
   CritiqueResponse,
   DraftDiffResponse,
   DraftResponse,
-  EventLog,
+  EventLogListResponse,
   Foreshadow,
   ForeshadowCreate,
   ForeshadowEvent,
@@ -102,7 +102,7 @@ export function getWorldEvents(worldId: number, params: { event_type?: string; l
   if (params.limit !== undefined) search.set('limit', String(params.limit));
   if (params.offset !== undefined) search.set('offset', String(params.offset));
   const query = search.toString();
-  return apiRequest<{ items: EventLog[]; total: number; limit: number; offset: number }>(`/worlds/${worldId}/events${query ? `?${query}` : ''}`);
+  return apiRequest<EventLogListResponse>(`/worlds/${worldId}/events${query ? `?${query}` : ''}`);
 }
 
 export function generateStoryArc(worldId: number) {

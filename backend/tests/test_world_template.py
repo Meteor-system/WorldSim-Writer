@@ -180,6 +180,55 @@ def test_create_custom_world_records_world_created_event_and_export_timeline(cli
     assert '0 → 1' in timeline
 
 
+def test_world_events_include_summary_counts_and_latest_world_version(client):
+    token = register(client, 'timeline-summary@example.com')
+    create_response = client.post('/worlds', headers=auth(token), json=custom_world_payload())
+    world_id = create_response.json()['id']
+
+    events = client.get(f'/worlds/{world_id}/events', headers=auth(token)).json()
+
+    assert events['total'] == 1
+    assert events['summary']['total'] == 1
+    assert events['summary']['event_type_counts'] == {'WORLD_CREATED': 1}
+    assert events['summary']['latest_world_version'] == 1
+
+
+def test_world_events_filter_items_but_keep_all_world_summary(client):
+    token = register(client, 'timeline-filter@example.com')
+    create_response = client.post('/worlds', headers=auth(token), json=custom_world_payload())
+    world_id = create_response.json()['id']
+    character_id = client.get(f'/worlds/{world_id}/overview', headers=auth(token)).json()['characters'][0]['id']
+    update_response = client.put(
+        f'/characters/{character_id}',
+        headers=auth(token),
+        json={'status': '追查灯塔异常', 'edit_reason': '推进角色线索'},
+    )
+    assert update_response.status_code == 200
+
+    events = client.get(f'/worlds/{world_id}/events?event_type=character_change', headers=auth(token)).json()
+
+    assert events['total'] == 1
+    assert [event['event_type'] for event in events['items']] == ['character_change']
+    assert events['summary']['total'] == 3
+    assert events['summary']['event_type_counts'] == {
+        'WORLD_CREATED': 1,
+        'character_change': 1,
+        'world_version_increment': 1,
+    }
+    assert events['summary']['latest_world_version'] == 2
+
+
+def test_world_events_summary_is_limited_to_owner(client):
+    owner_token = register(client, 'timeline-owner@example.com')
+    other_token = register(client, 'timeline-other@example.com')
+    world_id = client.post('/worlds/from-template', headers=auth(owner_token)).json()['id']
+
+    response = client.get(f'/worlds/{world_id}/events', headers=auth(other_token))
+
+    assert response.status_code == 403
+    assert response.json()['detail'] == 'FORBIDDEN'
+
+
 def test_create_custom_world_rejects_relation_self_reference(client):
     token = register(client, 'world-self-relation@example.com')
     payload = custom_world_payload()
