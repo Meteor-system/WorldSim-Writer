@@ -717,6 +717,37 @@ describe('WorldTagsPanel', () => {
     expect(screen.getByText('显示 3 / 3 个标签')).toBeInTheDocument();
   });
 
+  it('summarizes active selected tag object filter search and sort state', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onLoadTag: vi.fn().mockResolvedValue(mixedDetailResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    await screen.findByText('黑匣子脉冲');
+    await user.click(screen.getByRole('button', { name: '只看章节 1' }));
+    await user.type(screen.getByLabelText('搜索当前标签对象'), '许');
+    await user.selectOptions(screen.getByLabelText('对象排序'), 'id');
+
+    expect(screen.getByLabelText('标签对象视图摘要')).toHaveTextContent('显示 1 / 3 个对象 · 搜索「许」 · 类型：章节 · 排序：ID 从小到大');
+  });
+
+  it('resets selected tag object view summary with object view reset', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onLoadTag: vi.fn().mockResolvedValue(mixedDetailResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    await screen.findByText('黑匣子脉冲');
+    await user.click(screen.getByRole('button', { name: '只看章节 1' }));
+    await user.type(screen.getByLabelText('搜索当前标签对象'), '许');
+    await user.selectOptions(screen.getByLabelText('对象排序'), 'id');
+    expect(screen.getByLabelText('标签对象视图摘要')).toHaveTextContent('显示 1 / 3 个对象 · 搜索「许」 · 类型：章节 · 排序：ID 从小到大');
+
+    await user.click(screen.getByRole('button', { name: '重置对象视图' }));
+
+    expect(screen.getByLabelText('标签对象视图摘要')).toHaveTextContent('显示 3 / 3 个对象 · 未搜索 · 类型：全部对象 · 排序：默认排序');
+  });
+
   it('resets selected tag object filter search and sort controls', async () => {
     const user = userEvent.setup();
     renderPanel({ onLoadTag: vi.fn().mockResolvedValue(mixedDetailResponse) });

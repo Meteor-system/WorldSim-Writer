@@ -46,6 +46,18 @@ function tagSortLabel(value: string): string {
   return '默认排序';
 }
 
+function objectTypeFilterLabel(value: string): string {
+  if (value === 'all') return '全部对象';
+  return OBJECT_TYPES.find((item) => item.value === value)?.label ?? value;
+}
+
+function detailSortLabel(value: string): string {
+  if (value === 'title') return '标题 A-Z';
+  if (value === 'type') return '类型 A-Z';
+  if (value === 'id') return 'ID 从小到大';
+  return '默认排序';
+}
+
 export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onUpdateTag, onMergeTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
   const [tags, setTags] = useState<TagSummaryResponse[]>([]);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
@@ -338,6 +350,14 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
     if (detailSortMode === 'id') return left.object_id - right.object_id || left.object_type.localeCompare(right.object_type);
     return 0;
   });
+  const detailViewSummary = detail
+    ? [
+        `显示 ${filteredObjects.length} / ${detail.tag.assignment_count} 个对象`,
+        normalizedDetailSearchQuery ? `搜索「${detailSearchQuery.trim()}」` : '未搜索',
+        `类型：${objectTypeFilterLabel(detailObjectTypeFilter)}`,
+        `排序：${detailSortLabel(detailSortMode)}`,
+      ].join(' · ')
+    : '';
 
   return (
     <section className="book-card space-y-5 p-5">
@@ -511,33 +531,36 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-[1fr_14rem_auto]">
-            <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
-              搜索当前标签对象
-              <input
-                className="paper-input mt-1"
-                aria-label="搜索当前标签对象"
-                value={detailSearchQuery}
-                onChange={(event) => setDetailSearchQuery(event.target.value)}
-                placeholder="按标题、摘要、类型或 ID 搜索"
-              />
-              <span className="ink-muted mt-2 block text-xs">显示 {filteredObjects.length} / {detail.tag.assignment_count} 个对象</span>
-            </label>
-            <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
-              对象排序
-              <select
-                className="paper-input mt-1"
-                aria-label="对象排序"
-                value={detailSortMode}
-                onChange={(event) => setDetailSortMode(event.target.value)}
-              >
-                <option value="default">默认排序</option>
-                <option value="title">标题 A-Z</option>
-                <option value="type">类型 A-Z</option>
-                <option value="id">ID 从小到大</option>
-              </select>
-            </label>
-            <button className="secondary-button self-end" type="button" onClick={resetDetailView}>重置对象视图</button>
+          <div className="space-y-2">
+            <div className="grid gap-3 md:grid-cols-[1fr_14rem_auto]">
+              <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
+                搜索当前标签对象
+                <input
+                  className="paper-input mt-1"
+                  aria-label="搜索当前标签对象"
+                  value={detailSearchQuery}
+                  onChange={(event) => setDetailSearchQuery(event.target.value)}
+                  placeholder="按标题、摘要、类型或 ID 搜索"
+                />
+                <span className="ink-muted mt-2 block text-xs">显示 {filteredObjects.length} / {detail.tag.assignment_count} 个对象</span>
+              </label>
+              <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
+                对象排序
+                <select
+                  className="paper-input mt-1"
+                  aria-label="对象排序"
+                  value={detailSortMode}
+                  onChange={(event) => setDetailSortMode(event.target.value)}
+                >
+                  <option value="default">默认排序</option>
+                  <option value="title">标题 A-Z</option>
+                  <option value="type">类型 A-Z</option>
+                  <option value="id">ID 从小到大</option>
+                </select>
+              </label>
+              <button className="secondary-button self-end" type="button" onClick={resetDetailView}>重置对象视图</button>
+            </div>
+            <p className="ink-muted text-xs" aria-label="标签对象视图摘要">{detailViewSummary}</p>
           </div>
 
           <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitAssignment}>
