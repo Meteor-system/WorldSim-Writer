@@ -40,6 +40,8 @@ import type {
   WorldMarkdownExportResponse,
   WorldPulseResponse,
   WorldSearchResponse,
+  WorldSeedDetail,
+  WorldSeedListResponse,
   WorldSnapshotCompareResponse,
   WorldSnapshotDetailResponse,
   WorldSnapshotListResponse,
@@ -97,6 +99,21 @@ export function createWorld(data: WorldCreateRequest) {
 
 export function createSampleWorld() {
   return apiRequest<{ id: number }>('/worlds/from-template', {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
+export function listWorldSeeds() {
+  return apiRequest<WorldSeedListResponse>('/worlds/seeds');
+}
+
+export function getWorldSeed(seedKey: string) {
+  return apiRequest<WorldSeedDetail>(`/worlds/seeds/${seedKey}`);
+}
+
+export function createWorldFromSeed(seedKey: string) {
+  return apiRequest<{ id: number }>(`/worlds/from-seed/${seedKey}`, {
     method: 'POST',
     body: '{}',
   });

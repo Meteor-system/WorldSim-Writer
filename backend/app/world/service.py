@@ -12,6 +12,7 @@ from app.foreshadow.models import Foreshadow, ForeshadowEvent
 from app.narrative.models import Chapter
 from app.world.models import World
 from app.world.schemas import WorldCreateRequest
+from app.world.seed_library import WORLD_SEEDS, seed_detail, seed_summary
 from app.world.templates import SAMPLE_WORLD
 
 FORESHADOW_STATUSES = {'planted', 'advanced', 'resolved', 'expired'}
@@ -199,6 +200,27 @@ def create_world_from_template(db: Session, user: User, data: WorldCreateRequest
 
 def create_sample_world(db: Session, user: User) -> World:
     return create_world_from_template(db, user, _sample_world_request())
+
+
+def _find_world_seed(seed_key: str) -> dict:
+    for seed in WORLD_SEEDS:
+        if seed['key'] == seed_key:
+            return seed
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='SEED_NOT_FOUND')
+
+
+def list_world_seeds() -> list[dict]:
+    return [seed_summary(seed) for seed in WORLD_SEEDS]
+
+
+def get_world_seed(seed_key: str) -> dict:
+    return seed_detail(_find_world_seed(seed_key))
+
+
+def create_world_from_seed(db: Session, user: User, seed_key: str) -> World:
+    seed = _find_world_seed(seed_key)
+    data = WorldCreateRequest.model_validate(seed['payload'])
+    return create_world_from_template(db, user, data)
 
 
 def list_user_worlds(db: Session, user: User) -> list[World]:

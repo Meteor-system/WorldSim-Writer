@@ -197,6 +197,23 @@ export type WorldCreateRequest = {
   starter_assets: StarterAssetsCreate;
 };
 
+export type WorldSeedSummary = {
+  key: string;
+  label: string;
+  genre_template: string;
+  hook: string;
+  tension_profile: string[];
+  starter_summary: Record<string, unknown>;
+};
+
+export type WorldSeedDetail = WorldSeedSummary & {
+  payload: WorldCreateRequest;
+};
+
+export type WorldSeedListResponse = {
+  seeds: WorldSeedSummary[];
+};
+
 export type EventLog = {
   id: number;
   world_id: number;

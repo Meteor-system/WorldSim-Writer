@@ -5,13 +5,24 @@ from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
 from app.event.schemas import EventLogListResponse
-from app.world.schemas import StoryArcResponse, WorldCreateRequest, WorldOverviewResponse, WorldResponse, WorldSearchResponse
+from app.world.schemas import (
+    StoryArcResponse,
+    WorldCreateRequest,
+    WorldOverviewResponse,
+    WorldResponse,
+    WorldSearchResponse,
+    WorldSeedDetail,
+    WorldSeedListResponse,
+)
 from app.world.service import (
     create_sample_world,
+    create_world_from_seed,
     create_world_from_template,
     get_world_overview,
+    get_world_seed,
     list_user_worlds,
     list_world_events,
+    list_world_seeds,
     require_owned_world,
     search_world,
 )
@@ -32,6 +43,25 @@ def create_world(
 @router.post('/from-template', response_model=WorldResponse)
 def create_from_template(current_user: User = Depends(require_user), db: Session = Depends(get_db)) -> WorldResponse:
     return WorldResponse.model_validate(create_sample_world(db, current_user))
+
+
+@router.get('/seeds', response_model=WorldSeedListResponse)
+def seeds(current_user: User = Depends(require_user)) -> WorldSeedListResponse:
+    return WorldSeedListResponse.model_validate({'seeds': list_world_seeds()})
+
+
+@router.get('/seeds/{seed_key}', response_model=WorldSeedDetail)
+def seed_detail(seed_key: str, current_user: User = Depends(require_user)) -> WorldSeedDetail:
+    return WorldSeedDetail.model_validate(get_world_seed(seed_key))
+
+
+@router.post('/from-seed/{seed_key}', response_model=WorldResponse)
+def create_from_seed(
+    seed_key: str,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> WorldResponse:
+    return WorldResponse.model_validate(create_world_from_seed(db, current_user, seed_key))
 
 
 @router.get('', response_model=list[WorldResponse])

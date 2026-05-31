@@ -5,6 +5,7 @@ import {
   createRelation,
   createSampleWorld,
   createWorld,
+  createWorldFromSeed,
   deleteCharacter,
   deleteForeshadow,
   deleteRelation,
@@ -25,6 +26,8 @@ import {
   getDraftDiff,
   getWorldEvents,
   getDraftVersion,
+  getWorldSeed,
+  listWorldSeeds,
   searchWorld,
   getRelations,
   reviseDraft,
@@ -79,6 +82,39 @@ describe('world creation API helpers', () => {
       'http://localhost:8000/worlds/from-template',
       expect.objectContaining({ method: 'POST', body: '{}' }),
     );
+  });
+
+  it('calls world seed library endpoints', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ seeds: [{ key: 'forgotten-sun-city', label: '无日城' }] }))
+      .mockResolvedValueOnce(jsonResponse({
+        key: 'forgotten-sun-city',
+        label: '无日城',
+        genre_template: 'weird_fantasy',
+        hook: '所有人都忘记太阳存在过。',
+        tension_profile: ['集体失忆'],
+        starter_summary: { character_count: 2 },
+        payload: {
+          title: '无日城',
+          genre_template: 'weird_fantasy',
+          truth_canon: '无日城没有太阳。',
+          starter_assets: { characters: [{ name: '沈昼', role_type: 'protagonist' }] },
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({ id: 9 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const list = await listWorldSeeds();
+    const detail = await getWorldSeed('forgotten-sun-city');
+    const created = await createWorldFromSeed('forgotten-sun-city');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://localhost:8000/worlds/seeds', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8000/worlds/seeds/forgotten-sun-city', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8000/worlds/from-seed/forgotten-sun-city', expect.objectContaining({ method: 'POST', body: '{}' }));
+    expect(list.seeds[0].key).toBe('forgotten-sun-city');
+    expect(detail.payload.title).toBe('无日城');
+    expect(created.id).toBe(9);
   });
 });
 

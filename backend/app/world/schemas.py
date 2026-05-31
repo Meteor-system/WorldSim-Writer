@@ -93,6 +93,23 @@ class WorldResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class WorldSeedSummary(BaseModel):
+    key: str
+    label: str
+    genre_template: str
+    hook: str
+    tension_profile: list[str]
+    starter_summary: dict[str, Any]
+
+
+class WorldSeedDetail(WorldSeedSummary):
+    payload: WorldCreateRequest
+
+
+class WorldSeedListResponse(BaseModel):
+    seeds: list[WorldSeedSummary]
+
+
 class StoryArcResponse(BaseModel):
     world_id: int
     story_arc: list[StoryArcChapter]

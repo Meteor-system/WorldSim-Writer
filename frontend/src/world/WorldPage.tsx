@@ -4,6 +4,7 @@ import {
   compareWorldSnapshots,
   createSampleWorld,
   createWorld,
+  createWorldFromSeed,
   createWorldSnapshot,
   exportWorldArchiveMarkdown,
   generateStoryArc,
@@ -15,10 +16,12 @@ import {
   getOpenThreads,
   getWorldEvents,
   getWorldPulse,
+  getWorldSeed,
+  listWorldSeeds,
   listWorldSnapshots,
   searchWorld,
 } from '../api/client';
-import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse } from '../api/types';
+import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
@@ -128,6 +131,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [seedLibrary, setSeedLibrary] = useState<WorldSeedSummary[]>([]);
+  const [seedLibraryLoading, setSeedLibraryLoading] = useState(false);
+  const [seedLibraryError, setSeedLibraryError] = useState('');
   const [arcLoading, setArcLoading] = useState(false);
   const [chapterHistory, setChapterHistory] = useState<ChapterHistoryResponse | null>(null);
   const [chapterHistoryLoading, setChapterHistoryLoading] = useState(false);
@@ -214,12 +220,27 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     }
   }
 
+  async function loadSeedLibrary() {
+    setSeedLibraryLoading(true);
+    setSeedLibraryError('');
+    try {
+      const response = await listWorldSeeds();
+      setSeedLibrary(response.seeds);
+    } catch {
+      setSeedLibrary([]);
+      setSeedLibraryError('世界胚胎库暂不可用');
+    } finally {
+      setSeedLibraryLoading(false);
+    }
+  }
+
   async function loadWorld() {
     setError('');
     try {
       const worlds = await apiRequest<Array<{ id: number }>>('/worlds');
       if (worlds.length === 0) {
         setWorld(null);
+        void loadSeedLibrary();
       } else {
         const overview = await apiRequest<WorldOverview>(`/worlds/${worlds[0].id}/overview`);
         setWorld(overview);
@@ -257,6 +278,21 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       void loadNarrativeControlCenter(overview.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建世界失败');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function submitSeedWorld(seedKey: string) {
+    setCreating(true);
+    setError('');
+    try {
+      const created = await createWorldFromSeed(seedKey);
+      const overview = await apiRequest<WorldOverview>(`/worlds/${created.id}/overview`);
+      setWorld(overview);
+      void loadNarrativeControlCenter(overview.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '创建世界胚胎失败');
     } finally {
       setCreating(false);
     }
@@ -301,7 +337,16 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
             </p>
           </div>
         )}
-        <WorldCreationForm creating={creating} onCreate={submitWorld} onCreateSample={submitSampleWorld} />
+        <WorldCreationForm
+          creating={creating}
+          onCreate={submitWorld}
+          onCreateSample={submitSampleWorld}
+          seeds={seedLibrary}
+          seedLoading={seedLibraryLoading}
+          seedError={seedLibraryError}
+          onLoadSeed={getWorldSeed}
+          onCreateSeed={submitSeedWorld}
+        />
       </section>
     );
   }

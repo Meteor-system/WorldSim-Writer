@@ -5,13 +5,22 @@ import type {
   StarterForeshadowCreate,
   StarterRelationCreate,
   WorldCreateRequest,
+  WorldSeedDetail,
+  WorldSeedSummary,
 } from '../api/types';
 import { clonePreset, GENRE_PRESETS } from './genrePresets';
+import { SeedLibraryPanel } from './SeedLibraryPanel';
 
 type Props = {
   creating: boolean;
   onCreate: (payload: WorldCreateRequest) => Promise<void>;
   onCreateSample: () => Promise<void>;
+  seeds?: WorldSeedSummary[];
+  selectedSeedKey?: string | null;
+  seedLoading?: boolean;
+  seedError?: string;
+  onLoadSeed?: (seedKey: string) => Promise<WorldSeedDetail>;
+  onCreateSeed?: (seedKey: string) => Promise<void> | void;
 };
 
 function goalsToText(goals: string[] | undefined): string {
@@ -46,14 +55,34 @@ function mapIndexAfterRemoval(index: number, removedIndex: number): number | nul
   return index;
 }
 
-export function WorldCreationForm({ creating, onCreate, onCreateSample }: Props) {
+export function WorldCreationForm({
+  creating,
+  onCreate,
+  onCreateSample,
+  seeds = [],
+  selectedSeedKey = null,
+  seedLoading = false,
+  seedError = '',
+  onLoadSeed,
+  onCreateSeed,
+}: Props) {
   const [selectedPresetKey, setSelectedPresetKey] = useState(GENRE_PRESETS[0].key);
+  const [activeSeedKey, setActiveSeedKey] = useState<string | null>(selectedSeedKey);
   const [form, setForm] = useState<WorldCreateRequest>(() => clonePreset(GENRE_PRESETS[0]));
 
   function selectPreset(key: string) {
     const preset = GENRE_PRESETS.find((item) => item.key === key) ?? GENRE_PRESETS[0];
     setSelectedPresetKey(preset.key);
+    setActiveSeedKey(null);
     setForm(clonePreset(preset));
+  }
+
+  async function applySeed(seedKey: string) {
+    if (!onLoadSeed) return;
+    const seed = await onLoadSeed(seedKey);
+    setSelectedPresetKey('');
+    setActiveSeedKey(seedKey);
+    setForm(JSON.parse(JSON.stringify(seed.payload)) as WorldCreateRequest);
   }
 
   function updateToneField(key: string, value: string) {
@@ -241,6 +270,19 @@ export function WorldCreationForm({ creating, onCreate, onCreateSample }: Props)
           创建内置示例世界
         </button>
       </div>
+
+      {seeds.length > 0 || seedLoading || seedError ? (
+        <section className="mt-8">
+          <SeedLibraryPanel
+            seeds={seeds}
+            selectedSeedKey={activeSeedKey}
+            loading={seedLoading}
+            error={seedError}
+            onApplySeed={applySeed}
+            onCreateSeed={(seedKey) => void onCreateSeed?.(seedKey)}
+          />
+        </section>
+      ) : null}
 
       <section className="mt-8 grid gap-3 md:grid-cols-3">
         {GENRE_PRESETS.map((preset) => (

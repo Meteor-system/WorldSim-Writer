@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, compareWorldSnapshots, createSampleWorld, createWorld, createWorldSnapshot, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, listWorldSnapshots, searchWorld } from '../api/client';
+import { apiRequest, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, listWorldSeeds, listWorldSnapshots, searchWorld } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -11,6 +11,7 @@ vi.mock('../api/client', () => ({
   createSampleWorld: vi.fn(),
   compareWorldSnapshots: vi.fn(),
   createWorld: vi.fn(),
+  createWorldFromSeed: vi.fn(),
   createWorldSnapshot: vi.fn(),
   exportWorldArchiveMarkdown: vi.fn(),
   generateStoryArc: vi.fn(),
@@ -22,6 +23,8 @@ vi.mock('../api/client', () => ({
   getWorldEvents: vi.fn(),
   getWorldPulse: vi.fn(),
   getArcPlan: vi.fn(),
+  getWorldSeed: vi.fn(),
+  listWorldSeeds: vi.fn(),
   searchWorld: vi.fn(),
   getCharacters: vi.fn(),
   getForeshadowLedger: vi.fn(),
@@ -61,6 +64,7 @@ beforeEach(() => {
   vi.mocked(compareWorldSnapshots).mockReset();
   vi.mocked(createSampleWorld).mockReset();
   vi.mocked(createWorld).mockReset();
+  vi.mocked(createWorldFromSeed).mockReset();
   vi.mocked(createWorldSnapshot).mockReset();
   vi.mocked(exportWorldArchiveMarkdown).mockReset();
   vi.mocked(getChapterHistory).mockReset();
@@ -71,6 +75,8 @@ beforeEach(() => {
   vi.mocked(getWorldEvents).mockReset();
   vi.mocked(getWorldPulse).mockReset();
   vi.mocked(getArcPlan).mockReset();
+  vi.mocked(getWorldSeed).mockReset();
+  vi.mocked(listWorldSeeds).mockReset();
   vi.mocked(searchWorld).mockReset();
   vi.mocked(listWorldSnapshots).mockReset();
   vi.mocked(getCharacters).mockReset();
@@ -105,6 +111,33 @@ beforeEach(() => {
   vi.mocked(apiRequest)
     .mockResolvedValueOnce([{ id: 7 }])
     .mockResolvedValueOnce(world);
+  vi.mocked(listWorldSeeds).mockResolvedValue({
+    seeds: [
+      {
+        key: 'forgotten-sun-city',
+        label: '无日城',
+        genre_template: 'weird_fantasy',
+        hook: '所有人都忘记太阳存在过。',
+        tension_profile: ['集体失忆'],
+        starter_summary: { character_count: 1, relation_count: 0, foreshadow_count: 1, character_names: ['沈昼'], foreshadow_titles: ['空白日晷'] },
+      },
+    ],
+  });
+  vi.mocked(getWorldSeed).mockResolvedValue({
+    key: 'forgotten-sun-city',
+    label: '无日城',
+    genre_template: 'weird_fantasy',
+    hook: '所有人都忘记太阳存在过。',
+    tension_profile: ['集体失忆'],
+    starter_summary: { character_count: 1, relation_count: 0, foreshadow_count: 1, character_names: ['沈昼'], foreshadow_titles: ['空白日晷'] },
+    payload: {
+      title: '无日城',
+      genre_template: 'weird_fantasy',
+      truth_canon: '无日城没有太阳。',
+      tone_profile: { style: '诡秘奇幻' },
+      starter_assets: { characters: [{ name: '沈昼', role_type: 'protagonist' }], relations: [], foreshadows: [] },
+    },
+  });
   vi.mocked(getChapterHistory).mockResolvedValue({
     world_id: 7,
     chapters: [
@@ -260,6 +293,8 @@ describe('WorldPage world creation', () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
     expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
+    expect(await screen.findByText('Sandbox Seed Library')).toBeInTheDocument();
+    expect(listWorldSeeds).toHaveBeenCalledOnce();
     await user.click(screen.getByRole('button', { name: '创建内置示例世界' }));
 
     expect(createSampleWorld).toHaveBeenCalledOnce();
@@ -280,6 +315,24 @@ describe('WorldPage world creation', () => {
 
     expect(createWorld).toHaveBeenCalledOnce();
     expect(await screen.findByRole('alert')).toHaveTextContent('INVALID_CHARACTER_INDEX');
+  });
+
+  it('creates a world directly from a sandbox seed', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(world);
+    vi.mocked(createWorldFromSeed).mockResolvedValue({ id: 7 });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('Sandbox Seed Library')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '直接创建此胚胎' }));
+
+    expect(createWorldFromSeed).toHaveBeenCalledWith('forgotten-sun-city');
+    expect(apiRequest).toHaveBeenNthCalledWith(2, '/worlds/7/overview');
+    expect(await screen.findByText('青岚城')).toBeInTheDocument();
   });
 });
 
