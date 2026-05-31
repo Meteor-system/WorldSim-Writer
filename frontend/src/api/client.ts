@@ -37,6 +37,7 @@ import type {
   StoryArcResponse,
   WorldCreateRequest,
   WorldMarkdownExportResponse,
+  WorldPulseResponse,
   WorldSearchResponse,
   WorldSnapshotCompareResponse,
   WorldSnapshotDetailResponse,
@@ -283,6 +284,10 @@ export function getNarrativeHealth(worldId: number) {
 
 export function getOpenThreads(worldId: number) {
   return apiRequest<OpenThreadsResponse>(`/worlds/${worldId}/open-threads`);
+}
+
+export function getWorldPulse(worldId: number) {
+  return apiRequest<WorldPulseResponse>(`/worlds/${worldId}/pulse`);
 }
 
 export function createWorldSnapshot(worldId: number, data: { label?: string; note?: string } = {}) {

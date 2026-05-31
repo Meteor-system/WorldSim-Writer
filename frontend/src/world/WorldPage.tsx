@@ -13,10 +13,11 @@ import {
   getNextChapterPrep,
   getOpenThreads,
   getWorldEvents,
+  getWorldPulse,
   listWorldSnapshots,
   searchWorld,
 } from '../api/client';
-import type { ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview } from '../api/types';
+import type { ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
@@ -26,6 +27,7 @@ import { NextChapterPrepPanel } from './NextChapterPrepPanel';
 import { OpenThreadsPanel } from './OpenThreadsPanel';
 import { WorldArchivePanel } from './WorldArchivePanel';
 import { WorldCreationForm } from './WorldCreationForm';
+import { WorldPulsePanel } from './WorldPulsePanel';
 import { WorldSearchPanel } from './WorldSearchPanel';
 import { WorldTimelinePanel } from './WorldTimelinePanel';
 
@@ -137,6 +139,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [openThreads, setOpenThreads] = useState<OpenThreadsResponse | null>(null);
   const [openThreadsLoading, setOpenThreadsLoading] = useState(false);
   const [openThreadsError, setOpenThreadsError] = useState('');
+  const [worldPulse, setWorldPulse] = useState<WorldPulseResponse | null>(null);
+  const [worldPulseLoading, setWorldPulseLoading] = useState(false);
+  const [worldPulseError, setWorldPulseError] = useState('');
   const [selectedExecutionContext, setSelectedExecutionContext] = useState<ChapterExecutionContext | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -146,10 +151,12 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     setNextPrepLoading(true);
     setNarrativeHealthLoading(true);
     setOpenThreadsLoading(true);
+    setWorldPulseLoading(true);
     setChapterHistoryError('');
     setNextPrepError('');
     setNarrativeHealthError('');
     setOpenThreadsError('');
+    setWorldPulseError('');
     try {
       setChapterHistory(await getChapterHistory(worldId));
     } catch {
@@ -181,6 +188,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setOpenThreadsError('开放线索看板暂不可用');
     } finally {
       setOpenThreadsLoading(false);
+    }
+    try {
+      setWorldPulse(await getWorldPulse(worldId));
+    } catch {
+      setWorldPulse(null);
+      setWorldPulseError('世界心跳暂不可用');
+    } finally {
+      setWorldPulseLoading(false);
     }
   }
 
@@ -388,6 +403,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 <p className="manuscript mt-2 text-sm text-[#5e3b1c]">查看已批准章节历史，并准备下一章目标。</p>
                 {selectedExecutionContext && <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已设为下一章目标：{selectedExecutionContext.goal}</p>}
               </div>
+              <WorldPulsePanel pulse={worldPulse} loading={worldPulseLoading} error={worldPulseError} />
               <NarrativeHealthPanel health={narrativeHealth} loading={narrativeHealthLoading} error={narrativeHealthError} />
               <OpenThreadsPanel openThreads={openThreads} loading={openThreadsLoading} error={openThreadsError} />
               <NextChapterPrepPanel

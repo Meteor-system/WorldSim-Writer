@@ -19,6 +19,7 @@ import {
   getForeshadowLedger,
   getNarrativeHealth,
   getOpenThreads,
+  getWorldPulse,
   exportWorldArchiveMarkdown,
   getDraftDiff,
   getWorldEvents,
@@ -187,6 +188,34 @@ describe('open threads API helper', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/worlds/7/open-threads', expect.any(Object));
     expect(response.summary.narrative_entropy_level).toBe('medium');
+  });
+});
+
+describe('world pulse API helper', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('calls world pulse endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      world_id: 7,
+      world_version: 3,
+      pulse_status: 'watch',
+      primary_mode: 'converge',
+      headline: 'World Pulse：建议先处理开放线索。',
+      indicators: [],
+      focus: [],
+      next_actions: [],
+      source_summary: { approved_chapter_count: 2 },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await getWorldPulse(7);
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/worlds/7/pulse', expect.any(Object));
+    expect(response.primary_mode).toBe('converge');
   });
 });
 

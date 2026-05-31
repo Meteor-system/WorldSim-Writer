@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, compareWorldSnapshots, createSampleWorld, createWorld, createWorldSnapshot, exportWorldArchiveMarkdown, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, listWorldSnapshots, searchWorld } from '../api/client';
+import { apiRequest, compareWorldSnapshots, createSampleWorld, createWorld, createWorldSnapshot, exportWorldArchiveMarkdown, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, listWorldSnapshots, searchWorld } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -20,6 +20,7 @@ vi.mock('../api/client', () => ({
   getNarrativeHealth: vi.fn(),
   getOpenThreads: vi.fn(),
   getWorldEvents: vi.fn(),
+  getWorldPulse: vi.fn(),
   searchWorld: vi.fn(),
   getCharacters: vi.fn(),
   getForeshadowLedger: vi.fn(),
@@ -67,6 +68,7 @@ beforeEach(() => {
   vi.mocked(getNarrativeHealth).mockReset();
   vi.mocked(getOpenThreads).mockReset();
   vi.mocked(getWorldEvents).mockReset();
+  vi.mocked(getWorldPulse).mockReset();
   vi.mocked(searchWorld).mockReset();
   vi.mocked(listWorldSnapshots).mockReset();
   vi.mocked(getCharacters).mockReset();
@@ -192,6 +194,19 @@ beforeEach(() => {
     ],
     suggested_next_actions: [],
   });
+  vi.mocked(getWorldPulse).mockResolvedValue({
+    world_id: 7,
+    world_version: 2,
+    pulse_status: 'watch',
+    primary_mode: 'converge',
+    headline: 'World Pulse：开放线索压力较高。',
+    indicators: [
+      { key: 'open_threads', label: '开放线索', value: '1', status: 'watch', detail: '建议推进 1。' },
+    ],
+    focus: [],
+    next_actions: [],
+    source_summary: { approved_chapter_count: 1 },
+  });
   vi.mocked(getWorldEvents).mockResolvedValue({
     items: [],
     total: 0,
@@ -262,6 +277,8 @@ describe('WorldPage Narrative Control Center', () => {
     expect(getNextChapterPrep).toHaveBeenCalledWith(7);
     expect(getNarrativeHealth).toHaveBeenCalledWith(7);
     expect(getOpenThreads).toHaveBeenCalledWith(7);
+    expect(getWorldPulse).toHaveBeenCalledWith(7);
+    expect(await screen.findByText('World Pulse')).toBeInTheDocument();
     expect(await screen.findByText('Narrative Health')).toBeInTheDocument();
     expect(await screen.findByText('Open Threads Board')).toBeInTheDocument();
     expect(await screen.findByText('章节历史')).toBeInTheDocument();

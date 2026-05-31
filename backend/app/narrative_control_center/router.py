@@ -10,6 +10,7 @@ from app.narrative_control_center.schemas import (
     NarrativeHealthResponse,
     NextChapterPrepResponse,
     OpenThreadsResponse,
+    WorldPulseResponse,
 )
 from app.narrative_control_center.service import (
     get_approved_chapter_history,
@@ -17,6 +18,7 @@ from app.narrative_control_center.service import (
     get_narrative_health,
     get_next_chapter_prep,
     get_open_threads,
+    get_world_pulse,
 )
 
 router = APIRouter(tags=['narrative-control-center'])
@@ -67,3 +69,12 @@ def open_threads(
     db: Session = Depends(get_db),
 ) -> OpenThreadsResponse:
     return OpenThreadsResponse.model_validate(get_open_threads(db, current_user, world_id))
+
+
+@router.get('/worlds/{world_id}/pulse', response_model=WorldPulseResponse)
+def world_pulse(
+    world_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> WorldPulseResponse:
+    return WorldPulseResponse.model_validate(get_world_pulse(db, current_user, world_id))

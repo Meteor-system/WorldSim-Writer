@@ -8,6 +8,7 @@ from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow
 from app.foreshadow.service import build_foreshadow_ledger
 from app.narrative.models import Chapter, ChapterDraft
+from app.snapshot_export.models import WorldSnapshot
 from app.world.models import World
 from app.world.service import count_approved_chapters, require_owned_world
 
@@ -665,6 +666,170 @@ def get_open_threads(db: Session, user: User, world_id: int) -> dict:
         'suggested_next_actions': suggested_next_actions,
     }
 
+
+def _pulse_indicator(key: str, label: str, value: str, indicator_status: str, detail: str) -> dict:
+    return {'key': key, 'label': label, 'value': value, 'status': indicator_status, 'detail': detail}
+
+
+def _pulse_focus(
+    focus_key: str,
+    priority: str,
+    title: str,
+    detail: str,
+    suggested_action: str,
+    related_thread_id: str | None = None,
+) -> dict:
+    return {
+        'focus_key': focus_key,
+        'priority': priority,
+        'title': title,
+        'detail': detail,
+        'suggested_action': suggested_action,
+        'related_thread_id': related_thread_id,
+    }
+
+
+def _pulse_action(action_key: str, label: str, detail: str, target: str | None = None) -> dict:
+    return {'action_key': action_key, 'label': label, 'detail': detail, 'target': target}
+
+
+def _latest_snapshot_stats(db: Session, world_id: int) -> tuple[int, int | None]:
+    snapshot_count = db.scalar(select(func.count()).select_from(WorldSnapshot).where(WorldSnapshot.world_id == world_id)) or 0
+    latest_snapshot_version = db.scalar(select(func.max(WorldSnapshot.world_version)).where(WorldSnapshot.world_id == world_id))
+    return snapshot_count, latest_snapshot_version
+
+
+def _pulse_headline(pulse_status: str, primary_mode: str) -> str:
+    if primary_mode == 'repair':
+        return 'World Pulse：当前有高风险叙事问题，建议先修复再继续扩张。'
+    if primary_mode == 'converge':
+        return 'World Pulse：开放线索压力较高，建议下一章优先收束或推进旧承诺。'
+    if primary_mode == 'archive':
+        return 'World Pulse：世界状态较稳定，建议先创建快照再继续推进。'
+    if pulse_status == 'watch':
+        return 'World Pulse：世界可继续推进，但需要留意开放线索与首章闭环。'
+    return 'World Pulse：世界状态稳定，可以继续规划下一章。'
+
+
+def get_world_pulse(db: Session, user: User, world_id: int) -> dict:
+    world = require_owned_world(db, user, world_id)
+    health = get_narrative_health(db, user, world.id)
+    open_threads = get_open_threads(db, user, world.id)
+    next_prep = get_next_chapter_prep(db, user, world.id)
+    approved_chapter_count = count_approved_chapters(db, world.id)
+    recent_event_count = db.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world.id)) or 0
+    snapshot_count, latest_snapshot_version = _latest_snapshot_stats(db, world.id)
+
+    high_health_risk_count = sum(1 for risk in health['risks'] if risk['severity'] == 'high')
+    must_close_count = open_threads['summary']['must_close_count']
+    should_advance_count = open_threads['summary']['should_advance_count']
+    entropy = open_threads['summary']['narrative_entropy_level']
+    archive_is_fresh = latest_snapshot_version is not None and latest_snapshot_version >= world.world_version
+
+    if health['status'] == 'at_risk' or must_close_count > 0 or entropy == 'high':
+        pulse_status = 'urgent'
+    elif health['status'] == 'watch' or entropy == 'medium' or approved_chapter_count == 0:
+        pulse_status = 'watch'
+    else:
+        pulse_status = 'stable'
+
+    if health['status'] == 'at_risk' or high_health_risk_count > 0:
+        primary_mode = 'repair'
+    elif must_close_count > 0 or entropy == 'high':
+        primary_mode = 'converge'
+    elif approved_chapter_count > 0 and pulse_status == 'stable' and not archive_is_fresh:
+        primary_mode = 'archive'
+    else:
+        primary_mode = 'draft'
+
+    focus: list[dict] = []
+    if health['status'] == 'at_risk' or high_health_risk_count > 0:
+        focus.append(
+            _pulse_focus(
+                'repair_health',
+                'urgent',
+                '先修复叙事健康风险',
+                f"当前有 {high_health_risk_count} 个高风险问题，健康分 {health['health_score']}/100。",
+                '打开 Narrative Health，优先处理高风险 Critic 或角色弧线问题。',
+            )
+        )
+    if must_close_count > 0 or should_advance_count > 0 or entropy in {'medium', 'high'}:
+        thread = next((item for item in open_threads['threads'] if item['priority'] in {'must_close', 'should_advance'}), None)
+        focus.append(
+            _pulse_focus(
+                'converge_threads',
+                'urgent' if must_close_count else 'watch',
+                '处理开放线索压力',
+                f"开放线索 {open_threads['summary']['total_open_threads']} 个，其中必须收束 {must_close_count} 个，建议推进 {should_advance_count} 个。",
+                '查看 Open Threads Board，将最高压线索转化为下一章目标。',
+                thread['thread_id'] if thread else None,
+            )
+        )
+    if approved_chapter_count == 0:
+        focus.append(
+            _pulse_focus(
+                'draft_first_chapter',
+                'watch',
+                '完成第一章闭环',
+                '当前世界尚无已批准章节，首要目标是完成生成、审核、通过、落库的最小闭环。',
+                next_prep['suggested_goal'],
+            )
+        )
+    if not archive_is_fresh:
+        detail = '尚未创建世界快照。' if snapshot_count == 0 else f'最新快照停留在世界 v{latest_snapshot_version}。'
+        focus.append(
+            _pulse_focus(
+                'archive_snapshot',
+                'watch',
+                '创建当前世界快照',
+                detail,
+                '在 World Archive 中创建快照，保留当前 canon 检查点。',
+            )
+        )
+
+    archive_detail = '当前快照已覆盖最新世界版本。' if archive_is_fresh else '当前世界版本尚未被最新快照覆盖。'
+    indicators = [
+        _pulse_indicator('narrative_health', '叙事健康', f"{health['health_score']}/100 · {health['status']}", 'risk' if health['status'] == 'at_risk' else 'watch' if health['status'] == 'watch' else 'ok', '来自 Narrative Health 的聚合风险。'),
+        _pulse_indicator('open_threads', '开放线索', str(open_threads['summary']['total_open_threads']), 'risk' if must_close_count else 'watch' if should_advance_count else 'ok', f"必须收束 {must_close_count}，建议推进 {should_advance_count}。"),
+        _pulse_indicator('next_chapter', '下一章', f"第 {next_prep['next_chapter_number']} 章", 'ok', next_prep['suggested_goal']),
+        _pulse_indicator('recent_events', '正式事件', str(recent_event_count), 'ok', '当前世界累计正式事件数量。'),
+        _pulse_indicator('archive_freshness', '快照新鲜度', '已覆盖' if archive_is_fresh else '需快照', 'ok' if archive_is_fresh else 'watch', archive_detail),
+    ]
+
+    next_actions: list[dict] = []
+    if primary_mode == 'repair':
+        next_actions.append(_pulse_action('repair_narrative_health', '优先修复叙事健康风险', '先处理高风险 Critic / 角色弧线问题，再进入下一章。', 'narrative_health'))
+    if must_close_count > 0 or should_advance_count > 0:
+        next_actions.append(_pulse_action('open_threads_board', '查看开放线索看板', '选择最高压开放线索，转化为下一章目标。', 'open_threads'))
+    if approved_chapter_count == 0:
+        next_actions.append(_pulse_action('write_first_chapter', '完成第一章闭环', next_prep['suggested_goal'], 'studio'))
+    elif primary_mode in {'draft', 'converge'}:
+        next_actions.append(_pulse_action('continue_next_chapter', '继续下一章', next_prep['suggested_goal'], 'studio'))
+    if not archive_is_fresh:
+        next_actions.append(_pulse_action('create_snapshot', '创建世界快照', '保存当前世界版本，方便后续对比与回溯。', 'archive'))
+
+    return {
+        'world_id': world.id,
+        'world_version': world.world_version,
+        'pulse_status': pulse_status,
+        'primary_mode': primary_mode,
+        'headline': _pulse_headline(pulse_status, primary_mode),
+        'indicators': indicators,
+        'focus': focus[:5],
+        'next_actions': next_actions,
+        'source_summary': {
+            'approved_chapter_count': approved_chapter_count,
+            'health_status': health['status'],
+            'health_score': health['health_score'],
+            'open_thread_count': open_threads['summary']['total_open_threads'],
+            'must_close_count': must_close_count,
+            'should_advance_count': should_advance_count,
+            'narrative_entropy_level': entropy,
+            'recent_event_count': recent_event_count,
+            'snapshot_count': snapshot_count,
+            'latest_snapshot_version': latest_snapshot_version,
+        },
+    }
 
 
 def get_approved_chapter_history(db: Session, user: User, world_id: int) -> dict:

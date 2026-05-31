@@ -171,3 +171,39 @@ class OpenThreadsResponse(BaseModel):
     summary: OpenThreadsSummary
     threads: list[OpenThreadItem]
     suggested_next_actions: list[dict]
+
+
+class WorldPulseIndicator(BaseModel):
+    key: str
+    label: str
+    value: str
+    status: str
+    detail: str
+
+
+class WorldPulseFocus(BaseModel):
+    focus_key: str
+    priority: str
+    title: str
+    detail: str
+    suggested_action: str
+    related_thread_id: str | None = None
+
+
+class WorldPulseAction(BaseModel):
+    action_key: str
+    label: str
+    detail: str
+    target: str | None = None
+
+
+class WorldPulseResponse(BaseModel):
+    world_id: int
+    world_version: int
+    pulse_status: str
+    primary_mode: str
+    headline: str
+    indicators: list[WorldPulseIndicator]
+    focus: list[WorldPulseFocus]
+    next_actions: list[WorldPulseAction]
+    source_summary: dict

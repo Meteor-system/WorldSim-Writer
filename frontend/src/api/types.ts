@@ -601,6 +601,42 @@ export type OpenThreadsResponse = {
   suggested_next_actions: Array<Record<string, unknown>>;
 };
 
+export type WorldPulseIndicator = {
+  key: string;
+  label: string;
+  value: string;
+  status: string;
+  detail: string;
+};
+
+export type WorldPulseFocus = {
+  focus_key: string;
+  priority: string;
+  title: string;
+  detail: string;
+  suggested_action: string;
+  related_thread_id: string | null;
+};
+
+export type WorldPulseAction = {
+  action_key: string;
+  label: string;
+  detail: string;
+  target: string | null;
+};
+
+export type WorldPulseResponse = {
+  world_id: number;
+  world_version: number;
+  pulse_status: 'stable' | 'watch' | 'urgent';
+  primary_mode: 'draft' | 'repair' | 'converge' | 'archive';
+  headline: string;
+  indicators: WorldPulseIndicator[];
+  focus: WorldPulseFocus[];
+  next_actions: WorldPulseAction[];
+  source_summary: Record<string, unknown>;
+};
+
 export type WorldSnapshotSummary = {
   id: number;
   world_id: number;
