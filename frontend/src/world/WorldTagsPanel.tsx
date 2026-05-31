@@ -58,6 +58,10 @@ function detailSortLabel(value: string): string {
   return '默认排序';
 }
 
+function constraintText(parts: string[]): string {
+  return parts.length > 0 ? parts.join('，') : '当前条件';
+}
+
 export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onUpdateTag, onMergeTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
   const [tags, setTags] = useState<TagSummaryResponse[]>([]);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
@@ -158,6 +162,11 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
     `类型：${tagTypeFilterLabel(tagObjectTypeFilter)}`,
     `排序：${tagSortLabel(tagSortMode)}`,
   ].join(' · ');
+  const tagEmptyGuidance = [
+    normalizedTagSearchQuery ? `搜索「${tagSearchQuery.trim()}」` : '',
+    tagObjectTypeFilter !== 'all' ? `类型：${tagTypeFilterLabel(tagObjectTypeFilter)}` : '',
+  ].filter(Boolean);
+  const tagFilteredEmptyText = `没有匹配${constraintText(tagEmptyGuidance)}的标签。请重置标签视图或调整搜索与类型筛选。`;
 
   useEffect(() => {
     if (selectedTagId !== null && !visibleTags.some((tag) => tag.id === selectedTagId)) {
@@ -358,6 +367,11 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
         `排序：${detailSortLabel(detailSortMode)}`,
       ].join(' · ')
     : '';
+  const detailEmptyGuidance = [
+    normalizedDetailSearchQuery ? `搜索「${detailSearchQuery.trim()}」` : '',
+    detailObjectTypeFilter !== 'all' ? `类型：${objectTypeFilterLabel(detailObjectTypeFilter)}` : '',
+  ].filter(Boolean);
+  const detailFilteredEmptyText = `没有匹配${constraintText(detailEmptyGuidance)}的对象。请重置对象视图或调整搜索与类型筛选。`;
 
   return (
     <section className="book-card space-y-5 p-5">
@@ -450,7 +464,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
           ))}
         </div>
       )}
-      {tags.length > 0 && visibleTags.length === 0 && !error && <p className="ink-muted">当前搜索没有匹配标签。</p>}
+      {tags.length > 0 && visibleTags.length === 0 && !error && <p className="ink-muted">{tagFilteredEmptyText}</p>}
 
       {detailLoading && <p className="ink-muted" role="status">正在读取标签详情...</p>}
       {detail && (
@@ -596,7 +610,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
           {detail.objects.length === 0 ? (
             <p className="ink-muted">这个标签还没有关联对象。</p>
           ) : filteredObjects.length === 0 ? (
-            <p className="ink-muted">当前筛选下没有对象。</p>
+            <p className="ink-muted">{detailFilteredEmptyText}</p>
           ) : (
             <div className="space-y-3">
               {filteredObjects.map((item) => (

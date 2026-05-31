@@ -307,7 +307,7 @@ describe('WorldTagsPanel', () => {
     await screen.findByText('许砚');
     await user.click(screen.getByRole('button', { name: '只看事件 0' }));
 
-    expect(await screen.findByText('当前筛选下没有对象。')).toBeInTheDocument();
+    expect(await screen.findByText('没有匹配类型：事件的对象。请重置对象视图或调整搜索与类型筛选。')).toBeInTheDocument();
   });
 
   it('resets the object type filter when loading another tag', async () => {
@@ -464,8 +464,19 @@ describe('WorldTagsPanel', () => {
     await screen.findByText('灯塔线');
     await user.type(screen.getByLabelText('搜索标签'), '不存在的标签');
 
-    expect(await screen.findByText('当前搜索没有匹配标签。')).toBeInTheDocument();
+    expect(await screen.findByText('没有匹配搜索「不存在的标签」的标签。请重置标签视图或调整搜索与类型筛选。')).toBeInTheDocument();
     expect(screen.getByText('显示 0 / 2 个标签')).toBeInTheDocument();
+  });
+
+  it('explains tag-list empty state using active object type filters', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onListTags: vi.fn().mockResolvedValue(sortableListResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.selectOptions(screen.getByLabelText('标签对象类型'), 'event');
+
+    expect(screen.getByText('没有匹配类型：事件的标签。请重置标签视图或调整搜索与类型筛选。')).toBeInTheDocument();
+    expect(screen.getByLabelText('标签视图摘要')).toHaveTextContent('显示 0 / 3 个标签 · 未搜索 · 类型：事件 · 排序：默认排序');
   });
 
   it('clears selected tag detail when tag search hides it', async () => {
@@ -746,6 +757,34 @@ describe('WorldTagsPanel', () => {
     await user.click(screen.getByRole('button', { name: '重置对象视图' }));
 
     expect(screen.getByLabelText('标签对象视图摘要')).toHaveTextContent('显示 3 / 3 个对象 · 未搜索 · 类型：全部对象 · 排序：默认排序');
+  });
+
+  it('explains selected tag object empty state using active search and type filters', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onLoadTag: vi.fn().mockResolvedValue(mixedDetailResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    await screen.findByText('黑匣子脉冲');
+    await user.click(screen.getByRole('button', { name: '只看伏笔 1' }));
+    await user.type(screen.getByLabelText('搜索当前标签对象'), '许');
+
+    expect(screen.getByText('没有匹配搜索「许」，类型：伏笔的对象。请重置对象视图或调整搜索与类型筛选。')).toBeInTheDocument();
+    expect(screen.getByLabelText('标签对象视图摘要')).toHaveTextContent('显示 0 / 3 个对象 · 搜索「许」 · 类型：伏笔 · 排序：默认排序');
+  });
+
+  it('keeps no-associated-objects empty state separate from filtered-empty guidance', async () => {
+    const emptyDetail: TagDetailResponse = {
+      tag: { ...tag, assignment_count: 0, object_type_counts: {} },
+      objects: [],
+    };
+    renderPanel({ onLoadTag: vi.fn().mockResolvedValue(emptyDetail) });
+
+    await screen.findByText('灯塔线');
+    await userEvent.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+
+    expect(await screen.findByText('这个标签还没有关联对象。')).toBeInTheDocument();
+    expect(screen.queryByText(/请重置对象视图/)).not.toBeInTheDocument();
   });
 
   it('resets selected tag object filter search and sort controls', async () => {
