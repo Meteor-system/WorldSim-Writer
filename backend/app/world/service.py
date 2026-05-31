@@ -1,3 +1,4 @@
+import json
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -179,6 +180,12 @@ def create_world_from_template(db: Session, user: User, data: WorldCreateRequest
                     'relations': len(data.starter_assets.relations),
                     'foreshadows': len(foreshadows),
                 },
+                'starter_assets': {
+                    'character_names': [item.name for item in data.starter_assets.characters],
+                    'character_goals': [goal for item in data.starter_assets.characters for goal in item.current_goals or []],
+                    'foreshadow_titles': [item.title for item in data.starter_assets.foreshadows],
+                    'foreshadow_descriptions': [item.description for item in data.starter_assets.foreshadows],
+                },
             },
             world_version_before=0,
             world_version_after=world.world_version,
@@ -263,4 +270,152 @@ def list_world_events(db: Session, user: User, world_id: int, event_type: str | 
             'event_type_counts': {event_type: count for event_type, count in type_rows},
             'latest_world_version': latest_world_version,
         },
+    }
+
+
+SEARCH_OBJECT_TYPES = {'world', 'character', 'foreshadow', 'chapter', 'event'}
+
+
+def _json_text(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def _matches(text: str, needle: str) -> bool:
+    return needle in text.lower()
+
+
+def _snippet(text: str, query: str, size: int = 140) -> str:
+    compact = ' '.join(text.split())
+    index = compact.lower().find(query.lower())
+    if index == -1:
+        return compact[:size]
+    start = max(0, index - 40)
+    end = min(len(compact), index + len(query) + 100)
+    prefix = '…' if start > 0 else ''
+    suffix = '…' if end < len(compact) else ''
+    return f'{prefix}{compact[start:end]}{suffix}'
+
+
+def _parse_object_types(object_types: str | None) -> set[str]:
+    if object_types is None or object_types.strip() == '':
+        return set(SEARCH_OBJECT_TYPES)
+    requested = {item.strip() for item in object_types.split(',') if item.strip()}
+    return requested & SEARCH_OBJECT_TYPES
+
+
+def search_world(db: Session, user: User, world_id: int, query: str, object_types: str | None = None, limit: int = 20) -> dict:
+    world = require_owned_world(db, user, world_id)
+    normalized_query = query.strip()
+    if not normalized_query:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='SEARCH_QUERY_REQUIRED')
+    needle = normalized_query.lower()
+    allowed_types = _parse_object_types(object_types)
+    results: list[dict] = []
+
+    if 'world' in allowed_types:
+        world_text = ' '.join([world.title, world.genre_template, world.truth_canon, _json_text(world.tone_profile)])
+        if _matches(world_text, needle):
+            results.append(
+                {
+                    'object_type': 'world',
+                    'object_id': world.id,
+                    'title': world.title,
+                    'subtitle': f'World · {world.genre_template}',
+                    'snippet': _snippet(world_text, normalized_query),
+                    'metadata': {'world_version': world.world_version},
+                }
+            )
+
+    if 'character' in allowed_types:
+        characters = list(db.scalars(select(Character).where(Character.world_id == world.id).order_by(Character.id)))
+        for character in characters:
+            text = ' '.join(
+                [
+                    character.name,
+                    character.role_type,
+                    character.status,
+                    character.destiny_flag or '',
+                    _json_text(character.public_profile),
+                    _json_text(character.hidden_traits),
+                    _json_text(character.current_goals),
+                ]
+            )
+            if _matches(text, needle):
+                results.append(
+                    {
+                        'object_type': 'character',
+                        'object_id': character.id,
+                        'title': character.name,
+                        'subtitle': f'Character · {character.role_type}',
+                        'snippet': _snippet(text, normalized_query),
+                        'metadata': {'status': character.status},
+                    }
+                )
+
+    if 'foreshadow' in allowed_types:
+        foreshadows = list(db.scalars(select(Foreshadow).where(Foreshadow.world_id == world.id).order_by(Foreshadow.id)))
+        for foreshadow in foreshadows:
+            text = ' '.join(
+                [
+                    foreshadow.title,
+                    foreshadow.description,
+                    foreshadow.foreshadow_type,
+                    foreshadow.status,
+                    foreshadow.expected_resolution_window or '',
+                    _json_text(foreshadow.related_character_ids),
+                ]
+            )
+            if _matches(text, needle):
+                results.append(
+                    {
+                        'object_type': 'foreshadow',
+                        'object_id': foreshadow.id,
+                        'title': foreshadow.title,
+                        'subtitle': f'Foreshadow · {foreshadow.status} · urgency {foreshadow.urgency_level}',
+                        'snippet': _snippet(text, normalized_query),
+                        'metadata': {'status': foreshadow.status, 'urgency_level': foreshadow.urgency_level},
+                    }
+                )
+
+    if 'chapter' in allowed_types:
+        chapters = list(db.scalars(select(Chapter).where(Chapter.world_id == world.id).order_by(Chapter.id)))
+        for chapter in chapters:
+            text = ' '.join([chapter.title, chapter.chapter_goal or '', chapter.approved_content or ''])
+            if _matches(text, needle):
+                results.append(
+                    {
+                        'object_type': 'chapter',
+                        'object_id': chapter.id,
+                        'title': chapter.title,
+                        'subtitle': f'Chapter · {chapter.status} · world v{chapter.base_world_version}',
+                        'snippet': _snippet(text, normalized_query),
+                        'metadata': {'status': chapter.status, 'draft_version': chapter.draft_version},
+                    }
+                )
+
+    if 'event' in allowed_types:
+        events = list(db.scalars(select(EventLog).where(EventLog.world_id == world.id).order_by(EventLog.id)))
+        for event in events:
+            text = ' '.join([event.event_type, event.source_type, _json_text(event.payload)])
+            if _matches(text, needle):
+                results.append(
+                    {
+                        'object_type': 'event',
+                        'object_id': event.id,
+                        'title': event.event_type,
+                        'subtitle': f'Event · {event.source_type} · world {event.world_version_before} → {event.world_version_after}',
+                        'snippet': _snippet(text, normalized_query),
+                        'metadata': {'world_version_after': event.world_version_after, 'chapter_id': event.chapter_id},
+                    }
+                )
+
+    counts: dict[str, int] = {}
+    for result in results:
+        counts[result['object_type']] = counts.get(result['object_type'], 0) + 1
+
+    return {
+        'world_id': world.id,
+        'query': normalized_query,
+        'object_type_counts': counts,
+        'results': results[:limit],
     }

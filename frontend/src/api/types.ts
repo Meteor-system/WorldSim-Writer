@@ -224,6 +224,22 @@ export type EventLogListResponse = {
   summary: EventLogSummary;
 };
 
+export type WorldSearchResult = {
+  object_type: string;
+  object_id: number | null;
+  title: string;
+  subtitle: string;
+  snippet: string;
+  metadata: Record<string, unknown>;
+};
+
+export type WorldSearchResponse = {
+  world_id: number;
+  query: string;
+  object_type_counts: Record<string, number>;
+  results: WorldSearchResult[];
+};
+
 export type StoryArcChapter = {
   chapter_number: number;
   title: string;

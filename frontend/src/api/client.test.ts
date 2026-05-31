@@ -20,6 +20,7 @@ import {
   getDraftDiff,
   getWorldEvents,
   getDraftVersion,
+  searchWorld,
   getRelations,
   reviseDraft,
   reviseParagraph,
@@ -100,6 +101,32 @@ describe('world event API helpers', () => {
       expect.any(Object),
     );
     expect(response.summary.latest_world_version).toBe(1);
+  });
+});
+
+describe('world search API helper', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('calls world search endpoint with query, object filters, and limit', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      world_id: 7,
+      query: '灯塔',
+      object_type_counts: { character: 1 },
+      results: [],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await searchWorld(7, { q: '灯塔', object_types: ['character', 'event'], limit: 10 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/worlds/7/search?q=%E7%81%AF%E5%A1%94&object_types=character%2Cevent&limit=10',
+      expect.any(Object),
+    );
+    expect(response.object_type_counts).toEqual({ character: 1 });
   });
 });
 

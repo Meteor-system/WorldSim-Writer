@@ -105,3 +105,19 @@ class WorldOverviewResponse(WorldResponse):
     recent_events: list[EventLogResponse]
     story_arc: list[StoryArcChapter]
     approved_chapter_count: int
+
+
+class WorldSearchResultResponse(BaseModel):
+    object_type: str
+    object_id: int | None
+    title: str
+    subtitle: str
+    snippet: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorldSearchResponse(BaseModel):
+    world_id: int
+    query: str
+    object_type_counts: dict[str, int]
+    results: list[WorldSearchResultResponse]

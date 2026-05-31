@@ -35,6 +35,7 @@ import type {
   StoryArcResponse,
   WorldCreateRequest,
   WorldMarkdownExportResponse,
+  WorldSearchResponse,
   WorldSnapshotDetailResponse,
   WorldSnapshotListResponse,
   WorldSnapshotSummary,
@@ -103,6 +104,13 @@ export function getWorldEvents(worldId: number, params: { event_type?: string; l
   if (params.offset !== undefined) search.set('offset', String(params.offset));
   const query = search.toString();
   return apiRequest<EventLogListResponse>(`/worlds/${worldId}/events${query ? `?${query}` : ''}`);
+}
+
+export function searchWorld(worldId: number, params: { q: string; object_types?: string[]; limit?: number }) {
+  const search = new URLSearchParams({ q: params.q });
+  if (params.object_types?.length) search.set('object_types', params.object_types.join(','));
+  if (params.limit !== undefined) search.set('limit', String(params.limit));
+  return apiRequest<WorldSearchResponse>(`/worlds/${worldId}/search?${search.toString()}`);
 }
 
 export function generateStoryArc(worldId: number) {

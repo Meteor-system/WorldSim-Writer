@@ -5,7 +5,7 @@ from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
 from app.event.schemas import EventLogListResponse
-from app.world.schemas import StoryArcResponse, WorldCreateRequest, WorldOverviewResponse, WorldResponse
+from app.world.schemas import StoryArcResponse, WorldCreateRequest, WorldOverviewResponse, WorldResponse, WorldSearchResponse
 from app.world.service import (
     create_sample_world,
     create_world_from_template,
@@ -13,6 +13,7 @@ from app.world.service import (
     list_user_worlds,
     list_world_events,
     require_owned_world,
+    search_world,
 )
 from app.world.story_arc import generate_story_arc, suggest_chapter_goal
 
@@ -76,3 +77,15 @@ def events(
     db: Session = Depends(get_db),
 ) -> EventLogListResponse:
     return EventLogListResponse.model_validate(list_world_events(db, current_user, world_id, event_type, limit, offset))
+
+
+@router.get('/{world_id}/search', response_model=WorldSearchResponse)
+def search(
+    world_id: int,
+    q: str,
+    object_types: str | None = None,
+    limit: int = Query(20, ge=1, le=50),
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> WorldSearchResponse:
+    return WorldSearchResponse.model_validate(search_world(db, current_user, world_id, q, object_types, limit))

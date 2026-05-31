@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, createSampleWorld, createWorld, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNextChapterPrep, getRelations, getWorldEvents } from '../api/client';
+import { apiRequest, createSampleWorld, createWorld, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNextChapterPrep, getRelations, getWorldEvents, searchWorld } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -15,6 +15,7 @@ vi.mock('../api/client', () => ({
   getChapterHistoryDetail: vi.fn(),
   getNextChapterPrep: vi.fn(),
   getWorldEvents: vi.fn(),
+  searchWorld: vi.fn(),
   getCharacters: vi.fn(),
   getForeshadowLedger: vi.fn(),
   getForeshadowTimeline: vi.fn(),
@@ -55,6 +56,7 @@ beforeEach(() => {
   vi.mocked(getChapterHistoryDetail).mockReset();
   vi.mocked(getNextChapterPrep).mockReset();
   vi.mocked(getWorldEvents).mockReset();
+  vi.mocked(searchWorld).mockReset();
   vi.mocked(getCharacters).mockReset();
   vi.mocked(getForeshadowLedger).mockReset();
   vi.mocked(getRelations).mockReset();
@@ -195,6 +197,7 @@ describe('WorldPage Narrative Control Center', () => {
     expect(screen.getByText('林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
     expect(await screen.findByText('Timeline Explorer')).toBeInTheDocument();
     expect(getWorldEvents).toHaveBeenCalledWith(7, { limit: 20 });
+    expect(await screen.findByText('Global Search')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '用作下一章目标' }));
     expect(screen.getByText('已设为下一章目标：林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
