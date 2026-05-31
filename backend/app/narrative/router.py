@@ -5,6 +5,7 @@ from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
 from app.narrative.schemas import (
+    ApprovalConsistencyResponse,
     ApprovalReadinessResponse,
     ApproveRequest,
     ChapterPipelineResponse,
@@ -33,6 +34,7 @@ from app.narrative.service import (
     generate_character_arc_report,
     generate_chapter_outline,
     generate_critic_report,
+    get_approval_consistency,
     get_approval_preview,
     get_approval_readiness,
     get_chapter_draft_version,
@@ -210,6 +212,16 @@ def approval_preview(
     db: Session = Depends(get_db),
 ) -> dict:
     return get_approval_preview(db, current_user, chapter_id)
+
+
+@router.post('/chapters/{chapter_id}/approval-consistency', response_model=ApprovalConsistencyResponse)
+def approval_consistency(
+    chapter_id: int,
+    payload: ApproveRequest | None = None,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> ApprovalConsistencyResponse:
+    return ApprovalConsistencyResponse.model_validate(get_approval_consistency(db, current_user, chapter_id, payload))
 
 
 @router.get('/chapters/{chapter_id}/approval-readiness', response_model=ApprovalReadinessResponse)

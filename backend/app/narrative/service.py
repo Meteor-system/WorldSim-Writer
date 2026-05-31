@@ -874,6 +874,181 @@ def _selected_changes(changes: list[dict], indexes: set[int]) -> list[tuple[int,
     return [(index, change) for index, change in enumerate(changes) if index in indexes]
 
 
+FORESHADOW_STATUS_ORDER = {'planted': 0, 'advanced': 1, 'resolved': 2, 'expired': 3}
+
+
+def _consistency_warning(severity: str, category: str, message: str, object_type: str, object_id=None, change_index=None, details=None) -> dict:
+    return {
+        'severity': severity,
+        'category': category,
+        'message': message,
+        'object_type': object_type,
+        'object_id': object_id,
+        'change_index': change_index,
+        'details': details or {},
+    }
+
+
+def _consistency_summary(warnings: list[dict]) -> dict:
+    info_count = sum(1 for warning in warnings if warning['severity'] == 'info')
+    warning_count = sum(1 for warning in warnings if warning['severity'] == 'warning')
+    blocking_count = sum(1 for warning in warnings if warning['severity'] == 'blocking')
+    if blocking_count:
+        summary_status = 'blocked'
+    elif warning_count:
+        summary_status = 'needs_review'
+    else:
+        summary_status = 'clear'
+    return {
+        'status': summary_status,
+        'total': len(warnings),
+        'info_count': info_count,
+        'warning_count': warning_count,
+        'blocking_count': blocking_count,
+    }
+
+
+def _goals_overlap(before_goals, after_goals) -> bool:
+    return bool(set(before_goals or []) & set(after_goals or []))
+
+
+def _evaluate_approval_consistency(character_changes: list[tuple], foreshadow_changes: list[tuple]) -> dict:
+    warnings = []
+    for index, character, _change, before, after in character_changes:
+        before_status = before.get('status')
+        after_status = after.get('status')
+        before_goals = before.get('current_goals') or []
+        after_goals = after.get('current_goals') or []
+        changed_status = before_status != after_status
+        changed_goals = before_goals != after_goals
+        if not changed_status and not changed_goals:
+            warnings.append(
+                _consistency_warning(
+                    'info',
+                    'world_projection',
+                    f'角色「{character.name}」的拟提交变化不会改变当前投影。',
+                    'character',
+                    character.id,
+                    index,
+                    {'before': before, 'after': after},
+                )
+            )
+        elif changed_status and changed_goals and before_goals and after_goals and not _goals_overlap(before_goals, after_goals):
+            warnings.append(
+                _consistency_warning(
+                    'warning',
+                    'character_jump',
+                    f'角色「{character.name}」的状态与目标同时大幅变化，请确认正文已有足够铺垫。',
+                    'character',
+                    character.id,
+                    index,
+                    {
+                        'before_status': before_status,
+                        'after_status': after_status,
+                        'before_goals': before_goals,
+                        'after_goals': after_goals,
+                    },
+                )
+            )
+        elif before_goals and changed_goals and not after_goals:
+            warnings.append(
+                _consistency_warning(
+                    'warning',
+                    'character_goal_shift',
+                    f'角色「{character.name}」的当前目标将被清空，请确认这符合角色弧线。',
+                    'character',
+                    character.id,
+                    index,
+                    {'before_goals': before_goals, 'after_goals': after_goals},
+                )
+            )
+
+    for index, foreshadow, _change, before, after in foreshadow_changes:
+        before_status = before.get('status')
+        after_status = after.get('status')
+        before_rank = FORESHADOW_STATUS_ORDER.get(before_status)
+        after_rank = FORESHADOW_STATUS_ORDER.get(after_status)
+        if before_rank is None or after_rank is None:
+            warnings.append(
+                _consistency_warning(
+                    'blocking',
+                    'foreshadow_transition',
+                    f'伏笔「{foreshadow.title}」包含未知状态转换，不能批准。',
+                    'foreshadow',
+                    foreshadow.id,
+                    index,
+                    {'before_status': before_status, 'after_status': after_status},
+                )
+            )
+        elif after_rank < before_rank:
+            warnings.append(
+                _consistency_warning(
+                    'blocking',
+                    'foreshadow_transition',
+                    f'伏笔「{foreshadow.title}」不能从 {before_status} 回退到 {after_status}。',
+                    'foreshadow',
+                    foreshadow.id,
+                    index,
+                    {'before_status': before_status, 'after_status': after_status},
+                )
+            )
+        elif after_rank == before_rank:
+            warnings.append(
+                _consistency_warning(
+                    'info',
+                    'foreshadow_transition',
+                    f'伏笔「{foreshadow.title}」状态保持为 {after_status}。',
+                    'foreshadow',
+                    foreshadow.id,
+                    index,
+                    {'before_status': before_status, 'after_status': after_status},
+                )
+            )
+    return {'summary': _consistency_summary(warnings), 'warnings': warnings}
+
+
+def _approval_change_set(db: Session, world: World, draft: ChapterDraft, selection=None) -> dict:
+    proposed_character_changes = list((draft.proposed_changes or {}).get('characters', []))
+    proposed_foreshadow_changes = list((draft.proposed_changes or {}).get('foreshadows', []))
+    selected_character_indexes = _change_index_set(
+        selection.selected_character_change_indexes if selection is not None else None,
+        len(proposed_character_changes),
+    )
+    selected_foreshadow_indexes = _change_index_set(
+        selection.selected_foreshadow_change_indexes if selection is not None else None,
+        len(proposed_foreshadow_changes),
+    )
+
+    character_changes = []
+    for index, change in _selected_changes(proposed_character_changes, selected_character_indexes):
+        character = db.get(Character, change.get('character_id'))
+        if character is None or character.world_id != world.id:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+        before = character_projection(character)
+        after = before | {key: change[key] for key in ('status', 'current_goals') if key in change}
+        character_changes.append((index, character, change, before, after))
+
+    foreshadow_changes = []
+    for index, change in _selected_changes(proposed_foreshadow_changes, selected_foreshadow_indexes):
+        foreshadow = db.get(Foreshadow, change.get('foreshadow_id'))
+        if foreshadow is None or foreshadow.world_id != world.id or 'status' not in change:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+        before = foreshadow_projection(foreshadow)
+        after = before | {'status': change['status']}
+        if change.get('description_note'):
+            after['description'] = f"{foreshadow.description}\n审核备注：{change['description_note']}"
+        foreshadow_changes.append((index, foreshadow, change, before, after))
+
+    return {
+        'selected_change_indexes': {
+            'characters': [index for index, _character, _change, _before, _after in character_changes],
+            'foreshadows': [index for index, _foreshadow, _change, _before, _after in foreshadow_changes],
+        },
+        'character_changes': character_changes,
+        'foreshadow_changes': foreshadow_changes,
+    }
+
+
 def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
     chapter = _require_owned_chapter(db, user, chapter_id)
     draft = _latest_draft(db, chapter)
@@ -921,6 +1096,9 @@ def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
             }
         )
 
+    change_set = _approval_change_set(db, world, draft)
+    consistency = _evaluate_approval_consistency(change_set['character_changes'], change_set['foreshadow_changes'])
+
     return {
         'chapter_id': chapter.id,
         'draft_version': draft.draft_version,
@@ -933,6 +1111,28 @@ def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
         'character_changes': character_changes,
         'foreshadow_changes': foreshadow_changes,
         'warnings': ['WORLD_VERSION_MISMATCH'] if version_conflict else [],
+        'consistency_summary': consistency['summary'],
+        'consistency_warnings': consistency['warnings'],
+    }
+
+
+def get_approval_consistency(db: Session, user: User, chapter_id: int, selection=None) -> dict:
+    chapter = _require_owned_chapter(db, user, chapter_id)
+    draft = _latest_draft(db, chapter)
+    if draft is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    if selection is not None and selection.draft_version is not None and selection.draft_version != draft.draft_version:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_VERSION_MISMATCH')
+    world = db.get(World, chapter.world_id)
+    assert world is not None
+    change_set = _approval_change_set(db, world, draft, selection)
+    consistency = _evaluate_approval_consistency(change_set['character_changes'], change_set['foreshadow_changes'])
+    return {
+        'chapter_id': chapter.id,
+        'draft_version': draft.draft_version,
+        'selected_change_indexes': change_set['selected_change_indexes'],
+        'consistency_summary': consistency['summary'],
+        'consistency_warnings': consistency['warnings'],
     }
 
 
@@ -1328,40 +1528,19 @@ def approve_chapter(db: Session, user: User, chapter_id: int, selection=None) ->
         if draft.source_world_version != world.world_version:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
 
-        proposed_character_changes = list(draft.proposed_changes.get('characters', []))
-        proposed_foreshadow_changes = list(draft.proposed_changes.get('foreshadows', []))
-        selected_character_indexes = _change_index_set(
-            selection.selected_character_change_indexes if selection is not None else None,
-            len(proposed_character_changes),
-        )
-        selected_foreshadow_indexes = _change_index_set(
-            selection.selected_foreshadow_change_indexes if selection is not None else None,
-            len(proposed_foreshadow_changes),
-        )
-
-        character_changes = []
-        for index, change in _selected_changes(proposed_character_changes, selected_character_indexes):
-            character = db.get(Character, change.get('character_id'))
-            if character is None or character.world_id != world.id:
-                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
-            before = character_projection(character)
-            after = before | {
-                key: change[key]
-                for key in ('status', 'current_goals')
-                if key in change
-            }
-            character_changes.append((index, character, change, before, after))
-
-        foreshadow_changes = []
-        for index, change in _selected_changes(proposed_foreshadow_changes, selected_foreshadow_indexes):
-            foreshadow = db.get(Foreshadow, change.get('foreshadow_id'))
-            if foreshadow is None or foreshadow.world_id != world.id or 'status' not in change:
-                raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
-            before = foreshadow_projection(foreshadow)
-            after = before | {'status': change['status']}
-            if change.get('description_note'):
-                after['description'] = f"{foreshadow.description}\n审核备注：{change['description_note']}"
-            foreshadow_changes.append((index, foreshadow, change, before, after))
+        change_set = _approval_change_set(db, world, draft, selection)
+        character_changes = change_set['character_changes']
+        foreshadow_changes = change_set['foreshadow_changes']
+        consistency = _evaluate_approval_consistency(character_changes, foreshadow_changes)
+        if consistency['summary']['blocking_count'] > 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    'code': 'CONSISTENCY_BLOCKED',
+                    'summary': consistency['summary'],
+                    'warnings': consistency['warnings'],
+                },
+            )
 
         version_before = world.world_version
         version_after = version_before + 1
@@ -1472,6 +1651,8 @@ def approve_chapter(db: Session, user: User, chapter_id: int, selection=None) ->
                         'characters': [index for index, _character, _change, _before, _after in character_changes],
                         'foreshadows': [index for index, _foreshadow, _change, _before, _after in foreshadow_changes],
                     },
+                    'consistency_summary': consistency['summary'],
+                    'consistency_warnings': consistency['warnings'],
                 },
                 world_version_before=version_before,
                 world_version_after=version_after,

@@ -564,6 +564,35 @@ export type ApproveRequest = {
   selected_foreshadow_change_indexes?: number[];
 };
 
+export type ConsistencySeverity = 'info' | 'warning' | 'blocking';
+export type ConsistencyStatus = 'clear' | 'needs_review' | 'blocked';
+
+export type ConsistencyWarning = {
+  severity: ConsistencySeverity;
+  category: string;
+  message: string;
+  object_type: 'character' | 'foreshadow' | 'chapter';
+  object_id: number | null;
+  change_index: number | null;
+  details: Record<string, unknown>;
+};
+
+export type ConsistencySummary = {
+  status: ConsistencyStatus;
+  total: number;
+  info_count: number;
+  warning_count: number;
+  blocking_count: number;
+};
+
+export type ApprovalConsistencyResponse = {
+  chapter_id: number;
+  draft_version: number;
+  selected_change_indexes: { characters: number[]; foreshadows: number[] };
+  consistency_summary: ConsistencySummary;
+  consistency_warnings: ConsistencyWarning[];
+};
+
 export type ApprovalPreviewResponse = {
   chapter_id: number;
   draft_version: number;
@@ -574,6 +603,8 @@ export type ApprovalPreviewResponse = {
   world_version_after: number;
   version_conflict: boolean;
   warnings: string[];
+  consistency_summary: ConsistencySummary;
+  consistency_warnings: ConsistencyWarning[];
   character_changes: Array<ApprovalPreviewChange & { character_id: number; name: string }>;
   foreshadow_changes: Array<ApprovalPreviewChange & { foreshadow_id: number; title: string }>;
 };

@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveChapter, createChapter, generateCharacterArcReport, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
+import { approveChapter, checkApprovalConsistency, createChapter, generateCharacterArcReport, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
 import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -43,6 +43,15 @@ const draftResponse: DraftResponse = {
 vi.mock('../api/client', () => ({
   apiRequest: vi.fn(async () => world),
   approveChapter: vi.fn(async () => ({ status: 'approved' })),
+  checkApprovalConsistency: vi.fn(async () => ({
+    chapter_id: 11,
+    draft_version: 1,
+    selected_change_indexes: { characters: [0], foreshadows: [0] },
+    consistency_summary: { status: 'needs_review', total: 1, info_count: 0, warning_count: 1, blocking_count: 0 },
+    consistency_warnings: [
+      { severity: 'warning', category: 'character_jump', message: '角色「林砚」的状态与目标同时大幅变化，请确认正文已有足够铺垫。', object_type: 'character', object_id: 1, change_index: 0, details: {} },
+    ],
+  })),
   createChapter: vi.fn(async () => ({
     id: 11,
     world_id: 7,
@@ -201,6 +210,10 @@ vi.mock('../api/client', () => ({
     world_version_after: 2,
     version_conflict: false,
     warnings: [],
+    consistency_summary: { status: 'needs_review', total: 1, info_count: 0, warning_count: 1, blocking_count: 0 },
+    consistency_warnings: [
+      { severity: 'warning', category: 'character_jump', message: '角色「林砚」的状态与目标同时大幅变化，请确认正文已有足够铺垫。', object_type: 'character', object_id: 1, change_index: 0, details: {} },
+    ],
     character_changes: [
       { change_index: 0, selected_by_default: true, character_id: 1, name: '林砚', before: { status: 'active' }, after: { status: '开始调查密信', current_goals: ['追查湿信来源'] } },
     ],
@@ -245,6 +258,7 @@ const world: WorldOverview = {
 afterEach(() => {
   cleanup();
   vi.mocked(approveChapter).mockClear();
+  vi.mocked(checkApprovalConsistency).mockClear();
   vi.mocked(writeChapter).mockClear();
   vi.mocked(getApprovalReadiness).mockClear();
   vi.mocked(reviseDraft).mockClear();
@@ -487,10 +501,54 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.click(await screen.findByRole('checkbox', { name: /伏笔：裂纹玉佩/ }));
     await user.click(screen.getByRole('button', { name: '通过并更新世界' }));
 
+    expect(checkApprovalConsistency).toHaveBeenCalledWith(11, {
+      draft_version: 1,
+      selected_character_change_indexes: [0],
+      selected_foreshadow_change_indexes: [],
+    });
     expect(approveChapter).toHaveBeenCalledWith(11, {
       draft_version: 1,
       selected_character_change_indexes: [0],
       selected_foreshadow_change_indexes: [],
     });
+  });
+
+  it('renders approval consistency warnings from the preview', async () => {
+    const user = userEvent.setup();
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+
+    expect(await screen.findByText('一致性检查')).toBeInTheDocument();
+    expect(screen.getByText('存在需复核项')).toBeInTheDocument();
+    expect(screen.getByText('角色「林砚」的状态与目标同时大幅变化，请确认正文已有足够铺垫。')).toBeInTheDocument();
+  });
+
+  it('disables approval when selected consistency is blocked', async () => {
+    const user = userEvent.setup();
+    vi.mocked(checkApprovalConsistency).mockResolvedValueOnce({
+      chapter_id: 11,
+      draft_version: 1,
+      selected_change_indexes: { characters: [0], foreshadows: [] },
+      consistency_summary: { status: 'blocked', total: 1, info_count: 0, warning_count: 0, blocking_count: 1 },
+      consistency_warnings: [
+        { severity: 'blocking', category: 'foreshadow_transition', message: '伏笔「裂纹玉佩」不能从 resolved 回退到 advanced。', object_type: 'foreshadow', object_id: 1, change_index: 0, details: {} },
+      ],
+    });
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(await screen.findByRole('checkbox', { name: /伏笔：裂纹玉佩/ }));
+
+    expect(await screen.findByText('存在阻塞项')).toBeInTheDocument();
+    expect(screen.getByText('伏笔「裂纹玉佩」不能从 resolved 回退到 advanced。')).toBeInTheDocument();
+    expect(screen.getByText('存在阻塞项，请取消相关变化或重新修订草稿。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '通过并更新世界' })).toBeDisabled();
   });
 });

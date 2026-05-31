@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
   approveChapter,
+  checkApprovalConsistency,
   createChapter as createChapterRequest,
   generateCharacterArcReport,
   generateCriticReport,
@@ -16,7 +17,7 @@ import {
   suggestGoal,
   writeChapter,
 } from '../api/client';
-import type { ApprovalPreviewResponse, ApprovalReadinessResponse, BeatCard, ChapterExecutionContext, ChapterPipelineResponse, CharacterArcReportResponse, CriticReportResponse, DraftDiffResponse, DraftResponse, StudioLaunchContext, WorldOverview } from '../api/types';
+import type { ApprovalPreviewResponse, ApprovalReadinessResponse, BeatCard, ChapterExecutionContext, ChapterPipelineResponse, CharacterArcReportResponse, ConsistencySummary, ConsistencyWarning, CriticReportResponse, DraftDiffResponse, DraftResponse, StudioLaunchContext, WorldOverview } from '../api/types';
 import { withEditedGoal } from '../world/chapterExecutionContext';
 import { ApprovalReadinessPanel } from './ApprovalReadinessPanel';
 import { CharacterArcPanel } from './CharacterArcPanel';
@@ -100,6 +101,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [approvalPreview, setApprovalPreview] = useState<ApprovalPreviewResponse | null>(null);
   const [selectedCharacterChangeIndexes, setSelectedCharacterChangeIndexes] = useState<number[]>([]);
   const [selectedForeshadowChangeIndexes, setSelectedForeshadowChangeIndexes] = useState<number[]>([]);
+  const [consistencySummary, setConsistencySummary] = useState<ConsistencySummary | null>(null);
+  const [consistencyWarnings, setConsistencyWarnings] = useState<ConsistencyWarning[]>([]);
   const [approvalReadiness, setApprovalReadiness] = useState<ApprovalReadinessResponse | null>(null);
   const [critique, setCritique] = useState<CriticReportResponse | null>(null);
   const [characterArcReport, setCharacterArcReport] = useState<CharacterArcReportResponse | null>(null);
@@ -162,6 +165,33 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setSelectedForeshadowChangeIndexes([]);
   }
 
+  function clearApprovalConsistency() {
+    setConsistencySummary(null);
+    setConsistencyWarnings([]);
+  }
+
+  function setPreviewConsistency(preview: ApprovalPreviewResponse) {
+    setConsistencySummary(preview.consistency_summary);
+    setConsistencyWarnings(preview.consistency_warnings);
+  }
+
+  function consistencyLabel(summary: ConsistencySummary): string {
+    if (summary.status === 'blocked') return '存在阻塞项';
+    if (summary.status === 'needs_review') return '存在需复核项';
+    return '一致性检查通过';
+  }
+
+  async function refreshApprovalConsistency(characterIndexes: number[], foreshadowIndexes: number[]) {
+    if (!draft) return;
+    const result = await checkApprovalConsistency(draft.chapter_id, {
+      draft_version: resolveDraftVersion(draft),
+      selected_character_change_indexes: characterIndexes,
+      selected_foreshadow_change_indexes: foreshadowIndexes,
+    });
+    setConsistencySummary(result.consistency_summary);
+    setConsistencyWarnings(result.consistency_warnings);
+  }
+
   async function refreshReviewStudioPanels(nextDraft: DraftResponse) {
     const version = resolveDraftVersion(nextDraft);
     const knownVersions = [version];
@@ -172,9 +202,11 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       const preview = await getApprovalPreview(nextDraft.chapter_id);
       setApprovalPreview(preview);
       initializeApprovalSelection(preview);
+      setPreviewConsistency(preview);
     } catch {
       setApprovalPreview(null);
       clearApprovalSelection();
+      clearApprovalConsistency();
     }
     try {
       setApprovalReadiness(await getApprovalReadiness(nextDraft.chapter_id));
@@ -221,6 +253,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setDraft(null);
       setApprovalPreview(null);
       clearApprovalSelection();
+      clearApprovalConsistency();
       setApprovalReadiness(null);
       setCritique(null);
       setCharacterArcReport(null);
@@ -243,6 +276,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setDraft(null);
       setApprovalPreview(null);
       clearApprovalSelection();
+      clearApprovalConsistency();
       setApprovalReadiness(null);
       setCritique(null);
       setCharacterArcReport(null);
@@ -331,6 +365,26 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
 
   function useHintAsGoal(nextGoal: string) {
     setGoal(nextGoal);
+  }
+
+  async function toggleCharacterSelection(changeIndex: number) {
+    const nextCharacterIndexes = toggleIndex(selectedCharacterChangeIndexes, changeIndex);
+    setSelectedCharacterChangeIndexes(nextCharacterIndexes);
+    try {
+      await refreshApprovalConsistency(nextCharacterIndexes, selectedForeshadowChangeIndexes);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '刷新一致性检查失败');
+    }
+  }
+
+  async function toggleForeshadowSelection(changeIndex: number) {
+    const nextForeshadowIndexes = toggleIndex(selectedForeshadowChangeIndexes, changeIndex);
+    setSelectedForeshadowChangeIndexes(nextForeshadowIndexes);
+    try {
+      await refreshApprovalConsistency(selectedCharacterChangeIndexes, nextForeshadowIndexes);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '刷新一致性检查失败');
+    }
   }
 
   async function approveDraft() {
@@ -497,6 +551,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
 
   const totalPreviewChanges = approvalPreview ? approvalPreview.character_changes.length + approvalPreview.foreshadow_changes.length : 0;
   const selectedPreviewChanges = selectedCharacterChangeIndexes.length + selectedForeshadowChangeIndexes.length;
+  const approvalBlockedByConsistency = consistencySummary?.status === 'blocked';
 
   return (
     <section className="mx-auto max-w-6xl">
@@ -697,6 +752,21 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                   <h3 className="font-black text-[#3b2511]">通过后将提交</h3>
                   <p className="manuscript">世界版本：{approvalPreview.world_version_before} → {approvalPreview.world_version_after}</p>
                   <p className="manuscript text-sm">已选择 {selectedPreviewChanges} / {totalPreviewChanges} 条拟提交变化</p>
+                  {consistencySummary && (
+                    <div className="space-y-2 rounded-xl bg-white/45 p-3">
+                      <h4 className="font-black text-[#3b2511]">一致性检查</h4>
+                      <p className="manuscript text-sm"><span>{consistencyLabel(consistencySummary)}</span> · blocking {consistencySummary.blocking_count} / warning {consistencySummary.warning_count} / info {consistencySummary.info_count}</p>
+                      {consistencyWarnings.map((warning, index) => (
+                        <p
+                          key={`${warning.severity}-${warning.category}-${warning.object_id}-${warning.change_index}-${index}`}
+                          className={warning.severity === 'blocking' ? 'paper-error' : warning.severity === 'warning' ? 'rounded bg-amber-100 px-3 py-2 text-sm text-amber-900' : 'manuscript text-sm'}
+                        >
+                          {warning.message}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  {approvalBlockedByConsistency && <p className="paper-error">存在阻塞项，请取消相关变化或重新修订草稿。</p>}
                   {approvalPreview.version_conflict && <p className="paper-error">世界版本已变化，请重新生成草稿。</p>}
                   {approvalPreview.character_changes.map((change, index) => {
                     const changeIndex = previewIndex(change, index);
@@ -706,7 +776,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                           type="checkbox"
                           className="mt-1 accent-amber-800"
                           checked={selectedCharacterChangeIndexes.includes(changeIndex)}
-                          onChange={() => setSelectedCharacterChangeIndexes((values) => toggleIndex(values, changeIndex))}
+                          onChange={() => void toggleCharacterSelection(changeIndex)}
                         />
                         <span>角色：{change.name} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</span>
                       </label>
@@ -720,7 +790,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                           type="checkbox"
                           className="mt-1 accent-amber-800"
                           checked={selectedForeshadowChangeIndexes.includes(changeIndex)}
-                          onChange={() => setSelectedForeshadowChangeIndexes((values) => toggleIndex(values, changeIndex))}
+                          onChange={() => void toggleForeshadowSelection(changeIndex)}
                         />
                         <span>伏笔：{change.title} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</span>
                       </label>
@@ -780,7 +850,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
 
           {draft && (
             <div className="flex flex-wrap gap-3">
-              <button className="primary-button" disabled={working || !isViewingLatestDraft()} onClick={approveDraft}>通过并更新世界</button>
+              <button className="primary-button" disabled={working || !isViewingLatestDraft() || approvalBlockedByConsistency} onClick={approveDraft}>通过并更新世界</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={rejectDraft}>驳回</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={startEdit}>编辑正文</button>
             </div>

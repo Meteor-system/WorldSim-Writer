@@ -114,6 +114,32 @@ class ApproveRequest(BaseModel):
     selected_foreshadow_change_indexes: list[int] | None = None
 
 
+class ConsistencyWarning(BaseModel):
+    severity: Literal['info', 'warning', 'blocking']
+    category: str
+    message: str
+    object_type: Literal['character', 'foreshadow', 'chapter']
+    object_id: int | None = None
+    change_index: int | None = None
+    details: dict = Field(default_factory=dict)
+
+
+class ConsistencySummary(BaseModel):
+    status: Literal['clear', 'needs_review', 'blocked']
+    total: int
+    info_count: int
+    warning_count: int
+    blocking_count: int
+
+
+class ApprovalConsistencyResponse(BaseModel):
+    chapter_id: int
+    draft_version: int
+    selected_change_indexes: dict
+    consistency_summary: ConsistencySummary
+    consistency_warnings: list[ConsistencyWarning]
+
+
 class RejectRequest(BaseModel):
     feedback: str = Field(min_length=1)
 

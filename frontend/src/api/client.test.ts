@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  checkApprovalConsistency,
   createRelation,
   deleteCharacter,
   deleteForeshadow,
@@ -116,7 +117,7 @@ describe('draft versioning API helpers', () => {
     vi.restoreAllMocks();
   });
 
-  it('calls draft stash, paragraph revision, full revision, exact version, diff, and approval preview endpoints', async () => {
+  it('calls draft stash, paragraph revision, full revision, exact version, diff, approval preview, and approval consistency endpoints', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ draft_version: 2 }))
@@ -124,7 +125,8 @@ describe('draft versioning API helpers', () => {
       .mockResolvedValueOnce(jsonResponse({ draft_version: 4 }))
       .mockResolvedValueOnce(jsonResponse({ draft_version: 1 }))
       .mockResolvedValueOnce(jsonResponse({ diff_lines: [] }))
-      .mockResolvedValueOnce(jsonResponse({ version_conflict: false }));
+      .mockResolvedValueOnce(jsonResponse({ version_conflict: false }))
+      .mockResolvedValueOnce(jsonResponse({ consistency_warnings: [] }));
     vi.stubGlobal('fetch', fetchMock);
 
     await stashDraft(11, { note: '暂存当前草稿' });
@@ -133,6 +135,7 @@ describe('draft versioning API helpers', () => {
     await getDraftVersion(11, 1);
     await getDraftDiff(11, 1, 3);
     await getApprovalPreview(11);
+    await checkApprovalConsistency(11, { draft_version: 1, selected_character_change_indexes: [0], selected_foreshadow_change_indexes: [] });
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -155,6 +158,14 @@ describe('draft versioning API helpers', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://localhost:8000/chapters/11/drafts/1', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(5, 'http://localhost:8000/chapters/11/drafts/diff?from=1&to=3', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(6, 'http://localhost:8000/chapters/11/approval-preview', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      7,
+      'http://localhost:8000/chapters/11/approval-consistency',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ draft_version: 1, selected_character_change_indexes: [0], selected_foreshadow_change_indexes: [] }),
+      }),
+    );
   });
 
   it('calls critic report generate and fetch endpoints', async () => {

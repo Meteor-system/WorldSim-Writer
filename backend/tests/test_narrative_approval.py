@@ -43,6 +43,34 @@ class MultiChangeLLMClient:
         )
 
 
+class RollbackForeshadowLLMClient:
+    def generate_chapter(self, messages):
+        return ChapterGeneration(
+            title='第二章 玉佩回潮',
+            draft_content='裂纹玉佩已经被解释清楚，却又在雨夜重新发出旧光。',
+            context_summary='已解决伏笔被重新推进。',
+            review_hints=['确认伏笔是否允许倒退'],
+            proposed_character_changes=[],
+            proposed_foreshadow_changes=[
+                ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='尝试重新推进已解决伏笔'),
+            ],
+        )
+
+
+class CharacterJumpLLMClient:
+    def generate_chapter(self, messages):
+        return ChapterGeneration(
+            title='第二章 急转',
+            draft_content='林砚放弃旧案，转而追查城主府密信。',
+            context_summary='角色目标发生明显切换。',
+            review_hints=['确认角色目标跳变是否有铺垫'],
+            proposed_character_changes=[
+                ProposedCharacterChange(character_id=1, status='转向追查密信', current_goals=['追查城主府密信']),
+            ],
+            proposed_foreshadow_changes=[],
+        )
+
+
 def event_logs(db_session, world_id):
     return list(
         db_session.scalars(
@@ -55,6 +83,15 @@ def event_logs(db_session, world_id):
 
 def chapter_approved_event(db_session, world_id):
     return next(event for event in event_logs(db_session, world_id) if event.event_type == 'chapter_approved')
+
+
+def set_foreshadow_status(db_session, foreshadow_id: int, status: str) -> None:
+    from app.foreshadow.models import Foreshadow
+
+    foreshadow = db_session.get(Foreshadow, foreshadow_id)
+    assert foreshadow is not None
+    foreshadow.status = status
+    db_session.commit()
 
 
 def register_and_create_world(client):
@@ -257,6 +294,102 @@ def test_approve_chapter_rejects_stale_draft_version_selection(client, monkeypat
 
     assert response.status_code == 409
     assert response.json()['detail'] == 'DRAFT_VERSION_MISMATCH'
+
+
+def test_approval_preview_includes_consistency_summary_and_warnings(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    set_foreshadow_status(db_session, 1, 'resolved')
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: RollbackForeshadowLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '重新推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+
+    response = client.get(f"/chapters/{draft['chapter_id']}/approval-preview", headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['consistency_summary']['status'] == 'blocked'
+    assert body['consistency_summary']['blocking_count'] == 1
+    assert body['consistency_warnings'][0]['severity'] == 'blocking'
+    assert body['consistency_warnings'][0]['category'] == 'foreshadow_transition'
+    assert body['consistency_warnings'][0]['object_type'] == 'foreshadow'
+    assert body['consistency_warnings'][0]['object_id'] == 1
+    assert body['consistency_warnings'][0]['change_index'] == 0
+
+
+def test_approval_consistency_recalculates_for_selected_change_set(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    set_foreshadow_status(db_session, 1, 'resolved')
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: RollbackForeshadowLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '重新推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/approval-consistency",
+        json={
+            'draft_version': draft['draft_version'],
+            'selected_character_change_indexes': [],
+            'selected_foreshadow_change_indexes': [],
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['selected_change_indexes'] == {'characters': [], 'foreshadows': []}
+    assert body['consistency_summary']['status'] == 'clear'
+    assert body['consistency_warnings'] == []
+
+
+def test_approve_chapter_blocks_selected_consistency_violations(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    set_foreshadow_status(db_session, 1, 'resolved')
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: RollbackForeshadowLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '重新推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/approve",
+        json={'draft_version': draft['draft_version'], 'selected_foreshadow_change_indexes': [0]},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 409
+    detail = response.json()['detail']
+    assert detail['code'] == 'CONSISTENCY_BLOCKED'
+    assert detail['summary']['blocking_count'] == 1
+    assert detail['warnings'][0]['category'] == 'foreshadow_transition'
+
+
+def test_approve_chapter_allows_warning_only_consistency_and_records_summary(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: CharacterJumpLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '切换角色目标'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/approve",
+        json={'draft_version': draft['draft_version'], 'selected_character_change_indexes': [0]},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    approved = chapter_approved_event(db_session, world_id)
+    assert approved.payload['consistency_summary']['status'] == 'needs_review'
+    assert approved.payload['consistency_summary']['warning_count'] == 1
+    assert approved.payload['consistency_warnings'][0]['severity'] == 'warning'
+    assert approved.payload['consistency_warnings'][0]['category'] == 'character_jump'
 
 
 def test_reject_chapter_does_not_approve_or_update_world(client, monkeypatch):

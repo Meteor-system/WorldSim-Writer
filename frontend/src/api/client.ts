@@ -1,4 +1,5 @@
 import type {
+  ApprovalConsistencyResponse,
   ApprovalPreviewResponse,
   ApprovalReadinessResponse,
   ApproveRequest,
@@ -165,6 +166,13 @@ export function getDraftDiff(chapterId: number, fromVersion: number, toVersion: 
 
 export function getApprovalPreview(chapterId: number) {
   return apiRequest<ApprovalPreviewResponse>(`/chapters/${chapterId}/approval-preview`);
+}
+
+export function checkApprovalConsistency(chapterId: number, data: ApproveRequest = {}) {
+  return apiRequest<ApprovalConsistencyResponse>(`/chapters/${chapterId}/approval-consistency`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 export function getApprovalReadiness(chapterId: number) {
