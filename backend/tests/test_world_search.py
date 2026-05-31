@@ -117,6 +117,87 @@ def test_world_search_filters_object_types(client, monkeypatch):
     assert payload['object_type_counts'] == {'character': 1}
 
 
+def create_tag(client, token, world_id, name='灯塔线'):
+    response = client.post(f'/worlds/{world_id}/tags', headers=auth(token), json={'name': name, 'color': 'amber'})
+    assert response.status_code == 200
+    return response.json()
+
+
+def assign_tag(client, token, world_id, tag_id, object_type, object_id):
+    response = client.post(
+        f'/worlds/{world_id}/tags/{tag_id}/objects',
+        headers=auth(token),
+        json={'object_type': object_type, 'object_id': object_id},
+    )
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_world_search_filters_by_tag_name_and_adds_tag_metadata(client, monkeypatch):
+    token = register(client, 'search-tag-name@example.com')
+    world, _ = create_searchable_world(client, token, monkeypatch)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    tag = create_tag(client, token, world['id'], '灯塔线')
+    assign_tag(client, token, world['id'], tag['id'], 'foreshadow', overview['foreshadows'][0]['id'])
+
+    response = client.get(f"/worlds/{world['id']}/search?q=黑匣子&tags=灯塔线", headers=auth(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['object_type_counts'] == {'foreshadow': 1}
+    assert [(result['object_type'], result['object_id']) for result in payload['results']] == [
+        ('foreshadow', overview['foreshadows'][0]['id'])
+    ]
+    assert payload['results'][0]['metadata']['tags'] == [
+        {'id': tag['id'], 'name': '灯塔线', 'slug': '灯塔线', 'color': 'amber'}
+    ]
+
+
+def test_world_search_filters_by_tag_id(client, monkeypatch):
+    token = register(client, 'search-tag-id@example.com')
+    world, _ = create_searchable_world(client, token, monkeypatch)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    tag = create_tag(client, token, world['id'], '角色线')
+    assign_tag(client, token, world['id'], tag['id'], 'character', overview['characters'][0]['id'])
+
+    response = client.get(f"/worlds/{world['id']}/search?q=许砚&tags={tag['id']}", headers=auth(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['object_type_counts'] == {'character': 1}
+    assert payload['results'][0]['object_type'] == 'character'
+    assert payload['results'][0]['metadata']['tags'][0]['name'] == '角色线'
+
+
+def test_world_search_unknown_tag_filter_returns_no_results(client, monkeypatch):
+    token = register(client, 'search-tag-missing@example.com')
+    world, _ = create_searchable_world(client, token, monkeypatch)
+
+    response = client.get(f"/worlds/{world['id']}/search?q=黑匣子&tags=missing-tag", headers=auth(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['object_type_counts'] == {}
+    assert payload['results'] == []
+
+
+def test_world_search_tag_filter_is_limited_to_current_world(client, monkeypatch):
+    owner_token = register(client, 'search-tag-owner@example.com')
+    other_token = register(client, 'search-tag-other@example.com')
+    owner_world, _ = create_searchable_world(client, owner_token, monkeypatch)
+    other_world, _ = create_searchable_world(client, other_token, monkeypatch)
+    other_overview = client.get(f"/worlds/{other_world['id']}/overview", headers=auth(other_token)).json()
+    other_tag = create_tag(client, other_token, other_world['id'], '跨界标签')
+    assign_tag(client, other_token, other_world['id'], other_tag['id'], 'foreshadow', other_overview['foreshadows'][0]['id'])
+
+    response = client.get(f"/worlds/{owner_world['id']}/search?q=黑匣子&tags={other_tag['id']}", headers=auth(owner_token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['object_type_counts'] == {}
+    assert payload['results'] == []
+
+
 def test_world_search_is_limited_to_owner(client):
     owner_token = register(client, 'search-owner@example.com')
     other_token = register(client, 'search-other@example.com')

@@ -132,9 +132,10 @@ export function getWorldEvents(worldId: number, params: { event_type?: string; l
   return apiRequest<EventLogListResponse>(`/worlds/${worldId}/events${query ? `?${query}` : ''}`);
 }
 
-export function searchWorld(worldId: number, params: { q: string; object_types?: string[]; limit?: number }) {
+export function searchWorld(worldId: number, params: { q: string; object_types?: string[]; tags?: string[]; limit?: number }) {
   const search = new URLSearchParams({ q: params.q });
   if (params.object_types?.length) search.set('object_types', params.object_types.join(','));
+  if (params.tags?.length) search.set('tags', params.tags.join(','));
   if (params.limit !== undefined) search.set('limit', String(params.limit));
   return apiRequest<WorldSearchResponse>(`/worlds/${worldId}/search?${search.toString()}`);
 }

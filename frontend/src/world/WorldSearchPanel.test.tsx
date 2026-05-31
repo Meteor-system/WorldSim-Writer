@@ -2,8 +2,24 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { WorldSearchResponse } from '../api/types';
+import type { TagListResponse, WorldSearchResponse } from '../api/types';
 import { WorldSearchPanel } from './WorldSearchPanel';
+
+const tagList: TagListResponse = {
+  world_id: 7,
+  tags: [
+    {
+      id: 3,
+      world_id: 7,
+      name: '灯塔线',
+      slug: '灯塔线',
+      color: 'amber',
+      created_at: '2026-05-31T00:00:00Z',
+      assignment_count: 1,
+      object_type_counts: { foreshadow: 1 },
+    },
+  ],
+};
 
 const searchResponse: WorldSearchResponse = {
   world_id: 7,
@@ -24,7 +40,7 @@ const searchResponse: WorldSearchResponse = {
       title: '黑匣子脉冲',
       subtitle: 'Foreshadow · planted · urgency 4',
       snippet: '废弃黑匣子收到来自未来的求救信号。',
-      metadata: { status: 'planted' },
+      metadata: { status: 'planted', tags: [{ id: 3, name: '灯塔线', slug: '灯塔线', color: 'amber' }] },
     },
   ],
 };
@@ -47,6 +63,22 @@ describe('WorldSearchPanel', () => {
     expect(screen.getByText('foreshadow × 1')).toBeInTheDocument();
     expect(screen.getByText('许砚')).toBeInTheDocument();
     expect(screen.getByText('废弃黑匣子收到来自未来的求救信号。')).toBeInTheDocument();
+    expect(screen.getByText('灯塔线')).toBeInTheDocument();
+  });
+
+  it('loads tag filters and sends selected tags', async () => {
+    const user = userEvent.setup();
+    const onSearch = vi.fn().mockResolvedValue(searchResponse);
+    const onListTags = vi.fn().mockResolvedValue(tagList);
+    render(<WorldSearchPanel worldId={7} onSearch={onSearch} onListTags={onListTags} />);
+
+    expect(await screen.findByText('标签筛选')).toBeInTheDocument();
+    expect(onListTags).toHaveBeenCalledWith(7);
+    await user.type(screen.getByLabelText('搜索世界资料'), '灯塔');
+    await user.click(screen.getByRole('button', { name: '标签 灯塔线 1' }));
+    await user.click(screen.getByRole('button', { name: '搜索' }));
+
+    await waitFor(() => expect(onSearch).toHaveBeenCalledWith(7, { q: '灯塔', object_types: [], tags: ['灯塔线'], limit: 20 }));
   });
 
   it('sends selected object type filters', async () => {

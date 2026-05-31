@@ -2,7 +2,7 @@ import json
 from uuid import uuid4
 
 from fastapi import HTTPException, status
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
@@ -10,6 +10,7 @@ from app.character.models import Character, CharacterRelation
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow, ForeshadowEvent
 from app.narrative.models import Chapter
+from app.tags.models import ObjectTag, Tag
 from app.world.models import World
 from app.world.schemas import WorldCreateRequest
 from app.world.seed_library import WORLD_SEEDS, seed_detail, seed_summary
@@ -325,19 +326,76 @@ def _parse_object_types(object_types: str | None) -> set[str]:
     return requested & SEARCH_OBJECT_TYPES
 
 
-def search_world(db: Session, user: User, world_id: int, query: str, object_types: str | None = None, limit: int = 20) -> dict:
+def _parse_tag_filters(tags: str | None) -> set[str]:
+    if tags is None or tags.strip() == '':
+        return set()
+    return {item.strip() for item in tags.split(',') if item.strip()}
+
+
+def _tag_metadata(tag: Tag) -> dict:
+    return {'id': tag.id, 'name': tag.name, 'slug': tag.slug, 'color': tag.color}
+
+
+def _load_tag_filter_assignments(db: Session, world_id: int, tag_filters: set[str]) -> tuple[set[tuple[str, int]], dict[tuple[str, int], list[dict]]] | None:
+    if not tag_filters:
+        return None
+
+    numeric_ids = {int(value) for value in tag_filters if value.isdigit()}
+    text_filters = {value.lower() for value in tag_filters if not value.isdigit()}
+    conditions = []
+    if numeric_ids:
+        conditions.append(Tag.id.in_(numeric_ids))
+    if text_filters:
+        conditions.append(func.lower(Tag.slug).in_(text_filters))
+        conditions.append(func.lower(Tag.name).in_(text_filters))
+    if not conditions:
+        return set(), {}
+
+    matched_tags = list(db.scalars(select(Tag).where(Tag.world_id == world_id).where(or_(*conditions)).order_by(Tag.id)))
+    if not matched_tags:
+        return set(), {}
+
+    tag_by_id = {tag.id: tag for tag in matched_tags}
+    assignments = list(db.scalars(select(ObjectTag).where(ObjectTag.tag_id.in_(tag_by_id)).order_by(ObjectTag.id)))
+    allowed_objects: set[tuple[str, int]] = set()
+    metadata_by_object: dict[tuple[str, int], list[dict]] = {}
+    for assignment in assignments:
+        key = (assignment.object_type, assignment.object_id)
+        allowed_objects.add(key)
+        metadata_by_object.setdefault(key, []).append(_tag_metadata(tag_by_id[assignment.tag_id]))
+    return allowed_objects, metadata_by_object
+
+
+def _append_search_result(results: list[dict], result: dict, tag_filter_data: tuple[set[tuple[str, int]], dict[tuple[str, int], list[dict]]] | None) -> None:
+    if tag_filter_data is None:
+        results.append(result)
+        return
+    allowed_objects, metadata_by_object = tag_filter_data
+    object_id = result.get('object_id')
+    if object_id is None:
+        return
+    key = (result['object_type'], object_id)
+    if key not in allowed_objects:
+        return
+    result['metadata'] = {**result.get('metadata', {}), 'tags': metadata_by_object.get(key, [])}
+    results.append(result)
+
+
+def search_world(db: Session, user: User, world_id: int, query: str, object_types: str | None = None, limit: int = 20, tags: str | None = None) -> dict:
     world = require_owned_world(db, user, world_id)
     normalized_query = query.strip()
     if not normalized_query:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='SEARCH_QUERY_REQUIRED')
     needle = normalized_query.lower()
     allowed_types = _parse_object_types(object_types)
+    tag_filter_data = _load_tag_filter_assignments(db, world.id, _parse_tag_filters(tags))
     results: list[dict] = []
 
     if 'world' in allowed_types:
         world_text = ' '.join([world.title, world.genre_template, world.truth_canon, _json_text(world.tone_profile)])
         if _matches(world_text, needle):
-            results.append(
+            _append_search_result(
+                results,
                 {
                     'object_type': 'world',
                     'object_id': world.id,
@@ -345,7 +403,8 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
                     'subtitle': f'World · {world.genre_template}',
                     'snippet': _snippet(world_text, normalized_query),
                     'metadata': {'world_version': world.world_version},
-                }
+                },
+                tag_filter_data,
             )
 
     if 'character' in allowed_types:
@@ -363,7 +422,8 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
                 ]
             )
             if _matches(text, needle):
-                results.append(
+                _append_search_result(
+                    results,
                     {
                         'object_type': 'character',
                         'object_id': character.id,
@@ -371,7 +431,8 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
                         'subtitle': f'Character · {character.role_type}',
                         'snippet': _snippet(text, normalized_query),
                         'metadata': {'status': character.status},
-                    }
+                    },
+                    tag_filter_data,
                 )
 
     if 'foreshadow' in allowed_types:
@@ -388,7 +449,8 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
                 ]
             )
             if _matches(text, needle):
-                results.append(
+                _append_search_result(
+                    results,
                     {
                         'object_type': 'foreshadow',
                         'object_id': foreshadow.id,
@@ -396,7 +458,8 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
                         'subtitle': f'Foreshadow · {foreshadow.status} · urgency {foreshadow.urgency_level}',
                         'snippet': _snippet(text, normalized_query),
                         'metadata': {'status': foreshadow.status, 'urgency_level': foreshadow.urgency_level},
-                    }
+                    },
+                    tag_filter_data,
                 )
 
     if 'chapter' in allowed_types:
@@ -404,7 +467,8 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
         for chapter in chapters:
             text = ' '.join([chapter.title, chapter.chapter_goal or '', chapter.approved_content or ''])
             if _matches(text, needle):
-                results.append(
+                _append_search_result(
+                    results,
                     {
                         'object_type': 'chapter',
                         'object_id': chapter.id,
@@ -412,7 +476,8 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
                         'subtitle': f'Chapter · {chapter.status} · world v{chapter.base_world_version}',
                         'snippet': _snippet(text, normalized_query),
                         'metadata': {'status': chapter.status, 'draft_version': chapter.draft_version},
-                    }
+                    },
+                    tag_filter_data,
                 )
 
     if 'event' in allowed_types:
@@ -420,7 +485,8 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
         for event in events:
             text = ' '.join([event.event_type, event.source_type, _json_text(event.payload)])
             if _matches(text, needle):
-                results.append(
+                _append_search_result(
+                    results,
                     {
                         'object_type': 'event',
                         'object_id': event.id,
@@ -428,7 +494,8 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
                         'subtitle': f'Event · {event.source_type} · world {event.world_version_before} → {event.world_version_after}',
                         'snippet': _snippet(text, normalized_query),
                         'metadata': {'world_version_after': event.world_version_after, 'chapter_id': event.chapter_id},
-                    }
+                    },
+                    tag_filter_data,
                 )
 
     counts: dict[str, int] = {}

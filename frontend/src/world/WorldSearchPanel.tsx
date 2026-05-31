@@ -1,9 +1,10 @@
-import { FormEvent, useState } from 'react';
-import type { WorldSearchResponse } from '../api/types';
+import { FormEvent, useEffect, useState } from 'react';
+import type { TagListResponse, TagSummaryResponse, WorldSearchResponse } from '../api/types';
 
 type Props = {
   worldId: number;
-  onSearch: (worldId: number, params: { q: string; object_types?: string[]; limit?: number }) => Promise<WorldSearchResponse>;
+  onSearch: (worldId: number, params: { q: string; object_types?: string[]; tags?: string[]; limit?: number }) => Promise<WorldSearchResponse>;
+  onListTags?: (worldId: number) => Promise<TagListResponse>;
 };
 
 const LIMIT = 20;
@@ -18,18 +19,58 @@ function totalCount(response: WorldSearchResponse): number {
   return Object.values(response.object_type_counts).reduce((sum, count) => sum + count, 0);
 }
 
-export function WorldSearchPanel({ worldId, onSearch }: Props) {
+function resultTags(metadata: Record<string, unknown>): Array<{ id: number; name: string; slug: string; color: string | null }> {
+  return Array.isArray(metadata.tags) ? metadata.tags as Array<{ id: number; name: string; slug: string; color: string | null }> : [];
+}
+
+function tagFilterValue(tag: TagSummaryResponse): string {
+  return tag.slug || String(tag.id);
+}
+
+export function WorldSearchPanel({ worldId, onSearch, onListTags }: Props) {
   const [query, setQuery] = useState('');
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [response, setResponse] = useState<WorldSearchResponse | null>(null);
+  const [tags, setTags] = useState<TagSummaryResponse[]>([]);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [tagLoading, setTagLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [tagNotice, setTagNotice] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
 
   function toggleType(type: string) {
     setSelectedTypes((current) => current.includes(type) ? current.filter((item) => item !== type) : [...current, type]);
   }
+
+  function toggleTag(value: string) {
+    setSelectedTags((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+  }
+
+  useEffect(() => {
+    if (!onListTags) return;
+    let active = true;
+    async function loadTags() {
+      setTagLoading(true);
+      setTagNotice('');
+      try {
+        const result = await onListTags!(worldId);
+        if (active) setTags(result.tags);
+      } catch {
+        if (active) {
+          setTags([]);
+          setTagNotice('标签筛选暂不可用');
+        }
+      } finally {
+        if (active) setTagLoading(false);
+      }
+    }
+    void loadTags();
+    return () => {
+      active = false;
+    };
+  }, [onListTags, worldId]);
 
   async function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,7 +85,7 @@ export function WorldSearchPanel({ worldId, onSearch }: Props) {
     setNotice('');
     setHasSearched(true);
     try {
-      setResponse(await onSearch(worldId, { q: trimmed, object_types: selectedTypes, limit: LIMIT }));
+      setResponse(await onSearch(worldId, { q: trimmed, object_types: selectedTypes, ...(selectedTags.length ? { tags: selectedTags } : {}), limit: LIMIT }));
     } catch (err) {
       setResponse(null);
       setError(err instanceof Error ? err.message : '搜索暂不可用');
@@ -88,6 +129,32 @@ export function WorldSearchPanel({ worldId, onSearch }: Props) {
         ))}
       </div>
 
+      {onListTags && (
+        <div className="space-y-2">
+          <p className="text-sm font-bold text-[#3b2511]">标签筛选</p>
+          {tagLoading && <p className="ink-muted text-sm" role="status">正在加载标签筛选...</p>}
+          {tagNotice && <p className="ink-muted text-sm">{tagNotice}</p>}
+          {tags.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {tags.map((tag) => {
+                const value = tagFilterValue(tag);
+                return (
+                  <button
+                    key={tag.id}
+                    aria-label={`标签 ${tag.name} ${tag.assignment_count}`}
+                    className={`secondary-button text-sm ${selectedTags.includes(value) ? 'bg-amber-100' : ''}`}
+                    type="button"
+                    onClick={() => toggleTag(value)}
+                  >
+                    {tag.name} · {tag.assignment_count}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {notice && <p className="ink-muted">{notice}</p>}
       {loading && <p className="ink-muted" role="status">正在搜索...</p>}
       {error && <p className="paper-error" role="alert">{error}</p>}
@@ -115,6 +182,13 @@ export function WorldSearchPanel({ worldId, onSearch }: Props) {
                     <p className="text-xs font-bold text-[#5e3b1c]">{result.subtitle}</p>
                   </div>
                   <p className="manuscript mt-3 text-sm">{result.snippet}</p>
+                  {resultTags(result.metadata).length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {resultTags(result.metadata).map((tag) => (
+                        <span key={tag.id} className="rounded-full bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c]">{tag.name}</span>
+                      ))}
+                    </div>
+                  )}
                 </article>
               ))}
             </div>

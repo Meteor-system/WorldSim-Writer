@@ -114,8 +114,9 @@ def search(
     world_id: int,
     q: str,
     object_types: str | None = None,
+    tags: str | None = None,
     limit: int = Query(20, ge=1, le=50),
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> WorldSearchResponse:
-    return WorldSearchResponse.model_validate(search_world(db, current_user, world_id, q, object_types, limit))
+    return WorldSearchResponse.model_validate(search_world(db, current_user, world_id, q, object_types, limit, tags))

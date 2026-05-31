@@ -404,6 +404,7 @@ describe('WorldPage Narrative Control Center', () => {
     expect(getWorldEvents).toHaveBeenCalledWith(7, { limit: 20 });
     expect(await screen.findByText('Global Search')).toBeInTheDocument();
     expect(await screen.findByText('Tags / Collections')).toBeInTheDocument();
+    await waitFor(() => expect(listWorldTags).toHaveBeenCalledTimes(2));
     expect(listWorldTags).toHaveBeenCalledWith(7);
     await user.click(screen.getByRole('button', { name: '加载快照列表' }));
     expect(listWorldSnapshots).toHaveBeenCalledWith(7);
