@@ -590,6 +590,55 @@ describe('WorldTagsPanel', () => {
     expect(screen.getByText('许砚')).toBeInTheDocument();
   });
 
+  it('filters visible tags by assigned object type', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onListTags: vi.fn().mockResolvedValue(sortableListResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.selectOptions(screen.getByLabelText('标签对象类型'), 'foreshadow');
+
+    const tagButtons = screen.getAllByRole('button', { name: /查看 / });
+    expect(tagButtons.map((button) => button.textContent)).toEqual([
+      '阿尔法档案总数 1foreshadow 1',
+    ]);
+    expect(screen.getByText('显示 1 / 3 个标签')).toBeInTheDocument();
+  });
+
+  it('resets tag-list object type filtering with tag view reset', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onListTags: vi.fn().mockResolvedValue(sortableListResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.selectOptions(screen.getByLabelText('标签对象类型'), 'empty');
+    expect(screen.getByText('主线归档')).toBeInTheDocument();
+    expect(screen.queryByText('灯塔线')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('标签对象类型')).toHaveValue('empty');
+
+    await user.click(screen.getByRole('button', { name: '重置标签视图' }));
+
+    expect(screen.getByLabelText('标签对象类型')).toHaveValue('all');
+    expect(screen.getByText('显示 3 / 3 个标签')).toBeInTheDocument();
+    expect(screen.getByText('灯塔线')).toBeInTheDocument();
+    expect(screen.getByText('阿尔法档案')).toBeInTheDocument();
+  });
+
+  it('clears selected tag detail when tag-list type filtering hides it', async () => {
+    const user = userEvent.setup();
+    renderPanel({
+      onListTags: vi.fn().mockResolvedValue(sortableListResponse),
+      onLoadTag: vi.fn().mockResolvedValue(detailResponse),
+    });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    expect(await screen.findByText('许砚')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('标签对象类型'), 'foreshadow');
+
+    expect(screen.queryByText('许砚')).not.toBeInTheDocument();
+    expect(screen.queryByText('当前标签')).not.toBeInTheDocument();
+  });
+
   it('resets tag-list search and sort controls', async () => {
     const user = userEvent.setup();
     renderPanel({ onListTags: vi.fn().mockResolvedValue(sortableListResponse) });

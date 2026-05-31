@@ -30,6 +30,7 @@ function countText(tag: TagSummaryResponse): string {
 export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onUpdateTag, onMergeTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
   const [tags, setTags] = useState<TagSummaryResponse[]>([]);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
+  const [tagObjectTypeFilter, setTagObjectTypeFilter] = useState('all');
   const [tagSortMode, setTagSortMode] = useState('default');
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
   const [detail, setDetail] = useState<TagDetailResponse | null>(null);
@@ -100,13 +101,19 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
     void loadTags();
   }, [worldId]);
 
+  const typeFilteredTags = tagObjectTypeFilter === 'all'
+    ? tags
+    : tags.filter((tag) => {
+        if (tagObjectTypeFilter === 'empty') return tag.assignment_count === 0;
+        return (tag.object_type_counts[tagObjectTypeFilter] ?? 0) > 0;
+      });
   const normalizedTagSearchQuery = tagSearchQuery.trim().toLowerCase();
   const searchedTags = normalizedTagSearchQuery
-    ? tags.filter((tag) => {
+    ? typeFilteredTags.filter((tag) => {
         const haystack = [tag.name, tag.slug, tag.color ?? '', String(tag.assignment_count), countText(tag)].join(' ').toLowerCase();
         return haystack.includes(normalizedTagSearchQuery);
       })
-    : tags;
+    : typeFilteredTags;
   const visibleTags = [...searchedTags].sort((left, right) => {
     if (tagSortMode === 'name') return left.name.localeCompare(right.name) || left.id - right.id;
     if (tagSortMode === 'count') return right.assignment_count - left.assignment_count || left.name.localeCompare(right.name) || left.id - right.id;
@@ -125,6 +132,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
 
   function resetTagView() {
     setTagSearchQuery('');
+    setTagObjectTypeFilter('all');
     setTagSortMode('default');
   }
 
@@ -334,7 +342,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       {!loading && tags.length === 0 && !error && <p className="ink-muted">还没有标签。创建一个标签来整理角色、伏笔、章节或事件。</p>}
 
       {tags.length > 0 && (
-        <div className="grid gap-3 md:grid-cols-[1fr_14rem_auto]">
+        <div className="grid gap-3 md:grid-cols-[1fr_12rem_14rem_auto]">
           <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
             搜索标签
             <input
@@ -345,6 +353,19 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
               placeholder="按名称、颜色、类型或数量搜索"
             />
             <span className="ink-muted mt-2 block text-xs">显示 {visibleTags.length} / {tags.length} 个标签</span>
+          </label>
+          <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
+            标签对象类型
+            <select
+              className="paper-input mt-1"
+              aria-label="标签对象类型"
+              value={tagObjectTypeFilter}
+              onChange={(event) => setTagObjectTypeFilter(event.target.value)}
+            >
+              <option value="all">全部标签</option>
+              <option value="empty">无对象</option>
+              {OBJECT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </select>
           </label>
           <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
             标签排序
