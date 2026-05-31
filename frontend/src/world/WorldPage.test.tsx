@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, listWorldSeeds, listWorldSnapshots, searchWorld } from '../api/client';
+import { apiRequest, assignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, searchWorld, unassignWorldTag } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -10,9 +10,12 @@ vi.mock('../api/client', () => ({
   apiRequest: vi.fn(),
   createSampleWorld: vi.fn(),
   compareWorldSnapshots: vi.fn(),
+  assignWorldTag: vi.fn(),
   createWorld: vi.fn(),
   createWorldFromSeed: vi.fn(),
   createWorldSnapshot: vi.fn(),
+  createWorldTag: vi.fn(),
+  deleteWorldTag: vi.fn(),
   exportWorldArchiveMarkdown: vi.fn(),
   generateStoryArc: vi.fn(),
   getChapterHistory: vi.fn(),
@@ -24,8 +27,11 @@ vi.mock('../api/client', () => ({
   getWorldPulse: vi.fn(),
   getArcPlan: vi.fn(),
   getWorldSeed: vi.fn(),
+  getWorldTag: vi.fn(),
   listWorldSeeds: vi.fn(),
+  listWorldTags: vi.fn(),
   searchWorld: vi.fn(),
+  unassignWorldTag: vi.fn(),
   getCharacters: vi.fn(),
   getForeshadowLedger: vi.fn(),
   getForeshadowTimeline: vi.fn(),
@@ -64,8 +70,11 @@ beforeEach(() => {
   vi.mocked(compareWorldSnapshots).mockReset();
   vi.mocked(createSampleWorld).mockReset();
   vi.mocked(createWorld).mockReset();
+  vi.mocked(assignWorldTag).mockReset();
   vi.mocked(createWorldFromSeed).mockReset();
   vi.mocked(createWorldSnapshot).mockReset();
+  vi.mocked(createWorldTag).mockReset();
+  vi.mocked(deleteWorldTag).mockReset();
   vi.mocked(exportWorldArchiveMarkdown).mockReset();
   vi.mocked(getChapterHistory).mockReset();
   vi.mocked(getChapterHistoryDetail).mockReset();
@@ -76,8 +85,11 @@ beforeEach(() => {
   vi.mocked(getWorldPulse).mockReset();
   vi.mocked(getArcPlan).mockReset();
   vi.mocked(getWorldSeed).mockReset();
+  vi.mocked(getWorldTag).mockReset();
   vi.mocked(listWorldSeeds).mockReset();
+  vi.mocked(listWorldTags).mockReset();
   vi.mocked(searchWorld).mockReset();
+  vi.mocked(unassignWorldTag).mockReset();
   vi.mocked(listWorldSnapshots).mockReset();
   vi.mocked(getCharacters).mockReset();
   vi.mocked(getForeshadowLedger).mockReset();
@@ -123,6 +135,38 @@ beforeEach(() => {
       },
     ],
   });
+  vi.mocked(listWorldTags).mockResolvedValue({
+    world_id: 7,
+    tags: [
+      {
+        id: 3,
+        world_id: 7,
+        name: '灯塔线',
+        slug: '灯塔线',
+        color: 'amber',
+        created_at: '2026-05-31T00:00:00Z',
+        assignment_count: 1,
+        object_type_counts: { character: 1 },
+      },
+    ],
+  });
+  vi.mocked(createWorldTag).mockResolvedValue({ id: 3, world_id: 7, name: '灯塔线', slug: '灯塔线', color: 'amber', created_at: '2026-05-31T00:00:00Z' });
+  vi.mocked(getWorldTag).mockResolvedValue({
+    tag: {
+      id: 3,
+      world_id: 7,
+      name: '灯塔线',
+      slug: '灯塔线',
+      color: 'amber',
+      created_at: '2026-05-31T00:00:00Z',
+      assignment_count: 1,
+      object_type_counts: { character: 1 },
+    },
+    objects: [],
+  });
+  vi.mocked(assignWorldTag).mockResolvedValue({ id: 9, world_id: 7, tag_id: 3, object_type: 'character', object_id: 1, created_at: '2026-05-31T00:00:00Z' });
+  vi.mocked(unassignWorldTag).mockResolvedValue(undefined);
+  vi.mocked(deleteWorldTag).mockResolvedValue(undefined);
   vi.mocked(getWorldSeed).mockResolvedValue({
     key: 'forgotten-sun-city',
     label: '无日城',
@@ -359,6 +403,8 @@ describe('WorldPage Narrative Control Center', () => {
     expect(await screen.findByText('Timeline Explorer')).toBeInTheDocument();
     expect(getWorldEvents).toHaveBeenCalledWith(7, { limit: 20 });
     expect(await screen.findByText('Global Search')).toBeInTheDocument();
+    expect(await screen.findByText('Tags / Collections')).toBeInTheDocument();
+    expect(listWorldTags).toHaveBeenCalledWith(7);
     await user.click(screen.getByRole('button', { name: '加载快照列表' }));
     expect(listWorldSnapshots).toHaveBeenCalledWith(7);
 

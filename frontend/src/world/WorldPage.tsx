@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
+  assignWorldTag,
   compareWorldSnapshots,
   createSampleWorld,
   createWorld,
   createWorldFromSeed,
   createWorldSnapshot,
+  createWorldTag,
+  deleteWorldTag,
   exportWorldArchiveMarkdown,
   generateStoryArc,
   getArcPlan,
@@ -17,9 +20,12 @@ import {
   getWorldEvents,
   getWorldPulse,
   getWorldSeed,
+  getWorldTag,
   listWorldSeeds,
   listWorldSnapshots,
+  listWorldTags,
   searchWorld,
+  unassignWorldTag,
 } from '../api/client';
 import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
@@ -34,6 +40,7 @@ import { WorldArchivePanel } from './WorldArchivePanel';
 import { WorldCreationForm } from './WorldCreationForm';
 import { WorldPulsePanel } from './WorldPulsePanel';
 import { WorldSearchPanel } from './WorldSearchPanel';
+import { WorldTagsPanel } from './WorldTagsPanel';
 import { WorldTimelinePanel } from './WorldTimelinePanel';
 
 type Props = { onEnterStudio: (world: WorldOverview, context?: StudioLaunchContext) => void; autoFocusTitle?: boolean };
@@ -478,6 +485,15 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 })}
               />
               <WorldSearchPanel worldId={world.id} onSearch={searchWorld} />
+              <WorldTagsPanel
+                worldId={world.id}
+                onListTags={listWorldTags}
+                onCreateTag={createWorldTag}
+                onLoadTag={getWorldTag}
+                onAssignTag={assignWorldTag}
+                onUnassignTag={unassignWorldTag}
+                onDeleteTag={deleteWorldTag}
+              />
               <WorldTimelinePanel worldId={world.id} onLoadEvents={getWorldEvents} />
               <WorldArchivePanel
                 onCreateSnapshot={() => createWorldSnapshot(world.id)}

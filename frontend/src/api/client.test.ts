@@ -6,9 +6,12 @@ import {
   createSampleWorld,
   createWorld,
   createWorldFromSeed,
+  createWorldTag,
+  assignWorldTag,
   deleteCharacter,
   deleteForeshadow,
   deleteRelation,
+  deleteWorldTag,
   generateCharacterArcReport,
   generateCriticReport,
   getApprovalPreview,
@@ -27,8 +30,11 @@ import {
   getWorldEvents,
   getDraftVersion,
   getWorldSeed,
+  getWorldTag,
   listWorldSeeds,
+  listWorldTags,
   searchWorld,
+  unassignWorldTag,
   getRelations,
   reviseDraft,
   reviseParagraph,
@@ -168,6 +174,40 @@ describe('world search API helper', () => {
       expect.any(Object),
     );
     expect(response.object_type_counts).toEqual({ character: 1 });
+  });
+});
+
+describe('world tag API helpers', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('calls world tag endpoints', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ world_id: 7, tags: [] }))
+      .mockResolvedValueOnce(jsonResponse({ id: 3, world_id: 7, name: '主线', slug: '主线', color: 'amber', created_at: '2026-05-31T00:00:00Z' }))
+      .mockResolvedValueOnce(jsonResponse({ tag: { id: 3, world_id: 7, name: '主线', slug: '主线', color: 'amber', created_at: '2026-05-31T00:00:00Z', assignment_count: 1, object_type_counts: { character: 1 } }, objects: [] }))
+      .mockResolvedValueOnce(jsonResponse({ id: 9, world_id: 7, tag_id: 3, object_type: 'character', object_id: 1, created_at: '2026-05-31T00:00:00Z' }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await listWorldTags(7);
+    await createWorldTag(7, { name: '主线', color: 'amber' });
+    await getWorldTag(7, 3);
+    await assignWorldTag(7, 3, { object_type: 'character', object_id: 1 });
+    await unassignWorldTag(7, 3, 'character', 1);
+    await deleteWorldTag(7, 3);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://localhost:8000/worlds/7/tags', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8000/worlds/7/tags', expect.objectContaining({ method: 'POST', body: JSON.stringify({ name: '主线', color: 'amber' }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8000/worlds/7/tags/3', expect.any(Object));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://localhost:8000/worlds/7/tags/3/objects', expect.objectContaining({ method: 'POST', body: JSON.stringify({ object_type: 'character', object_id: 1 }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, 'http://localhost:8000/worlds/7/tags/3/objects/character/1', expect.objectContaining({ method: 'DELETE' }));
+    expect(fetchMock).toHaveBeenNthCalledWith(6, 'http://localhost:8000/worlds/7/tags/3', expect.objectContaining({ method: 'DELETE' }));
   });
 });
 

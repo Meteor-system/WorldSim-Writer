@@ -257,6 +257,48 @@ export type WorldSearchResponse = {
   results: WorldSearchResult[];
 };
 
+export type TagResponse = {
+  id: number;
+  world_id: number;
+  name: string;
+  slug: string;
+  color: string | null;
+  created_at: string;
+};
+
+export type TagSummaryResponse = TagResponse & {
+  assignment_count: number;
+  object_type_counts: Record<string, number>;
+};
+
+export type TaggedObjectSummary = {
+  object_type: string;
+  object_id: number;
+  title: string;
+  subtitle: string;
+  snippet: string;
+  metadata: Record<string, unknown>;
+};
+
+export type ObjectTagResponse = {
+  id: number;
+  world_id: number;
+  tag_id: number;
+  object_type: string;
+  object_id: number;
+  created_at: string;
+};
+
+export type TagListResponse = {
+  world_id: number;
+  tags: TagSummaryResponse[];
+};
+
+export type TagDetailResponse = {
+  tag: TagSummaryResponse;
+  objects: TaggedObjectSummary[];
+};
+
 export type StoryArcChapter = {
   chapter_number: number;
   title: string;

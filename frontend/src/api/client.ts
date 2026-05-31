@@ -36,6 +36,10 @@ import type {
   ReviseDraftRequest,
   StaleForeshadow,
   StoryArcResponse,
+  ObjectTagResponse,
+  TagDetailResponse,
+  TagListResponse,
+  TagResponse,
   WorldCreateRequest,
   WorldMarkdownExportResponse,
   WorldPulseResponse,
@@ -133,6 +137,36 @@ export function searchWorld(worldId: number, params: { q: string; object_types?:
   if (params.object_types?.length) search.set('object_types', params.object_types.join(','));
   if (params.limit !== undefined) search.set('limit', String(params.limit));
   return apiRequest<WorldSearchResponse>(`/worlds/${worldId}/search?${search.toString()}`);
+}
+
+export function listWorldTags(worldId: number) {
+  return apiRequest<TagListResponse>(`/worlds/${worldId}/tags`);
+}
+
+export function createWorldTag(worldId: number, data: { name: string; color?: string }) {
+  return apiRequest<TagResponse>(`/worlds/${worldId}/tags`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function getWorldTag(worldId: number, tagId: number) {
+  return apiRequest<TagDetailResponse>(`/worlds/${worldId}/tags/${tagId}`);
+}
+
+export function assignWorldTag(worldId: number, tagId: number, data: { object_type: string; object_id: number }) {
+  return apiRequest<ObjectTagResponse>(`/worlds/${worldId}/tags/${tagId}/objects`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function unassignWorldTag(worldId: number, tagId: number, objectType: string, objectId: number) {
+  return apiRequest<unknown>(`/worlds/${worldId}/tags/${tagId}/objects/${objectType}/${objectId}`, { method: 'DELETE' });
+}
+
+export function deleteWorldTag(worldId: number, tagId: number) {
+  return apiRequest<unknown>(`/worlds/${worldId}/tags/${tagId}`, { method: 'DELETE' });
 }
 
 export function generateStoryArc(worldId: number) {
