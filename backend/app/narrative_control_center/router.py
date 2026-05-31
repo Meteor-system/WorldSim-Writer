@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.narrative_control_center.schemas import (
     ApprovedChapterHistoryDetailResponse,
     ApprovedChapterHistoryResponse,
+    ArcPlanResponse,
     NarrativeHealthResponse,
     NextChapterPrepResponse,
     OpenThreadsResponse,
@@ -15,6 +16,7 @@ from app.narrative_control_center.schemas import (
 from app.narrative_control_center.service import (
     get_approved_chapter_history,
     get_approved_chapter_history_detail,
+    get_arc_plan,
     get_narrative_health,
     get_next_chapter_prep,
     get_open_threads,
@@ -78,3 +80,12 @@ def world_pulse(
     db: Session = Depends(get_db),
 ) -> WorldPulseResponse:
     return WorldPulseResponse.model_validate(get_world_pulse(db, current_user, world_id))
+
+
+@router.get('/worlds/{world_id}/arc-plan', response_model=ArcPlanResponse)
+def arc_plan(
+    world_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> ArcPlanResponse:
+    return ArcPlanResponse.model_validate(get_arc_plan(db, current_user, world_id))

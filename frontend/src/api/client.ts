@@ -3,6 +3,7 @@ import type {
   ApprovalPreviewResponse,
   ApprovalReadinessResponse,
   ApproveRequest,
+  ArcPlanResponse,
   BeatCard,
   ChapterHistoryDetailResponse,
   ChapterExecutionContext,
@@ -288,6 +289,10 @@ export function getOpenThreads(worldId: number) {
 
 export function getWorldPulse(worldId: number) {
   return apiRequest<WorldPulseResponse>(`/worlds/${worldId}/pulse`);
+}
+
+export function getArcPlan(worldId: number) {
+  return apiRequest<ArcPlanResponse>(`/worlds/${worldId}/arc-plan`);
 }
 
 export function createWorldSnapshot(worldId: number, data: { label?: string; note?: string } = {}) {

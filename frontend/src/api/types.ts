@@ -637,6 +637,37 @@ export type WorldPulseResponse = {
   source_summary: Record<string, unknown>;
 };
 
+export type ArcPlanClosureItem = {
+  item_key: string;
+  thread_id: string | null;
+  treatment: 'close' | 'advance' | 'merge' | 'defer' | 'leave_open';
+  priority: string;
+  title: string;
+  rationale: string;
+  suggested_next_step: string;
+  related_character_ids: number[];
+  related_foreshadow_ids: number[];
+};
+
+export type ArcPlanGuidance = {
+  guidance_key: string;
+  label: string;
+  detail: string;
+};
+
+export type ArcPlanResponse = {
+  world_id: number;
+  world_version: number;
+  arc_mode: 'expand' | 'organize' | 'pressure' | 'converge' | 'payoff' | 'endgame';
+  mode_reason: string;
+  expansion_budget: 'open' | 'limited' | 'locked';
+  next_chapter_number: number;
+  recommended_goal: string;
+  closure_items: ArcPlanClosureItem[];
+  guidance: ArcPlanGuidance[];
+  source_summary: Record<string, unknown>;
+};
+
 export type WorldSnapshotSummary = {
   id: number;
   world_id: number;

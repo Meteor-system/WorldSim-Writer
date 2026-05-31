@@ -7,6 +7,7 @@ import {
   createWorldSnapshot,
   exportWorldArchiveMarkdown,
   generateStoryArc,
+  getArcPlan,
   getChapterHistory,
   getChapterHistoryDetail,
   getNarrativeHealth,
@@ -17,10 +18,11 @@ import {
   listWorldSnapshots,
   searchWorld,
 } from '../api/client';
-import type { ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse } from '../api/types';
+import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
+import { ArcPlanPanel } from './ArcPlanPanel';
 import { ChapterHistoryPanel } from './ChapterHistoryPanel';
 import { NarrativeHealthPanel } from './NarrativeHealthPanel';
 import { NextChapterPrepPanel } from './NextChapterPrepPanel';
@@ -142,6 +144,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [worldPulse, setWorldPulse] = useState<WorldPulseResponse | null>(null);
   const [worldPulseLoading, setWorldPulseLoading] = useState(false);
   const [worldPulseError, setWorldPulseError] = useState('');
+  const [arcPlan, setArcPlan] = useState<ArcPlanResponse | null>(null);
+  const [arcPlanLoading, setArcPlanLoading] = useState(false);
+  const [arcPlanError, setArcPlanError] = useState('');
   const [selectedExecutionContext, setSelectedExecutionContext] = useState<ChapterExecutionContext | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -152,11 +157,13 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     setNarrativeHealthLoading(true);
     setOpenThreadsLoading(true);
     setWorldPulseLoading(true);
+    setArcPlanLoading(true);
     setChapterHistoryError('');
     setNextPrepError('');
     setNarrativeHealthError('');
     setOpenThreadsError('');
     setWorldPulseError('');
+    setArcPlanError('');
     try {
       setChapterHistory(await getChapterHistory(worldId));
     } catch {
@@ -196,6 +203,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setWorldPulseError('世界心跳暂不可用');
     } finally {
       setWorldPulseLoading(false);
+    }
+    try {
+      setArcPlan(await getArcPlan(worldId));
+    } catch {
+      setArcPlan(null);
+      setArcPlanError('篇章模式暂不可用');
+    } finally {
+      setArcPlanLoading(false);
     }
   }
 
@@ -404,6 +419,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 {selectedExecutionContext && <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已设为下一章目标：{selectedExecutionContext.goal}</p>}
               </div>
               <WorldPulsePanel pulse={worldPulse} loading={worldPulseLoading} error={worldPulseError} />
+              <ArcPlanPanel arcPlan={arcPlan} loading={arcPlanLoading} error={arcPlanError} />
               <NarrativeHealthPanel health={narrativeHealth} loading={narrativeHealthLoading} error={narrativeHealthError} />
               <OpenThreadsPanel openThreads={openThreads} loading={openThreadsLoading} error={openThreadsError} />
               <NextChapterPrepPanel

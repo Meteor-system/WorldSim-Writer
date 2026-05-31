@@ -207,3 +207,34 @@ class WorldPulseResponse(BaseModel):
     focus: list[WorldPulseFocus]
     next_actions: list[WorldPulseAction]
     source_summary: dict
+
+
+class ArcPlanClosureItem(BaseModel):
+    item_key: str
+    thread_id: str | None = None
+    treatment: str
+    priority: str
+    title: str
+    rationale: str
+    suggested_next_step: str
+    related_character_ids: list[int]
+    related_foreshadow_ids: list[int]
+
+
+class ArcPlanGuidance(BaseModel):
+    guidance_key: str
+    label: str
+    detail: str
+
+
+class ArcPlanResponse(BaseModel):
+    world_id: int
+    world_version: int
+    arc_mode: str
+    mode_reason: str
+    expansion_budget: str
+    next_chapter_number: int
+    recommended_goal: str
+    closure_items: list[ArcPlanClosureItem]
+    guidance: list[ArcPlanGuidance]
+    source_summary: dict

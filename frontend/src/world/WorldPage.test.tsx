@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, compareWorldSnapshots, createSampleWorld, createWorld, createWorldSnapshot, exportWorldArchiveMarkdown, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, listWorldSnapshots, searchWorld } from '../api/client';
+import { apiRequest, compareWorldSnapshots, createSampleWorld, createWorld, createWorldSnapshot, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, listWorldSnapshots, searchWorld } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -21,6 +21,7 @@ vi.mock('../api/client', () => ({
   getOpenThreads: vi.fn(),
   getWorldEvents: vi.fn(),
   getWorldPulse: vi.fn(),
+  getArcPlan: vi.fn(),
   searchWorld: vi.fn(),
   getCharacters: vi.fn(),
   getForeshadowLedger: vi.fn(),
@@ -69,6 +70,7 @@ beforeEach(() => {
   vi.mocked(getOpenThreads).mockReset();
   vi.mocked(getWorldEvents).mockReset();
   vi.mocked(getWorldPulse).mockReset();
+  vi.mocked(getArcPlan).mockReset();
   vi.mocked(searchWorld).mockReset();
   vi.mocked(listWorldSnapshots).mockReset();
   vi.mocked(getCharacters).mockReset();
@@ -207,6 +209,20 @@ beforeEach(() => {
     next_actions: [],
     source_summary: { approved_chapter_count: 1 },
   });
+  vi.mocked(getArcPlan).mockResolvedValue({
+    world_id: 7,
+    world_version: 2,
+    arc_mode: 'pressure',
+    mode_reason: '存在应推进线索，可在有限扩张中继续加压。',
+    expansion_budget: 'limited',
+    next_chapter_number: 2,
+    recommended_goal: '推进裂纹玉佩线索。',
+    closure_items: [],
+    guidance: [
+      { guidance_key: 'increase_pressure', label: '继续加压', detail: '推进既有角色目标和高压伏笔。' },
+    ],
+    source_summary: { should_advance_count: 1 },
+  });
   vi.mocked(getWorldEvents).mockResolvedValue({
     items: [],
     total: 0,
@@ -278,7 +294,9 @@ describe('WorldPage Narrative Control Center', () => {
     expect(getNarrativeHealth).toHaveBeenCalledWith(7);
     expect(getOpenThreads).toHaveBeenCalledWith(7);
     expect(getWorldPulse).toHaveBeenCalledWith(7);
+    expect(getArcPlan).toHaveBeenCalledWith(7);
     expect(await screen.findByText('World Pulse')).toBeInTheDocument();
+    expect(await screen.findByText('Arc Mode / Closure Plan')).toBeInTheDocument();
     expect(await screen.findByText('Narrative Health')).toBeInTheDocument();
     expect(await screen.findByText('Open Threads Board')).toBeInTheDocument();
     expect(await screen.findByText('章节历史')).toBeInTheDocument();

@@ -20,6 +20,7 @@ import {
   getNarrativeHealth,
   getOpenThreads,
   getWorldPulse,
+  getArcPlan,
   exportWorldArchiveMarkdown,
   getDraftDiff,
   getWorldEvents,
@@ -216,6 +217,35 @@ describe('world pulse API helper', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/worlds/7/pulse', expect.any(Object));
     expect(response.primary_mode).toBe('converge');
+  });
+});
+
+describe('arc plan API helper', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('calls arc plan endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      world_id: 7,
+      world_version: 3,
+      arc_mode: 'converge',
+      mode_reason: '开放线索压力过高。',
+      expansion_budget: 'locked',
+      next_chapter_number: 4,
+      recommended_goal: '回收黑匣子脉冲。',
+      closure_items: [],
+      guidance: [],
+      source_summary: { must_close_count: 1 },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await getArcPlan(7);
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/worlds/7/arc-plan', expect.any(Object));
+    expect(response.arc_mode).toBe('converge');
   });
 });
 

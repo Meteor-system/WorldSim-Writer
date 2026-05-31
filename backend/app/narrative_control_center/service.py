@@ -832,6 +832,150 @@ def get_world_pulse(db: Session, user: User, world_id: int) -> dict:
     }
 
 
+ARC_MODE_RANK = {'organize': 0, 'converge': 1, 'payoff': 2, 'endgame': 3, 'pressure': 4, 'expand': 5}
+
+
+def _arc_guidance(guidance_key: str, label: str, detail: str) -> dict:
+    return {'guidance_key': guidance_key, 'label': label, 'detail': detail}
+
+
+def _select_arc_mode(
+    health: dict,
+    pulse: dict,
+    open_threads: dict,
+    approved_chapter_count: int,
+    story_arc_length: int,
+) -> tuple[str, str]:
+    must_close_count = open_threads['summary']['must_close_count']
+    should_advance_count = open_threads['summary']['should_advance_count']
+    entropy = open_threads['summary']['narrative_entropy_level']
+    if health['status'] == 'at_risk' or pulse['primary_mode'] == 'repair':
+        return 'organize', 'Narrative Health 存在高风险或 World Pulse 建议 repair，下一章应先整理与修复叙事连续性。'
+    if must_close_count > 0 or entropy == 'high':
+        return 'converge', '开放线索压力过高，下一章应优先收束旧承诺，避免继续扩张。'
+    if story_arc_length > 0 and approved_chapter_count >= story_arc_length:
+        return 'endgame', '已达到当前故事弧线长度，下一章应进入终局处理与剩余线索清算。'
+    if story_arc_length > 0 and approved_chapter_count / story_arc_length >= 0.7 and open_threads['summary']['total_open_threads'] > 0:
+        return 'payoff', '当前已进入故事弧线后段，适合开始兑现关键伏笔、角色选择与情绪回报。'
+    if should_advance_count > 0 or entropy == 'medium':
+        return 'pressure', '存在应推进线索，但还没有必须收束的阻塞，可在有限扩张中继续加压。'
+    return 'expand', '当前叙事压力较低，可以继续建立冲突、角色目标和可复用线索。'
+
+
+def _expansion_budget(arc_mode: str, health: dict, open_threads: dict) -> str:
+    if (
+        arc_mode == 'endgame'
+        or health['status'] == 'at_risk'
+        or open_threads['summary']['must_close_count'] > 0
+        or open_threads['summary']['narrative_entropy_level'] == 'high'
+    ):
+        return 'locked'
+    if arc_mode in {'pressure', 'payoff', 'converge'} or open_threads['summary']['should_advance_count'] > 0:
+        return 'limited'
+    return 'open'
+
+
+def _closure_treatment(thread: dict, anchor_character_ids: set[int], anchor_foreshadow_ids: set[int]) -> str:
+    if thread['priority'] == 'must_close':
+        return 'close'
+    if thread['priority'] == 'should_advance':
+        return 'advance'
+    if thread['priority'] == 'can_leave_open':
+        return 'leave_open'
+    character_ids = set(thread.get('related_character_ids') or [])
+    foreshadow_ids = set(thread.get('related_foreshadow_ids') or [])
+    if character_ids.intersection(anchor_character_ids) or foreshadow_ids.intersection(anchor_foreshadow_ids):
+        return 'merge'
+    return 'defer'
+
+
+def _closure_items(open_threads: dict) -> list[dict]:
+    anchors = [thread for thread in open_threads['threads'] if thread['priority'] in {'must_close', 'should_advance'}]
+    anchor_character_ids = {character_id for thread in anchors for character_id in thread.get('related_character_ids') or []}
+    anchor_foreshadow_ids = {foreshadow_id for thread in anchors for foreshadow_id in thread.get('related_foreshadow_ids') or []}
+    items: list[dict] = []
+    for thread in open_threads['threads'][:8]:
+        treatment = _closure_treatment(thread, anchor_character_ids, anchor_foreshadow_ids)
+        items.append(
+            {
+                'item_key': f"closure:{thread['thread_id']}",
+                'thread_id': thread['thread_id'],
+                'treatment': treatment,
+                'priority': thread['priority'],
+                'title': thread['title'],
+                'rationale': thread['summary'],
+                'suggested_next_step': thread['suggested_action'],
+                'related_character_ids': thread.get('related_character_ids') or [],
+                'related_foreshadow_ids': thread.get('related_foreshadow_ids') or [],
+            }
+        )
+    return items
+
+
+def _arc_guidance_items(
+    arc_mode: str,
+    expansion_budget: str,
+    approved_chapter_count: int,
+    next_prep: dict,
+    open_threads: dict,
+) -> list[dict]:
+    guidance = []
+    if approved_chapter_count == 0:
+        guidance.append(_arc_guidance('write_first_chapter', '完成第一章闭环', next_prep['suggested_goal']))
+    if arc_mode == 'organize':
+        guidance.append(_arc_guidance('repair_first', '先修复再扩张', '当前存在叙事健康风险，下一章应优先补足因果、角色动机或连续性。'))
+    if arc_mode in {'converge', 'payoff', 'endgame'}:
+        guidance.append(_arc_guidance('close_old_promises', '优先兑现旧承诺', '减少新增谜团，把最高压开放线索转化为场景行动或阶段性揭示。'))
+    if arc_mode == 'pressure':
+        guidance.append(_arc_guidance('increase_pressure', '继续加压', '推进既有角色目标和高压伏笔，但避免无成本开启过多新线索。'))
+    if arc_mode == 'expand':
+        guidance.append(_arc_guidance('seed_reusable_threads', '建立可复用线索', '可以设置新冲突或新承诺，但应确保它们能进入后续 Open Threads Board。'))
+    if expansion_budget == 'locked':
+        guidance.append(_arc_guidance('no_new_threads', '锁定扩张预算', '下一章不要主动新增核心角色、世界规则或大型谜团，除非用户明确决定打破建议。'))
+    elif expansion_budget == 'limited':
+        guidance.append(_arc_guidance('limited_new_threads', '限制新增线索', '允许少量铺垫，但新内容应服务于既有开放线索。'))
+    seed_action = next((action for action in open_threads['suggested_next_actions'] if action.get('action_key') == 'seed_next_chapter_goal'), None)
+    if seed_action:
+        guidance.append(_arc_guidance('seed_from_open_thread', seed_action['label'], seed_action['detail']))
+    return guidance
+
+
+def get_arc_plan(db: Session, user: User, world_id: int) -> dict:
+    world = require_owned_world(db, user, world_id)
+    pulse = get_world_pulse(db, user, world.id)
+    open_threads = get_open_threads(db, user, world.id)
+    health = get_narrative_health(db, user, world.id)
+    next_prep = get_next_chapter_prep(db, user, world.id)
+    approved_chapter_count = count_approved_chapters(db, world.id)
+    story_arc_length = len(world.story_arc or [])
+    arc_mode, mode_reason = _select_arc_mode(health, pulse, open_threads, approved_chapter_count, story_arc_length)
+    expansion = _expansion_budget(arc_mode, health, open_threads)
+
+    return {
+        'world_id': world.id,
+        'world_version': world.world_version,
+        'arc_mode': arc_mode,
+        'mode_reason': mode_reason,
+        'expansion_budget': expansion,
+        'next_chapter_number': next_prep['next_chapter_number'],
+        'recommended_goal': next_prep['suggested_goal'],
+        'closure_items': _closure_items(open_threads),
+        'guidance': _arc_guidance_items(arc_mode, expansion, approved_chapter_count, next_prep, open_threads),
+        'source_summary': {
+            'pulse_status': pulse['pulse_status'],
+            'pulse_primary_mode': pulse['primary_mode'],
+            'health_status': health['status'],
+            'health_score': health['health_score'],
+            'open_thread_count': open_threads['summary']['total_open_threads'],
+            'must_close_count': open_threads['summary']['must_close_count'],
+            'should_advance_count': open_threads['summary']['should_advance_count'],
+            'narrative_entropy_level': open_threads['summary']['narrative_entropy_level'],
+            'approved_chapter_count': approved_chapter_count,
+            'story_arc_length': story_arc_length,
+        },
+    }
+
+
 def get_approved_chapter_history(db: Session, user: User, world_id: int) -> dict:
     world = require_owned_world(db, user, world_id)
     chapters = list(db.scalars(_approved_chapters_query(world.id)))
