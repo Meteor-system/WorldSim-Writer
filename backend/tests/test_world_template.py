@@ -1,3 +1,19 @@
+from app.llm.schemas import ChapterGeneration
+from app.narrative import service as narrative_service
+
+
+class CustomWorldLLMClient:
+    def generate_chapter(self, messages):
+        return ChapterGeneration(
+            title='第一章 灯塔低鸣',
+            draft_content='许砚听见跃迁灯塔深处传来低鸣。',
+            context_summary='许砚开始追查灯塔异常。',
+            review_hints=['确认灯塔异常是否推进黑匣子脉冲伏笔。'],
+            proposed_character_changes=[],
+            proposed_foreshadow_changes=[],
+        )
+
+
 def register(client, email='writer@example.com'):
     response = client.post('/auth/register', json={'email': email, 'password': 'strongpass123'})
     return response.json()['access_token']
@@ -75,7 +91,7 @@ def test_create_sample_world_and_overview(client):
     assert len(overview['characters']) == 2
     assert len(overview['relations']) == 1
     assert len(overview['foreshadows']) == 1
-    assert overview['recent_events'] == []
+    assert [event['event_type'] for event in overview['recent_events']] == ['WORLD_CREATED']
 
     list_response = client.get('/worlds', headers=auth(token))
     assert list_response.status_code == 200
@@ -108,7 +124,7 @@ def test_create_custom_world_from_template_payload(client):
     assert len(overview['characters']) == 2
     assert len(overview['relations']) == 1
     assert len(overview['foreshadows']) == 1
-    assert overview['recent_events'] == []
+    assert [event['event_type'] for event in overview['recent_events']] == ['WORLD_CREATED']
 
     character_ids = [character['id'] for character in overview['characters']]
     relation = overview['relations'][0]
@@ -134,6 +150,98 @@ def test_template_foreshadows_get_initial_timeline_event(client):
 
     assert timeline.status_code == 200
     assert [event['event_type'] for event in timeline.json()] == ['planted']
+
+
+def test_create_custom_world_records_world_created_event_and_export_timeline(client):
+    token = register(client, 'world-created@example.com')
+
+    create_response = client.post('/worlds', headers=auth(token), json=custom_world_payload())
+
+    assert create_response.status_code == 200
+    world_id = create_response.json()['id']
+    overview = client.get(f'/worlds/{world_id}/overview', headers=auth(token)).json()
+    assert overview['recent_events'][0]['event_type'] == 'WORLD_CREATED'
+    assert overview['recent_events'][0]['source_type'] == 'world_creation'
+    assert overview['recent_events'][0]['world_version_before'] == 0
+    assert overview['recent_events'][0]['world_version_after'] == 1
+    assert overview['recent_events'][0]['payload']['starter_counts'] == {
+        'characters': 2,
+        'relations': 1,
+        'foreshadows': 1,
+    }
+
+    events = client.get(f'/worlds/{world_id}/events', headers=auth(token)).json()
+    assert events['total'] == 1
+    assert events['items'][0]['event_type'] == 'WORLD_CREATED'
+
+    export = client.post(f'/worlds/{world_id}/export/markdown', headers=auth(token)).json()
+    timeline = next(file for file in export['files'] if file['path'] == 'Timeline.md')['content']
+    assert 'WORLD_CREATED' in timeline
+    assert '0 → 1' in timeline
+
+
+def test_create_custom_world_rejects_relation_self_reference(client):
+    token = register(client, 'world-self-relation@example.com')
+    payload = custom_world_payload()
+    payload['starter_assets']['relations'][0]['target_index'] = 0
+
+    response = client.post('/worlds', headers=auth(token), json=payload)
+
+    assert response.status_code == 422
+    assert response.json()['detail'] == 'INVALID_RELATION_SELF_REFERENCE'
+    assert client.get('/worlds', headers=auth(token)).json() == []
+
+
+def test_create_custom_world_rejects_invalid_relation_intensity(client):
+    token = register(client, 'world-relation-intensity@example.com')
+    payload = custom_world_payload()
+    payload['starter_assets']['relations'][0]['intensity'] = 9
+
+    response = client.post('/worlds', headers=auth(token), json=payload)
+
+    assert response.status_code == 422
+    assert client.get('/worlds', headers=auth(token)).json() == []
+
+
+def test_create_custom_world_rejects_invalid_foreshadow_status(client):
+    token = register(client, 'world-foreshadow-status@example.com')
+    payload = custom_world_payload()
+    payload['starter_assets']['foreshadows'][0]['status'] = 'partially_resolved'
+
+    response = client.post('/worlds', headers=auth(token), json=payload)
+
+    assert response.status_code == 400
+    assert response.json()['detail'] == 'INVALID_STATUS'
+    assert client.get('/worlds', headers=auth(token)).json() == []
+
+
+def test_create_custom_world_rejects_invalid_foreshadow_urgency(client):
+    token = register(client, 'world-foreshadow-urgency@example.com')
+    payload = custom_world_payload()
+    payload['starter_assets']['foreshadows'][0]['urgency_level'] = 9
+
+    response = client.post('/worlds', headers=auth(token), json=payload)
+
+    assert response.status_code == 422
+    assert client.get('/worlds', headers=auth(token)).json() == []
+
+
+def test_custom_world_can_create_reviewing_draft(client, monkeypatch):
+    token = register(client, 'world-draft@example.com')
+    world = client.post('/worlds', headers=auth(token), json=custom_world_payload()).json()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: CustomWorldLLMClient())
+
+    response = client.post(
+        f"/worlds/{world['id']}/chapters/draft",
+        headers=auth(token),
+        json={'chapter_goal': '让许砚第一次听见灯塔低鸣'},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['status'] == 'reviewing'
+    assert payload['title'] == '第一章 灯塔低鸣'
+    assert payload['source_world_version'] == 1
 
 
 def test_create_custom_world_requires_login(client):

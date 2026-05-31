@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkApprovalConsistency,
   createRelation,
+  createSampleWorld,
+  createWorld,
   deleteCharacter,
   deleteForeshadow,
   deleteRelation,
@@ -31,6 +33,47 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
     ...init,
   });
 }
+
+describe('world creation API helpers', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('calls custom and sample world creation endpoints', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ id: 7 }))
+      .mockResolvedValueOnce(jsonResponse({ id: 8 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const payload = {
+      title: '群星边境',
+      genre_template: 'sci_fi',
+      truth_canon: '跃迁灯塔正在失控。',
+      tone_profile: { style: '冷峻太空歌剧' },
+      starter_assets: {
+        characters: [{ name: '许砚', role_type: 'protagonist' }],
+        relations: [],
+        foreshadows: [],
+      },
+    };
+
+    await createWorld(payload);
+    await createSampleWorld();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:8000/worlds',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify(payload) }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:8000/worlds/from-template',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
+    );
+  });
+});
 
 describe('relation API helpers', () => {
   beforeEach(() => {

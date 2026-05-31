@@ -409,7 +409,7 @@ def test_reject_chapter_does_not_approve_or_update_world(client, monkeypatch):
     assert reject_response.json()['status'] == 'rejected'
     assert reject_response.json()['approved_content'] is None
     assert overview['world_version'] == 1
-    assert overview['recent_events'] == []
+    assert [event['event_type'] for event in overview['recent_events']] == ['WORLD_CREATED']
 
 
 def test_create_draft_maps_model_request_failure(client, monkeypatch):

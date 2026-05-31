@@ -89,6 +89,13 @@ export function createWorld(data: WorldCreateRequest) {
   });
 }
 
+export function createSampleWorld() {
+  return apiRequest<{ id: number }>('/worlds/from-template', {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
 export function getWorldEvents(worldId: number, params: { event_type?: string; limit?: number; offset?: number } = {}) {
   const search = new URLSearchParams();
   if (params.event_type) search.set('event_type', params.event_type);

@@ -34,7 +34,7 @@ class StarterRelationCreate(BaseModel):
     source_index: int = Field(ge=0)
     target_index: int = Field(ge=0)
     relation_type: str
-    intensity: int = 1
+    intensity: int = Field(default=1, ge=1, le=5)
     visibility: str = 'public'
 
     @field_validator('relation_type')

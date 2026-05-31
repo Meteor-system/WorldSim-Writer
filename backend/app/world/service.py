@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from fastapi import HTTPException, status
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
@@ -35,12 +37,17 @@ def _validate_character_index(index: int, character_count: int) -> None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='INVALID_CHARACTER_INDEX')
 
 
-def _validate_starter_asset_indexes(data: WorldCreateRequest) -> None:
+def _validate_starter_assets(data: WorldCreateRequest) -> None:
     character_count = len(data.starter_assets.characters)
     for relation in data.starter_assets.relations:
         _validate_character_index(relation.source_index, character_count)
         _validate_character_index(relation.target_index, character_count)
+        if relation.source_index == relation.target_index:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='INVALID_RELATION_SELF_REFERENCE')
     for foreshadow in data.starter_assets.foreshadows:
+        foreshadow_status = foreshadow.status if foreshadow.status is not None else 'planted'
+        if foreshadow_status not in FORESHADOW_STATUSES:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='INVALID_STATUS')
         for index in foreshadow.related_character_indexes or []:
             _validate_character_index(index, character_count)
 
@@ -92,7 +99,7 @@ def refresh_world_projection(db: Session, world: World) -> None:
 
 
 def create_world_from_template(db: Session, user: User, data: WorldCreateRequest) -> World:
-    _validate_starter_asset_indexes(data)
+    _validate_starter_assets(data)
 
     world = World(
         owner_id=user.id,
@@ -156,6 +163,27 @@ def create_world_from_template(db: Session, user: User, data: WorldCreateRequest
     for foreshadow in foreshadows:
         db.add(ForeshadowEvent(foreshadow_id=foreshadow.id, event_type=foreshadow.status))
     refresh_world_projection(db, world)
+    db.add(
+        EventLog(
+            world_id=world.id,
+            chapter_id=None,
+            event_type='WORLD_CREATED',
+            source_type='world_creation',
+            commit_id=f'world-{world.id}-created-{uuid4().hex}',
+            payload={
+                'world_id': world.id,
+                'title': world.title,
+                'genre_template': world.genre_template,
+                'starter_counts': {
+                    'characters': len(characters),
+                    'relations': len(data.starter_assets.relations),
+                    'foreshadows': len(foreshadows),
+                },
+            },
+            world_version_before=0,
+            world_version_after=world.world_version,
+        )
+    )
 
     db.commit()
     db.refresh(world)

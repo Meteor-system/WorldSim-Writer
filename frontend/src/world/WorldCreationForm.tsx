@@ -11,6 +11,7 @@ import { clonePreset, GENRE_PRESETS } from './genrePresets';
 type Props = {
   creating: boolean;
   onCreate: (payload: WorldCreateRequest) => Promise<void>;
+  onCreateSample: () => Promise<void>;
 };
 
 function goalsToText(goals: string[] | undefined): string {
@@ -45,7 +46,7 @@ function mapIndexAfterRemoval(index: number, removedIndex: number): number | nul
   return index;
 }
 
-export function WorldCreationForm({ creating, onCreate }: Props) {
+export function WorldCreationForm({ creating, onCreate, onCreateSample }: Props) {
   const [selectedPresetKey, setSelectedPresetKey] = useState(GENRE_PRESETS[0].key);
   const [form, setForm] = useState<WorldCreateRequest>(() => clonePreset(GENRE_PRESETS[0]));
 
@@ -236,6 +237,9 @@ export function WorldCreationForm({ creating, onCreate }: Props) {
         <p className="manuscript mx-auto mt-4 max-w-2xl">
           从官方题材模板开始，编辑真理库、角色关系与伏笔，然后冻结为你的初始世界状态。
         </p>
+        <button className="secondary-button mt-5" disabled={creating} type="button" onClick={onCreateSample}>
+          创建内置示例世界
+        </button>
       </div>
 
       <section className="mt-8 grid gap-3 md:grid-cols-3">

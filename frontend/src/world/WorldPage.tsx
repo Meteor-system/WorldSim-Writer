@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
+  createSampleWorld,
   createWorld,
   createWorldSnapshot,
   exportWorldArchiveMarkdown,
@@ -180,6 +181,21 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     }
   }
 
+  async function submitSampleWorld() {
+    setCreating(true);
+    setError('');
+    try {
+      const created = await createSampleWorld();
+      const overview = await apiRequest<WorldOverview>(`/worlds/${created.id}/overview`);
+      setWorld(overview);
+      void loadNarrativeControlCenter(overview.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '创建世界失败');
+    } finally {
+      setCreating(false);
+    }
+  }
+
   async function runStoryArcPlanner() {
     if (!world) return;
     setArcLoading(true);
@@ -219,7 +235,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
             </p>
           </div>
         )}
-        <WorldCreationForm creating={creating} onCreate={submitWorld} />
+        <WorldCreationForm creating={creating} onCreate={submitWorld} onCreateSample={submitSampleWorld} />
       </section>
     );
   }

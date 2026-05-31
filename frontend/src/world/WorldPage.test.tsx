@@ -2,12 +2,13 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNextChapterPrep, getRelations } from '../api/client';
+import { apiRequest, createSampleWorld, createWorld, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNextChapterPrep, getRelations } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
 vi.mock('../api/client', () => ({
   apiRequest: vi.fn(),
+  createSampleWorld: vi.fn(),
   createWorld: vi.fn(),
   generateStoryArc: vi.fn(),
   getChapterHistory: vi.fn(),
@@ -47,6 +48,8 @@ afterEach(() => cleanup());
 
 beforeEach(() => {
   vi.mocked(apiRequest).mockReset();
+  vi.mocked(createSampleWorld).mockReset();
+  vi.mocked(createWorld).mockReset();
   vi.mocked(getChapterHistory).mockReset();
   vi.mocked(getChapterHistoryDetail).mockReset();
   vi.mocked(getNextChapterPrep).mockReset();
@@ -131,6 +134,41 @@ beforeEach(() => {
     progression_hints: [],
     continuity_warnings: [],
     recent_events: [],
+  });
+});
+
+describe('WorldPage world creation', () => {
+  it('creates the built-in sample world and loads its overview', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(world);
+    vi.mocked(createSampleWorld).mockResolvedValue({ id: 7 });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '创建内置示例世界' }));
+
+    expect(createSampleWorld).toHaveBeenCalledOnce();
+    expect(apiRequest).toHaveBeenNthCalledWith(2, '/worlds/7/overview');
+    expect(await screen.findByText('青岚城')).toBeInTheDocument();
+  });
+
+  it('shows backend validation errors when custom world creation fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockResolvedValueOnce([]);
+    vi.mocked(createWorld).mockRejectedValue(new Error('INVALID_CHARACTER_INDEX'));
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
+
+    expect(createWorld).toHaveBeenCalledOnce();
+    expect(await screen.findByRole('alert')).toHaveTextContent('INVALID_CHARACTER_INDEX');
   });
 });
 

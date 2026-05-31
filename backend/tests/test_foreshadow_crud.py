@@ -302,8 +302,8 @@ def test_foreshadow_create_increments_world_version_refreshes_projection_and_wri
     assert world.world_version == 2
     assert world.current_foreshadows[-1]['id'] == foreshadow['id']
     assert world.current_foreshadows[-1]['title'] == '铜铃异响'
-    assert [event.event_type for event in events] == ['foreshadow_change', 'world_version_increment']
-    foreshadow_event = events[0]
+    assert [event.event_type for event in events] == ['WORLD_CREATED', 'foreshadow_change', 'world_version_increment']
+    foreshadow_event = events[1]
     assert foreshadow_event.source_type == 'manual_edit'
     assert foreshadow_event.world_version_before == 1
     assert foreshadow_event.world_version_after == 2
