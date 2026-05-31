@@ -23,11 +23,29 @@ const targetTag: TagResponse = {
   created_at: '2026-05-31T00:00:00Z',
 };
 
+const olderTag: TagResponse = {
+  id: 5,
+  world_id: 7,
+  name: '阿尔法档案',
+  slug: '阿尔法档案',
+  color: 'green',
+  created_at: '2026-05-30T00:00:00Z',
+};
+
 const listResponse: TagListResponse = {
   world_id: 7,
   tags: [
     { ...tag, assignment_count: 1, object_type_counts: { character: 1 } },
     { ...targetTag, assignment_count: 0, object_type_counts: {} },
+  ],
+};
+
+const sortableListResponse: TagListResponse = {
+  world_id: 7,
+  tags: [
+    { ...targetTag, assignment_count: 0, object_type_counts: {} },
+    { ...tag, assignment_count: 3, object_type_counts: { character: 1, chapter: 2 } },
+    { ...olderTag, assignment_count: 1, object_type_counts: { foreshadow: 1 } },
   ],
 };
 
@@ -462,6 +480,54 @@ describe('WorldTagsPanel', () => {
 
     expect(screen.queryByText('许砚')).not.toBeInTheDocument();
     expect(screen.queryByText('当前标签')).not.toBeInTheDocument();
+  });
+
+  it('sorts visible tags by assignment count', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onListTags: vi.fn().mockResolvedValue(sortableListResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.selectOptions(screen.getByLabelText('标签排序'), 'count');
+
+    const tagButtons = screen.getAllByRole('button', { name: /查看 / });
+    expect(tagButtons.map((button) => button.textContent)).toEqual([
+      '灯塔线总数 3character 1 · chapter 2',
+      '阿尔法档案总数 1foreshadow 1',
+      '主线归档总数 0无对象',
+    ]);
+  });
+
+  it('sorts searched tags by name', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onListTags: vi.fn().mockResolvedValue(sortableListResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.type(screen.getByLabelText('搜索标签'), '档');
+    await user.selectOptions(screen.getByLabelText('标签排序'), 'name');
+
+    const tagButtons = screen.getAllByRole('button', { name: /查看 / });
+    expect(tagButtons.map((button) => button.textContent)).toEqual([
+      '阿尔法档案总数 1foreshadow 1',
+      '主线归档总数 0无对象',
+    ]);
+    expect(screen.getByText('显示 2 / 3 个标签')).toBeInTheDocument();
+  });
+
+  it('keeps selected tag detail when only sorting changes', async () => {
+    const user = userEvent.setup();
+    renderPanel({
+      onListTags: vi.fn().mockResolvedValue(sortableListResponse),
+      onLoadTag: vi.fn().mockResolvedValue(detailResponse),
+    });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    expect(await screen.findByText('许砚')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('标签排序'), 'name');
+
+    expect(screen.getByText('当前标签')).toBeInTheDocument();
+    expect(screen.getByText('许砚')).toBeInTheDocument();
   });
 
   it('shows empty and error states', async () => {

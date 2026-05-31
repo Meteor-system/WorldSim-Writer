@@ -30,6 +30,7 @@ function countText(tag: TagSummaryResponse): string {
 export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onUpdateTag, onMergeTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
   const [tags, setTags] = useState<TagSummaryResponse[]>([]);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
+  const [tagSortMode, setTagSortMode] = useState('default');
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
   const [detail, setDetail] = useState<TagDetailResponse | null>(null);
   const [detailObjectTypeFilter, setDetailObjectTypeFilter] = useState('all');
@@ -98,12 +99,18 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
   }, [worldId]);
 
   const normalizedTagSearchQuery = tagSearchQuery.trim().toLowerCase();
-  const visibleTags = normalizedTagSearchQuery
+  const searchedTags = normalizedTagSearchQuery
     ? tags.filter((tag) => {
         const haystack = [tag.name, tag.slug, tag.color ?? '', String(tag.assignment_count), countText(tag)].join(' ').toLowerCase();
         return haystack.includes(normalizedTagSearchQuery);
       })
     : tags;
+  const visibleTags = [...searchedTags].sort((left, right) => {
+    if (tagSortMode === 'name') return left.name.localeCompare(right.name) || left.id - right.id;
+    if (tagSortMode === 'count') return right.assignment_count - left.assignment_count || left.name.localeCompare(right.name) || left.id - right.id;
+    if (tagSortMode === 'created') return right.created_at.localeCompare(left.created_at) || right.id - left.id;
+    return 0;
+  });
   const visibleTagIdsKey = visibleTags.map((tag) => tag.id).join(',');
 
   useEffect(() => {
@@ -308,17 +315,33 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       {!loading && tags.length === 0 && !error && <p className="ink-muted">还没有标签。创建一个标签来整理角色、伏笔、章节或事件。</p>}
 
       {tags.length > 0 && (
-        <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
-          搜索标签
-          <input
-            className="paper-input mt-1"
-            aria-label="搜索标签"
-            value={tagSearchQuery}
-            onChange={(event) => setTagSearchQuery(event.target.value)}
-            placeholder="按名称、颜色、类型或数量搜索"
-          />
-          <span className="ink-muted mt-2 block text-xs">显示 {visibleTags.length} / {tags.length} 个标签</span>
-        </label>
+        <div className="grid gap-3 md:grid-cols-[1fr_14rem]">
+          <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
+            搜索标签
+            <input
+              className="paper-input mt-1"
+              aria-label="搜索标签"
+              value={tagSearchQuery}
+              onChange={(event) => setTagSearchQuery(event.target.value)}
+              placeholder="按名称、颜色、类型或数量搜索"
+            />
+            <span className="ink-muted mt-2 block text-xs">显示 {visibleTags.length} / {tags.length} 个标签</span>
+          </label>
+          <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
+            标签排序
+            <select
+              className="paper-input mt-1"
+              aria-label="标签排序"
+              value={tagSortMode}
+              onChange={(event) => setTagSortMode(event.target.value)}
+            >
+              <option value="default">默认排序</option>
+              <option value="name">名称 A-Z</option>
+              <option value="count">对象数最多</option>
+              <option value="created">最新创建</option>
+            </select>
+          </label>
+        </div>
       )}
 
       {visibleTags.length > 0 && (
