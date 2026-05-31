@@ -366,18 +366,38 @@ def _load_tag_filter_assignments(db: Session, world_id: int, tag_filters: set[st
     return allowed_objects, metadata_by_object
 
 
-def _append_search_result(results: list[dict], result: dict, tag_filter_data: tuple[set[tuple[str, int]], dict[tuple[str, int], list[dict]]] | None) -> None:
-    if tag_filter_data is None:
-        results.append(result)
-        return
-    allowed_objects, metadata_by_object = tag_filter_data
+def _load_object_tag_metadata(db: Session, world_id: int) -> dict[tuple[str, int], list[dict]]:
+    assignments = list(db.scalars(select(ObjectTag).where(ObjectTag.world_id == world_id).order_by(ObjectTag.id)))
+    if not assignments:
+        return {}
+
+    tag_ids = {assignment.tag_id for assignment in assignments}
+    tags = list(db.scalars(select(Tag).where(Tag.world_id == world_id).where(Tag.id.in_(tag_ids)).order_by(Tag.id)))
+    tag_by_id = {tag.id: tag for tag in tags}
+    metadata_by_object: dict[tuple[str, int], list[dict]] = {}
+    for assignment in assignments:
+        tag = tag_by_id.get(assignment.tag_id)
+        if tag is None:
+            continue
+        key = (assignment.object_type, assignment.object_id)
+        metadata_by_object.setdefault(key, []).append(_tag_metadata(tag))
+    return metadata_by_object
+
+
+def _append_search_result(
+    results: list[dict],
+    result: dict,
+    tag_filter_data: tuple[set[tuple[str, int]], dict[tuple[str, int], list[dict]]] | None,
+    tag_metadata_by_object: dict[tuple[str, int], list[dict]],
+) -> None:
     object_id = result.get('object_id')
-    if object_id is None:
-        return
-    key = (result['object_type'], object_id)
-    if key not in allowed_objects:
-        return
-    result['metadata'] = {**result.get('metadata', {}), 'tags': metadata_by_object.get(key, [])}
+    key = (result['object_type'], object_id) if object_id is not None else None
+    if tag_filter_data is not None:
+        allowed_objects, _ = tag_filter_data
+        if key is None or key not in allowed_objects:
+            return
+    if key is not None and key in tag_metadata_by_object:
+        result['metadata'] = {**result.get('metadata', {}), 'tags': tag_metadata_by_object[key]}
     results.append(result)
 
 
@@ -389,6 +409,7 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
     needle = normalized_query.lower()
     allowed_types = _parse_object_types(object_types)
     tag_filter_data = _load_tag_filter_assignments(db, world.id, _parse_tag_filters(tags))
+    tag_metadata_by_object = _load_object_tag_metadata(db, world.id)
     results: list[dict] = []
 
     if 'world' in allowed_types:
@@ -433,6 +454,7 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
                         'metadata': {'status': character.status},
                     },
                     tag_filter_data,
+                    tag_metadata_by_object,
                 )
 
     if 'foreshadow' in allowed_types:
@@ -460,6 +482,7 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
                         'metadata': {'status': foreshadow.status, 'urgency_level': foreshadow.urgency_level},
                     },
                     tag_filter_data,
+                    tag_metadata_by_object,
                 )
 
     if 'chapter' in allowed_types:
@@ -478,6 +501,7 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
                         'metadata': {'status': chapter.status, 'draft_version': chapter.draft_version},
                     },
                     tag_filter_data,
+                    tag_metadata_by_object,
                 )
 
     if 'event' in allowed_types:
@@ -496,6 +520,7 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
                         'metadata': {'world_version_after': event.world_version_after, 'chapter_id': event.chapter_id},
                     },
                     tag_filter_data,
+                    tag_metadata_by_object,
                 )
 
     counts: dict[str, int] = {}

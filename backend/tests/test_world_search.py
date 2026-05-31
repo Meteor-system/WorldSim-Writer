@@ -133,6 +133,40 @@ def assign_tag(client, token, world_id, tag_id, object_type, object_id):
     return response.json()
 
 
+def test_world_search_adds_tag_metadata_without_tag_filter(client, monkeypatch):
+    token = register(client, 'search-tag-metadata@example.com')
+    world, _ = create_searchable_world(client, token, monkeypatch)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    tag = create_tag(client, token, world['id'], '灯塔线')
+    assign_tag(client, token, world['id'], tag['id'], 'foreshadow', overview['foreshadows'][0]['id'])
+
+    response = client.get(f"/worlds/{world['id']}/search?q=黑匣子", headers=auth(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    foreshadow_result = next(result for result in payload['results'] if result['object_type'] == 'foreshadow')
+    assert foreshadow_result['metadata']['tags'] == [
+        {'id': tag['id'], 'name': '灯塔线', 'slug': '灯塔线', 'color': 'amber'}
+    ]
+
+
+def test_world_search_tag_metadata_is_limited_to_current_world(client, monkeypatch):
+    owner_token = register(client, 'search-tag-metadata-owner@example.com')
+    other_token = register(client, 'search-tag-metadata-other@example.com')
+    owner_world, _ = create_searchable_world(client, owner_token, monkeypatch)
+    other_world, _ = create_searchable_world(client, other_token, monkeypatch)
+    other_overview = client.get(f"/worlds/{other_world['id']}/overview", headers=auth(other_token)).json()
+    other_tag = create_tag(client, other_token, other_world['id'], '跨界标签')
+    assign_tag(client, other_token, other_world['id'], other_tag['id'], 'foreshadow', other_overview['foreshadows'][0]['id'])
+
+    response = client.get(f"/worlds/{owner_world['id']}/search?q=黑匣子", headers=auth(owner_token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    foreshadow_result = next(result for result in payload['results'] if result['object_type'] == 'foreshadow')
+    assert 'tags' not in foreshadow_result['metadata']
+
+
 def test_world_search_filters_by_tag_name_and_adds_tag_metadata(client, monkeypatch):
     token = register(client, 'search-tag-name@example.com')
     world, _ = create_searchable_world(client, token, monkeypatch)
