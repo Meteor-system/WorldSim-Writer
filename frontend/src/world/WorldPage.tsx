@@ -485,7 +485,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   executionContext: context,
                 })}
               />
-              <WorldSearchPanel worldId={world.id} onSearch={searchWorld} onListTags={listWorldTags} />
+              <WorldSearchPanel worldId={world.id} onSearch={searchWorld} onListTags={listWorldTags} onBulkAssignTag={bulkAssignWorldTag} />
               <WorldTagsPanel
                 worldId={world.id}
                 onListTags={listWorldTags}

@@ -1,10 +1,11 @@
 import { FormEvent, useEffect, useState } from 'react';
-import type { TagListResponse, TagSummaryResponse, WorldSearchResponse } from '../api/types';
+import type { ObjectTagBulkAssignResponse, TagListResponse, TagSummaryResponse, WorldSearchResponse } from '../api/types';
 
 type Props = {
   worldId: number;
   onSearch: (worldId: number, params: { q: string; object_types?: string[]; tags?: string[]; limit?: number }) => Promise<WorldSearchResponse>;
   onListTags?: (worldId: number) => Promise<TagListResponse>;
+  onBulkAssignTag?: (worldId: number, tagId: number, data: { object_type: string; object_ids: number[] }) => Promise<ObjectTagBulkAssignResponse>;
 };
 
 const LIMIT = 20;
@@ -27,17 +28,46 @@ function tagFilterValue(tag: TagSummaryResponse): string {
   return tag.slug || String(tag.id);
 }
 
-export function WorldSearchPanel({ worldId, onSearch, onListTags }: Props) {
+function uniqueIds(ids: number[]): number[] {
+  const seen = new Set<number>();
+  const unique: number[] = [];
+  ids.forEach((id) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    unique.push(id);
+  });
+  return unique;
+}
+
+function taggableResults(response: WorldSearchResponse | null): Array<{ object_type: string; object_id: number }> {
+  if (!response) return [];
+  return response.results
+    .filter((result) => result.object_id !== null)
+    .map((result) => ({ object_type: result.object_type, object_id: result.object_id as number }));
+}
+
+function groupedResultIds(response: WorldSearchResponse | null): Array<{ object_type: string; object_ids: number[] }> {
+  const grouped = new Map<string, number[]>();
+  taggableResults(response).forEach((result) => {
+    grouped.set(result.object_type, [...(grouped.get(result.object_type) ?? []), result.object_id]);
+  });
+  return Array.from(grouped.entries()).map(([object_type, ids]) => ({ object_type, object_ids: uniqueIds(ids) }));
+}
+
+export function WorldSearchPanel({ worldId, onSearch, onListTags, onBulkAssignTag }: Props) {
   const [query, setQuery] = useState('');
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [response, setResponse] = useState<WorldSearchResponse | null>(null);
   const [tags, setTags] = useState<TagSummaryResponse[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [targetTagId, setTargetTagId] = useState('');
   const [loading, setLoading] = useState(false);
   const [tagLoading, setTagLoading] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [tagNotice, setTagNotice] = useState('');
+  const [bulkNotice, setBulkNotice] = useState('');
   const [hasSearched, setHasSearched] = useState(false);
 
   function toggleType(type: string) {
@@ -46,6 +76,21 @@ export function WorldSearchPanel({ worldId, onSearch, onListTags }: Props) {
 
   function toggleTag(value: string) {
     setSelectedTags((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+  }
+
+  async function loadTagFilters() {
+    if (!onListTags) return;
+    setTagLoading(true);
+    setTagNotice('');
+    try {
+      const result = await onListTags(worldId);
+      setTags(result.tags);
+    } catch {
+      setTags([]);
+      setTagNotice('标签筛选暂不可用');
+    } finally {
+      setTagLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -83,6 +128,7 @@ export function WorldSearchPanel({ worldId, onSearch, onListTags }: Props) {
     setLoading(true);
     setError('');
     setNotice('');
+    setBulkNotice('');
     setHasSearched(true);
     try {
       setResponse(await onSearch(worldId, { q: trimmed, object_types: selectedTypes, ...(selectedTags.length ? { tags: selectedTags } : {}), limit: LIMIT }));
@@ -93,6 +139,34 @@ export function WorldSearchPanel({ worldId, onSearch, onListTags }: Props) {
       setLoading(false);
     }
   }
+
+  async function submitBulkAssignment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!onBulkAssignTag) return;
+    const parsedTagId = Number(targetTagId);
+    if (!Number.isInteger(parsedTagId) || parsedTagId <= 0) {
+      setError('请选择目标标签');
+      return;
+    }
+    const groups = groupedResultIds(response);
+    if (groups.length === 0) return;
+    setBulkSaving(true);
+    setError('');
+    setBulkNotice('');
+    try {
+      const results = await Promise.all(groups.map((group) => onBulkAssignTag(worldId, parsedTagId, group)));
+      const assigned = results.reduce((sum, result) => sum + result.assigned_count, 0);
+      const already = results.reduce((sum, result) => sum + result.already_assigned_count, 0);
+      setBulkNotice(`已为搜索结果打标：新增 ${assigned}，已存在 ${already}。`);
+      await loadTagFilters();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '搜索结果批量打标失败');
+    } finally {
+      setBulkSaving(false);
+    }
+  }
+
+  const taggableResultCount = taggableResults(response).length;
 
   return (
     <section className="book-card space-y-5 p-5">
@@ -167,6 +241,28 @@ export function WorldSearchPanel({ worldId, onSearch, onListTags }: Props) {
               <span key={type} className="rounded-full bg-amber-50 px-3 py-1">{type} × {count}</span>
             ))}
           </div>
+
+          {onBulkAssignTag && tags.length > 0 && taggableResultCount > 0 && (
+            <form className="space-y-3 rounded-2xl bg-amber-50/60 p-4" onSubmit={submitBulkAssignment}>
+              <div>
+                <p className="text-sm font-black text-[#3b2511]">搜索结果批量打标</p>
+                <p className="manuscript mt-1 text-sm text-[#5e3b1c]">将当前可见搜索结果按对象类型批量加入已有标签。</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-[1fr_auto]">
+                <label className="text-sm font-bold text-[#3b2511]">
+                  目标标签
+                  <select className="paper-input mt-1" value={targetTagId} onChange={(event) => setTargetTagId(event.target.value)}>
+                    <option value="">请选择标签</option>
+                    {tags.map((tag) => (
+                      <option key={tag.id} value={tag.id}>{tag.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <button className="primary-button self-end" disabled={bulkSaving} type="submit">给搜索结果打标签</button>
+              </div>
+              {bulkNotice && <p className="ink-muted text-sm">{bulkNotice}</p>}
+            </form>
+          )}
 
           {response.results.length === 0 ? (
             <p className="ink-muted">没有找到匹配结果。</p>

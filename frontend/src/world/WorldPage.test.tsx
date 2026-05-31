@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, searchWorld, unassignWorldTag } from '../api/client';
-import type { WorldOverview } from '../api/types';
+import type { WorldOverview, WorldSearchResponse } from '../api/types';
 import { WorldPage } from './WorldPage';
 
 vi.mock('../api/client', () => ({
@@ -39,6 +39,22 @@ vi.mock('../api/client', () => ({
   getRelations: vi.fn(),
   listWorldSnapshots: vi.fn(),
 }));
+
+const worldSearchResponse: WorldSearchResponse = {
+  world_id: 7,
+  query: '灯塔',
+  object_type_counts: { character: 1 },
+  results: [
+    {
+      object_type: 'character',
+      object_id: 1,
+      title: '林砚',
+      subtitle: 'Character · protagonist',
+      snippet: '林砚追查灯塔线索。',
+      metadata: {},
+    },
+  ],
+};
 
 const world: WorldOverview = {
   id: 7,
@@ -91,6 +107,7 @@ beforeEach(() => {
   vi.mocked(listWorldSeeds).mockReset();
   vi.mocked(listWorldTags).mockReset();
   vi.mocked(searchWorld).mockReset();
+  vi.mocked(searchWorld).mockResolvedValue(worldSearchResponse);
   vi.mocked(unassignWorldTag).mockReset();
   vi.mocked(listWorldSnapshots).mockReset();
   vi.mocked(getCharacters).mockReset();
@@ -409,6 +426,9 @@ describe('WorldPage Narrative Control Center', () => {
     expect(await screen.findByText('Tags / Collections')).toBeInTheDocument();
     await waitFor(() => expect(listWorldTags).toHaveBeenCalledTimes(2));
     expect(listWorldTags).toHaveBeenCalledWith(7);
+    await user.type(screen.getByLabelText('搜索世界资料'), '灯塔');
+    await user.click(screen.getByRole('button', { name: '搜索' }));
+    expect(await screen.findByText('搜索结果批量打标')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
     expect(await screen.findByLabelText('批量对象 ID')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '加载快照列表' }));

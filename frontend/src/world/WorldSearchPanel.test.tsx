@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { TagListResponse, WorldSearchResponse } from '../api/types';
+import type { ObjectTagBulkAssignResponse, TagListResponse, WorldSearchResponse } from '../api/types';
 import { WorldSearchPanel } from './WorldSearchPanel';
 
 const tagList: TagListResponse = {
@@ -45,6 +45,28 @@ const searchResponse: WorldSearchResponse = {
   ],
 };
 
+const characterBulkResponse: ObjectTagBulkAssignResponse = {
+  world_id: 7,
+  tag_id: 3,
+  object_type: 'character',
+  requested_count: 1,
+  assigned_count: 1,
+  already_assigned_count: 0,
+  assigned_object_ids: [1],
+  already_assigned_object_ids: [],
+};
+
+const foreshadowBulkResponse: ObjectTagBulkAssignResponse = {
+  world_id: 7,
+  tag_id: 3,
+  object_type: 'foreshadow',
+  requested_count: 1,
+  assigned_count: 0,
+  already_assigned_count: 1,
+  assigned_object_ids: [],
+  already_assigned_object_ids: [2],
+};
+
 afterEach(() => cleanup());
 
 describe('WorldSearchPanel', () => {
@@ -79,6 +101,47 @@ describe('WorldSearchPanel', () => {
     await user.click(screen.getByRole('button', { name: '搜索' }));
 
     await waitFor(() => expect(onSearch).toHaveBeenCalledWith(7, { q: '灯塔', object_types: [], tags: ['灯塔线'], limit: 20 }));
+  });
+
+  it('bulk assigns the selected tag to visible search results grouped by object type', async () => {
+    const user = userEvent.setup();
+    const onSearch = vi.fn().mockResolvedValue(searchResponse);
+    const onListTags = vi.fn().mockResolvedValue(tagList);
+    const onBulkAssignTag = vi.fn()
+      .mockResolvedValueOnce(characterBulkResponse)
+      .mockResolvedValueOnce(foreshadowBulkResponse);
+    render(<WorldSearchPanel worldId={7} onSearch={onSearch} onListTags={onListTags} onBulkAssignTag={onBulkAssignTag} />);
+
+    await screen.findByText('标签筛选');
+    await user.type(screen.getByLabelText('搜索世界资料'), '灯塔');
+    await user.click(screen.getByRole('button', { name: '搜索' }));
+    expect(await screen.findByText('搜索结果批量打标')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('目标标签'), '3');
+    await user.click(screen.getByRole('button', { name: '给搜索结果打标签' }));
+
+    await waitFor(() => expect(onBulkAssignTag).toHaveBeenCalledTimes(2));
+    expect(onBulkAssignTag).toHaveBeenNthCalledWith(1, 7, 3, { object_type: 'character', object_ids: [1] });
+    expect(onBulkAssignTag).toHaveBeenNthCalledWith(2, 7, 3, { object_type: 'foreshadow', object_ids: [2] });
+    expect(await screen.findByText('已为搜索结果打标：新增 1，已存在 1。')).toBeInTheDocument();
+    expect(onListTags).toHaveBeenCalledTimes(2);
+  });
+
+  it('requires a target tag before bulk assigning visible search results', async () => {
+    const user = userEvent.setup();
+    const onSearch = vi.fn().mockResolvedValue(searchResponse);
+    const onListTags = vi.fn().mockResolvedValue(tagList);
+    const onBulkAssignTag = vi.fn().mockResolvedValue(characterBulkResponse);
+    render(<WorldSearchPanel worldId={7} onSearch={onSearch} onListTags={onListTags} onBulkAssignTag={onBulkAssignTag} />);
+
+    await screen.findByText('标签筛选');
+    await user.type(screen.getByLabelText('搜索世界资料'), '灯塔');
+    await user.click(screen.getByRole('button', { name: '搜索' }));
+    await screen.findByText('搜索结果批量打标');
+    await user.click(screen.getByRole('button', { name: '给搜索结果打标签' }));
+
+    expect(onBulkAssignTag).not.toHaveBeenCalled();
+    expect(await screen.findByRole('alert')).toHaveTextContent('请选择目标标签');
   });
 
   it('sends selected object type filters', async () => {
