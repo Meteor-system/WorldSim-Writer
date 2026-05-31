@@ -31,6 +31,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
   const [tags, setTags] = useState<TagSummaryResponse[]>([]);
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
   const [detail, setDetail] = useState<TagDetailResponse | null>(null);
+  const [detailObjectTypeFilter, setDetailObjectTypeFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -76,6 +77,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       setEditTagColor(loaded.tag.color ?? '');
       const firstTarget = tags.find((tag) => tag.id !== loaded.tag.id);
       setMergeTargetTagId(firstTarget ? String(firstTarget.id) : '');
+      setDetailObjectTypeFilter('all');
       setEditNotice('');
       setMergeNotice('');
     } catch (err) {
@@ -242,6 +244,12 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
     }
   }
 
+  const filteredObjects = detail
+    ? detailObjectTypeFilter === 'all'
+      ? detail.objects
+      : detail.objects.filter((item) => item.object_type === detailObjectTypeFilter)
+    : [];
+
   return (
     <section className="book-card space-y-5 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -328,6 +336,34 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
             </form>
           )}
 
+          <div className="space-y-2 rounded-2xl bg-amber-50/40 p-3">
+            <p className="text-sm font-black text-[#3b2511]">对象筛选</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className={`rounded-full border border-amber-900/15 px-3 py-1 text-xs font-bold text-[#5e3b1c] ${detailObjectTypeFilter === 'all' ? 'ring-2 ring-amber-800' : ''}`}
+                type="button"
+                onClick={() => setDetailObjectTypeFilter('all')}
+                aria-label={`查看全部对象 ${detail.tag.assignment_count}`}
+              >
+                全部 {detail.tag.assignment_count}
+              </button>
+              {OBJECT_TYPES.map((item) => {
+                const count = detail.tag.object_type_counts[item.value] ?? 0;
+                return (
+                  <button
+                    key={item.value}
+                    className={`rounded-full border border-amber-900/15 px-3 py-1 text-xs font-bold text-[#5e3b1c] ${detailObjectTypeFilter === item.value ? 'ring-2 ring-amber-800' : ''}`}
+                    type="button"
+                    onClick={() => setDetailObjectTypeFilter(item.value)}
+                    aria-label={`只看${item.label} ${count}`}
+                  >
+                    {item.label} {count}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitAssignment}>
             <label className="text-sm font-bold text-[#3b2511]">
               对象类型
@@ -360,9 +396,11 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
 
           {detail.objects.length === 0 ? (
             <p className="ink-muted">这个标签还没有关联对象。</p>
+          ) : filteredObjects.length === 0 ? (
+            <p className="ink-muted">当前筛选下没有对象。</p>
           ) : (
             <div className="space-y-3">
-              {detail.objects.map((item) => (
+              {filteredObjects.map((item) => (
                 <article key={`${item.object_type}-${item.object_id}`} className="rounded-2xl border border-amber-900/15 bg-amber-50/50 p-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>

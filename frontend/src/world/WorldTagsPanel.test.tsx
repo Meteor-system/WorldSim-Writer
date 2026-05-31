@@ -45,6 +45,29 @@ const detailResponse: TagDetailResponse = {
   ],
 };
 
+const mixedDetailResponse: TagDetailResponse = {
+  tag: { ...tag, assignment_count: 3, object_type_counts: { character: 1, foreshadow: 1, chapter: 1 } },
+  objects: [
+    detailResponse.objects[0],
+    {
+      object_type: 'foreshadow',
+      object_id: 2,
+      title: '黑匣子脉冲',
+      subtitle: 'Foreshadow · planted · urgency 4',
+      snippet: '废弃黑匣子收到来自未来的求救信号。',
+      metadata: { status: 'planted' },
+    },
+    {
+      object_type: 'chapter',
+      object_id: 11,
+      title: '第一章 灯塔低鸣',
+      subtitle: 'Chapter · approved · world v1',
+      snippet: '许砚调查灯塔异常。',
+      metadata: { status: 'approved' },
+    },
+  ],
+};
+
 const assignment: ObjectTagResponse = {
   id: 9,
   world_id: 7,
@@ -235,6 +258,58 @@ describe('WorldTagsPanel', () => {
     await userEvent.click(screen.getByRole('button', { name: '查看 灯塔线' }));
 
     expect(await screen.findByText('需要至少另一个标签才能合并当前标签。')).toBeInTheDocument();
+  });
+
+  it('filters selected tag objects by object type', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onLoadTag: vi.fn().mockResolvedValue(mixedDetailResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    expect(await screen.findByText('许砚')).toBeInTheDocument();
+    expect(screen.getByText('黑匣子脉冲')).toBeInTheDocument();
+    expect(screen.getByText('第一章 灯塔低鸣')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '只看伏笔 1' }));
+
+    expect(screen.queryByText('许砚')).not.toBeInTheDocument();
+    expect(screen.getByText('黑匣子脉冲')).toBeInTheDocument();
+    expect(screen.queryByText('第一章 灯塔低鸣')).not.toBeInTheDocument();
+  });
+
+  it('shows a targeted empty state for filters with no objects', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onLoadTag: vi.fn().mockResolvedValue(mixedDetailResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    await screen.findByText('许砚');
+    await user.click(screen.getByRole('button', { name: '只看事件 0' }));
+
+    expect(await screen.findByText('当前筛选下没有对象。')).toBeInTheDocument();
+  });
+
+  it('resets the object type filter when loading another tag', async () => {
+    const user = userEvent.setup();
+    const targetDetail: TagDetailResponse = {
+      tag: { ...targetTag, assignment_count: 1, object_type_counts: { character: 1 } },
+      objects: [detailResponse.objects[0]],
+    };
+    const onLoadTag = vi.fn()
+      .mockResolvedValueOnce(mixedDetailResponse)
+      .mockResolvedValueOnce(targetDetail);
+    renderPanel({ onLoadTag });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    await screen.findByText('黑匣子脉冲');
+    await user.click(screen.getByRole('button', { name: '只看伏笔 1' }));
+    expect(screen.queryByText('许砚')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '查看 主线归档' }));
+
+    expect(await screen.findByText('许砚')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看全部对象 1' })).toHaveClass('ring-2');
   });
 
   it('shows empty and error states', async () => {
