@@ -32,6 +32,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
   const [detail, setDetail] = useState<TagDetailResponse | null>(null);
   const [detailObjectTypeFilter, setDetailObjectTypeFilter] = useState('all');
+  const [detailSearchQuery, setDetailSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -78,6 +79,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       const firstTarget = tags.find((tag) => tag.id !== loaded.tag.id);
       setMergeTargetTagId(firstTarget ? String(firstTarget.id) : '');
       setDetailObjectTypeFilter('all');
+      setDetailSearchQuery('');
       setEditNotice('');
       setMergeNotice('');
     } catch (err) {
@@ -244,11 +246,18 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
     }
   }
 
-  const filteredObjects = detail
+  const normalizedDetailSearchQuery = detailSearchQuery.trim().toLowerCase();
+  const typeFilteredObjects = detail
     ? detailObjectTypeFilter === 'all'
       ? detail.objects
       : detail.objects.filter((item) => item.object_type === detailObjectTypeFilter)
     : [];
+  const filteredObjects = normalizedDetailSearchQuery
+    ? typeFilteredObjects.filter((item) => {
+        const haystack = [item.title, item.subtitle, item.snippet, item.object_type, String(item.object_id)].join(' ').toLowerCase();
+        return haystack.includes(normalizedDetailSearchQuery);
+      })
+    : typeFilteredObjects;
 
   return (
     <section className="book-card space-y-5 p-5">
@@ -363,6 +372,18 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
               })}
             </div>
           </div>
+
+          <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
+            搜索当前标签对象
+            <input
+              className="paper-input mt-1"
+              aria-label="搜索当前标签对象"
+              value={detailSearchQuery}
+              onChange={(event) => setDetailSearchQuery(event.target.value)}
+              placeholder="按标题、摘要、类型或 ID 搜索"
+            />
+            <span className="ink-muted mt-2 block text-xs">显示 {filteredObjects.length} / {detail.tag.assignment_count} 个对象</span>
+          </label>
 
           <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitAssignment}>
             <label className="text-sm font-bold text-[#3b2511]">
