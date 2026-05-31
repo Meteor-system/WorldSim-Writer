@@ -307,6 +307,146 @@ def _recent_events(db: Session, world_id: int) -> list[dict]:
     ]
 
 
+def _clamp_score(score: int) -> int:
+    return max(0, min(100, score))
+
+
+def _health_metric(key: str, label: str, value: int | float, metric_status: str, detail: str) -> dict:
+    return {'key': key, 'label': label, 'value': value, 'status': metric_status, 'detail': detail}
+
+
+def _health_risk(severity: str, source: str, message: str, suggested_action: str, object_type=None, object_id=None, object_title=None) -> dict:
+    return {
+        'severity': severity,
+        'source': source,
+        'message': message,
+        'object_type': object_type,
+        'object_id': object_id,
+        'object_title': object_title,
+        'suggested_action': suggested_action,
+    }
+
+
+def _critic_reports(chapters: list[Chapter]) -> list[dict]:
+    return [chapter.critique_report for chapter in chapters if chapter.critique_report]
+
+
+def _average_score(reports: list[dict]) -> int | None:
+    scores = [int(report.get('overall_score')) for report in reports if report.get('overall_score') is not None]
+    if not scores:
+        return None
+    return round(sum(scores) / len(scores))
+
+
+def get_narrative_health(db: Session, user: User, world_id: int) -> dict:
+    world = require_owned_world(db, user, world_id)
+    approved_chapters = list(db.scalars(_approved_chapters_query(world.id)))
+    latest_chapter = approved_chapters[-1] if approved_chapters else None
+    critic_reports = _critic_reports(approved_chapters)
+    average_critic_score = _average_score(critic_reports)
+    ledger = build_foreshadow_ledger(db, world)
+    recent_event_count = db.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world.id)) or 0
+
+    risks: list[dict] = []
+    high_critic_count = 0
+    medium_critic_count = 0
+    for chapter in approved_chapters:
+        for issue in (chapter.critique_report or {}).get('issues', []):
+            severity = issue.get('severity')
+            if severity == 'high':
+                high_critic_count += 1
+                risks.append(_health_risk('high', 'critic', issue.get('message') or 'Critic 高风险问题。', '修订最近章节或重新生成 Critic 报告。', 'chapter', chapter.id, chapter.title))
+            elif severity == 'medium':
+                medium_critic_count += 1
+                risks.append(_health_risk('medium', 'critic', issue.get('message') or 'Critic 中风险问题。', '复核对应章节的节奏、对白或结构。', 'chapter', chapter.id, chapter.title))
+
+    high_arc_count = 0
+    medium_arc_count = 0
+    for chapter in approved_chapters:
+        report = chapter.character_arc_report or {}
+        for arc in report.get('character_arcs', []):
+            risk = arc.get('continuity_risk')
+            if risk == 'high':
+                high_arc_count += 1
+                risks.append(_health_risk('high', 'character_arc', arc.get('risk_reason') or '角色弧线存在高风险。', '在下一章补足角色选择与转折铺垫。', 'character', arc.get('character_id'), arc.get('name')))
+            elif risk == 'medium':
+                medium_arc_count += 1
+                risks.append(_health_risk('medium', 'character_arc', arc.get('risk_reason') or '角色弧线存在中风险。', '复核角色弧线连续性。', 'character', arc.get('character_id'), arc.get('name')))
+        for note in report.get('relationship_notes', []):
+            risk = note.get('risk_level')
+            title = f"{note.get('source_name', '角色')} → {note.get('target_name', '角色')}"
+            if risk == 'high':
+                high_arc_count += 1
+                risks.append(_health_risk('high', 'character_arc', note.get('risk_reason') or '关系推进存在高风险。', '补足关系变化的场景因果。', 'relationship', None, title))
+            elif risk == 'medium':
+                medium_arc_count += 1
+                risks.append(_health_risk('medium', 'character_arc', note.get('risk_reason') or '关系推进存在中风险。', '复核关系变化承接。', 'relationship', None, title))
+
+    high_pressure_entries = ledger['high_pressure']
+    for entry in high_pressure_entries:
+        foreshadow = entry['foreshadow']
+        risks.append(_health_risk('medium', 'foreshadow', '；'.join(entry.get('pressure_reasons') or []) or '高压伏笔需要推进。', '优先在下一章推进或回收该伏笔。', 'foreshadow', foreshadow.id, foreshadow.title))
+
+    score = 100
+    score -= high_critic_count * 12
+    score -= medium_critic_count * 6
+    score -= high_arc_count * 12
+    score -= medium_arc_count * 6
+    score -= len(high_pressure_entries) * 5
+    if not approved_chapters:
+        score -= 5
+    health_score = _clamp_score(score)
+    has_high_risk = any(risk['severity'] == 'high' for risk in risks)
+    has_medium_risk = any(risk['severity'] == 'medium' for risk in risks)
+    if health_score < 60 or has_high_risk:
+        health_status = 'at_risk'
+    elif health_score < 80 or has_medium_risk:
+        health_status = 'watch'
+    else:
+        health_status = 'healthy'
+
+    metrics = [
+        _health_metric('approved_chapters', '已批准章节', len(approved_chapters), 'ok' if approved_chapters else 'watch', '已正式写入世界历史的章节数量。'),
+        _health_metric('average_critic_score', '平均 Critic 分', average_critic_score or 0, 'ok' if average_critic_score is None or average_critic_score >= 75 else 'watch', '来自已存储 Critic 报告的平均分。'),
+        _health_metric('critic_issues', 'Critic 风险', high_critic_count + medium_critic_count, 'risk' if high_critic_count else 'watch' if medium_critic_count else 'ok', f'高风险 {high_critic_count}，中风险 {medium_critic_count}。'),
+        _health_metric('character_arc_risks', '角色弧线风险', high_arc_count + medium_arc_count, 'risk' if high_arc_count else 'watch' if medium_arc_count else 'ok', f'高风险 {high_arc_count}，中风险 {medium_arc_count}。'),
+        _health_metric('open_foreshadows', '开放伏笔', ledger['summary']['open_count'], 'watch' if ledger['summary']['open_count'] else 'ok', '仍未 resolved/expired 的伏笔数量。'),
+        _health_metric('high_pressure_foreshadows', '高压伏笔', len(high_pressure_entries), 'watch' if high_pressure_entries else 'ok', '来自 Foreshadow Ledger 的高压伏笔。'),
+        _health_metric('recent_events', '正式事件', recent_event_count, 'ok', '当前世界累计正式事件数量。'),
+    ]
+
+    actions = []
+    if not approved_chapters:
+        actions.append({'action_key': 'write_first_chapter', 'label': '生成第一章', 'detail': '当前世界尚无已批准章节，先完成首章闭环。'})
+    if has_high_risk:
+        actions.append({'action_key': 'revise_latest_chapter', 'label': '优先修订最近章节', 'detail': '存在高风险 Critic 或角色弧线问题，建议修订后再继续。'})
+    if high_pressure_entries:
+        actions.append({'action_key': 'advance_foreshadow', 'label': '推进高压伏笔', 'detail': '下一章目标应优先处理高压伏笔。'})
+    if latest_chapter and not actions:
+        actions.append({'action_key': 'continue_next_chapter', 'label': '继续下一章', 'detail': '当前没有高风险阻塞，可以进入下一章准备台。'})
+
+    risks.sort(key=lambda item: {'high': 0, 'medium': 1, 'low': 2}.get(item['severity'], 3))
+    return {
+        'world_id': world.id,
+        'world_version': world.world_version,
+        'health_score': health_score,
+        'status': health_status,
+        'summary': {
+            'approved_chapter_count': len(approved_chapters),
+            'latest_chapter_id': latest_chapter.id if latest_chapter else None,
+            'latest_chapter_title': latest_chapter.title if latest_chapter else None,
+            'average_critic_score': average_critic_score,
+            'high_risk_count': sum(1 for risk in risks if risk['severity'] == 'high'),
+            'medium_risk_count': sum(1 for risk in risks if risk['severity'] == 'medium'),
+            'open_foreshadow_count': ledger['summary']['open_count'],
+            'high_pressure_foreshadow_count': len(high_pressure_entries),
+        },
+        'metrics': metrics,
+        'risks': risks[:10],
+        'suggested_actions': actions,
+    }
+
+
 def get_approved_chapter_history(db: Session, user: User, world_id: int) -> dict:
     world = require_owned_world(db, user, world_id)
     chapters = list(db.scalars(_approved_chapters_query(world.id)))

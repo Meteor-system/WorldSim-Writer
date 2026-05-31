@@ -8,15 +8,17 @@ import {
   generateStoryArc,
   getChapterHistory,
   getChapterHistoryDetail,
+  getNarrativeHealth,
   getNextChapterPrep,
   getWorldEvents,
   searchWorld,
 } from '../api/client';
-import type { ChapterExecutionContext, ChapterHistoryResponse, NextChapterPrepResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview } from '../api/types';
+import type { ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
 import { ChapterHistoryPanel } from './ChapterHistoryPanel';
+import { NarrativeHealthPanel } from './NarrativeHealthPanel';
 import { NextChapterPrepPanel } from './NextChapterPrepPanel';
 import { WorldArchivePanel } from './WorldArchivePanel';
 import { WorldCreationForm } from './WorldCreationForm';
@@ -125,6 +127,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [nextPrep, setNextPrep] = useState<NextChapterPrepResponse | null>(null);
   const [nextPrepLoading, setNextPrepLoading] = useState(false);
   const [nextPrepError, setNextPrepError] = useState('');
+  const [narrativeHealth, setNarrativeHealth] = useState<NarrativeHealthResponse | null>(null);
+  const [narrativeHealthLoading, setNarrativeHealthLoading] = useState(false);
+  const [narrativeHealthError, setNarrativeHealthError] = useState('');
   const [selectedExecutionContext, setSelectedExecutionContext] = useState<ChapterExecutionContext | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -132,8 +137,10 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   async function loadNarrativeControlCenter(worldId: number) {
     setChapterHistoryLoading(true);
     setNextPrepLoading(true);
+    setNarrativeHealthLoading(true);
     setChapterHistoryError('');
     setNextPrepError('');
+    setNarrativeHealthError('');
     try {
       setChapterHistory(await getChapterHistory(worldId));
     } catch {
@@ -149,6 +156,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setNextPrepError('下一章准备台暂不可用');
     } finally {
       setNextPrepLoading(false);
+    }
+    try {
+      setNarrativeHealth(await getNarrativeHealth(worldId));
+    } catch {
+      setNarrativeHealth(null);
+      setNarrativeHealthError('叙事健康度暂不可用');
+    } finally {
+      setNarrativeHealthLoading(false);
     }
   }
 
@@ -356,6 +371,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 <p className="manuscript mt-2 text-sm text-[#5e3b1c]">查看已批准章节历史，并准备下一章目标。</p>
                 {selectedExecutionContext && <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已设为下一章目标：{selectedExecutionContext.goal}</p>}
               </div>
+              <NarrativeHealthPanel health={narrativeHealth} loading={narrativeHealthLoading} error={narrativeHealthError} />
               <NextChapterPrepPanel
                 prep={nextPrep}
                 loading={nextPrepLoading}

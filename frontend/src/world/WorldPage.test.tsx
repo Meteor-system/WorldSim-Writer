@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, createSampleWorld, createWorld, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNextChapterPrep, getRelations, getWorldEvents, searchWorld } from '../api/client';
+import { apiRequest, createSampleWorld, createWorld, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getRelations, getWorldEvents, searchWorld } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -14,6 +14,7 @@ vi.mock('../api/client', () => ({
   getChapterHistory: vi.fn(),
   getChapterHistoryDetail: vi.fn(),
   getNextChapterPrep: vi.fn(),
+  getNarrativeHealth: vi.fn(),
   getWorldEvents: vi.fn(),
   searchWorld: vi.fn(),
   getCharacters: vi.fn(),
@@ -55,6 +56,7 @@ beforeEach(() => {
   vi.mocked(getChapterHistory).mockReset();
   vi.mocked(getChapterHistoryDetail).mockReset();
   vi.mocked(getNextChapterPrep).mockReset();
+  vi.mocked(getNarrativeHealth).mockReset();
   vi.mocked(getWorldEvents).mockReset();
   vi.mocked(searchWorld).mockReset();
   vi.mocked(getCharacters).mockReset();
@@ -139,6 +141,16 @@ beforeEach(() => {
     continuity_warnings: [],
     recent_events: [],
   });
+  vi.mocked(getNarrativeHealth).mockResolvedValue({
+    world_id: 7,
+    world_version: 2,
+    health_score: 88,
+    status: 'healthy',
+    summary: {},
+    metrics: [{ key: 'approved_chapters', label: '已批准章节', value: 1, status: 'ok', detail: '已正式写入世界历史的章节数量。' }],
+    risks: [],
+    suggested_actions: [{ action_key: 'continue_next_chapter', label: '继续下一章', detail: '当前没有高风险阻塞。' }],
+  });
   vi.mocked(getWorldEvents).mockResolvedValue({
     items: [],
     total: 0,
@@ -191,6 +203,8 @@ describe('WorldPage Narrative Control Center', () => {
     expect(await screen.findByText('Narrative Control Center')).toBeInTheDocument();
     expect(getChapterHistory).toHaveBeenCalledWith(7);
     expect(getNextChapterPrep).toHaveBeenCalledWith(7);
+    expect(getNarrativeHealth).toHaveBeenCalledWith(7);
+    expect(await screen.findByText('Narrative Health')).toBeInTheDocument();
     expect(await screen.findByText('章节历史')).toBeInTheDocument();
     expect(screen.getByText('第一章 雨巷密谈 · v1 · 世界 1 → 2')).toBeInTheDocument();
     expect(screen.getByText('下一章准备台')).toBeInTheDocument();

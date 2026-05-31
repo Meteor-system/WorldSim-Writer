@@ -7,11 +7,13 @@ from app.core.database import get_db
 from app.narrative_control_center.schemas import (
     ApprovedChapterHistoryDetailResponse,
     ApprovedChapterHistoryResponse,
+    NarrativeHealthResponse,
     NextChapterPrepResponse,
 )
 from app.narrative_control_center.service import (
     get_approved_chapter_history,
     get_approved_chapter_history_detail,
+    get_narrative_health,
     get_next_chapter_prep,
 )
 
@@ -45,3 +47,12 @@ def next_chapter_prep(
     db: Session = Depends(get_db),
 ) -> NextChapterPrepResponse:
     return NextChapterPrepResponse.model_validate(get_next_chapter_prep(db, current_user, world_id))
+
+
+@router.get('/worlds/{world_id}/narrative-health', response_model=NarrativeHealthResponse)
+def narrative_health(
+    world_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> NarrativeHealthResponse:
+    return NarrativeHealthResponse.model_validate(get_narrative_health(db, current_user, world_id))

@@ -102,3 +102,38 @@ class NextChapterPrepResponse(BaseModel):
     progression_hints: list[dict]
     continuity_warnings: list[NextChapterPrepWarning]
     recent_events: list[NextChapterPrepEvent]
+
+
+class NarrativeHealthMetric(BaseModel):
+    key: str
+    label: str
+    value: int | float
+    status: str
+    detail: str
+
+
+class NarrativeHealthRisk(BaseModel):
+    severity: str
+    source: str
+    message: str
+    object_type: str | None = None
+    object_id: int | None = None
+    object_title: str | None = None
+    suggested_action: str
+
+
+class NarrativeHealthAction(BaseModel):
+    action_key: str
+    label: str
+    detail: str
+
+
+class NarrativeHealthResponse(BaseModel):
+    world_id: int
+    world_version: int
+    health_score: int
+    status: str
+    summary: dict
+    metrics: list[NarrativeHealthMetric]
+    risks: list[NarrativeHealthRisk]
+    suggested_actions: list[NarrativeHealthAction]

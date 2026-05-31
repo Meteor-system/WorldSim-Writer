@@ -16,6 +16,7 @@ import {
   getCriticReport,
   getNextChapterPrep,
   getForeshadowLedger,
+  getNarrativeHealth,
   exportWorldArchiveMarkdown,
   getDraftDiff,
   getWorldEvents,
@@ -353,5 +354,24 @@ describe('draft versioning API helpers', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8000/worlds/7/next-chapter-prep', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(4, 'http://localhost:8000/worlds/7/foreshadows/ledger', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(5, 'http://localhost:8000/worlds/7/export/markdown', expect.objectContaining({ method: 'POST', body: '{}' }));
+  });
+
+  it('calls narrative health endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      world_id: 7,
+      world_version: 2,
+      health_score: 84,
+      status: 'watch',
+      summary: {},
+      metrics: [],
+      risks: [],
+      suggested_actions: [],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await getNarrativeHealth(7);
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/worlds/7/narrative-health', expect.any(Object));
+    expect(response.health_score).toBe(84);
   });
 });

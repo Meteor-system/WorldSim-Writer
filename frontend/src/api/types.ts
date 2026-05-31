@@ -532,6 +532,41 @@ export type NextChapterPrepResponse = {
   recent_events: NextChapterPrepEvent[];
 };
 
+export type NarrativeHealthMetric = {
+  key: string;
+  label: string;
+  value: number;
+  status: string;
+  detail: string;
+};
+
+export type NarrativeHealthRisk = {
+  severity: string;
+  source: string;
+  message: string;
+  object_type: string | null;
+  object_id: number | null;
+  object_title: string | null;
+  suggested_action: string;
+};
+
+export type NarrativeHealthAction = {
+  action_key: string;
+  label: string;
+  detail: string;
+};
+
+export type NarrativeHealthResponse = {
+  world_id: number;
+  world_version: number;
+  health_score: number;
+  status: 'healthy' | 'watch' | 'at_risk';
+  summary: Record<string, unknown>;
+  metrics: NarrativeHealthMetric[];
+  risks: NarrativeHealthRisk[];
+  suggested_actions: NarrativeHealthAction[];
+};
+
 export type WorldSnapshotSummary = {
   id: number;
   world_id: number;

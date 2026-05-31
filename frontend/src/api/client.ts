@@ -27,6 +27,7 @@ import type {
   ForeshadowLedgerResponse,
   ForeshadowStatus,
   ForeshadowUpdate,
+  NarrativeHealthResponse,
   NextChapterPrepResponse,
   OutlineResponse,
   ParagraphReviseRequest,
@@ -272,6 +273,10 @@ export function getChapterHistoryDetail(chapterId: number) {
 
 export function getNextChapterPrep(worldId: number) {
   return apiRequest<NextChapterPrepResponse>(`/worlds/${worldId}/next-chapter-prep`);
+}
+
+export function getNarrativeHealth(worldId: number) {
+  return apiRequest<NarrativeHealthResponse>(`/worlds/${worldId}/narrative-health`);
 }
 
 export function createWorldSnapshot(worldId: number, data: { label?: string; note?: string } = {}) {
