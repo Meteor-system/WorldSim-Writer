@@ -590,6 +590,33 @@ describe('WorldTagsPanel', () => {
     expect(screen.getByText('许砚')).toBeInTheDocument();
   });
 
+  it('summarizes active tag-list search filter and sort state', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onListTags: vi.fn().mockResolvedValue(sortableListResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.type(screen.getByLabelText('搜索标签'), '档');
+    await user.selectOptions(screen.getByLabelText('标签对象类型'), 'foreshadow');
+    await user.selectOptions(screen.getByLabelText('标签排序'), 'name');
+
+    expect(screen.getByLabelText('标签视图摘要')).toHaveTextContent('显示 1 / 3 个标签 · 搜索「档」 · 类型：伏笔 · 排序：名称 A-Z');
+  });
+
+  it('resets tag-list view summary with tag view reset', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onListTags: vi.fn().mockResolvedValue(sortableListResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.type(screen.getByLabelText('搜索标签'), '档');
+    await user.selectOptions(screen.getByLabelText('标签对象类型'), 'empty');
+    await user.selectOptions(screen.getByLabelText('标签排序'), 'count');
+    expect(screen.getByLabelText('标签视图摘要')).toHaveTextContent('显示 1 / 3 个标签 · 搜索「档」 · 类型：无对象 · 排序：对象数最多');
+
+    await user.click(screen.getByRole('button', { name: '重置标签视图' }));
+
+    expect(screen.getByLabelText('标签视图摘要')).toHaveTextContent('显示 3 / 3 个标签 · 未搜索 · 类型：全部标签 · 排序：默认排序');
+  });
+
   it('shows counts in tag-list object type filter options', async () => {
     renderPanel({ onListTags: vi.fn().mockResolvedValue(sortableListResponse) });
 

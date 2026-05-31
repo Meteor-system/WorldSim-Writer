@@ -33,6 +33,19 @@ function tagTypeFilterCount(tags: TagSummaryResponse[], value: string): number {
   return tags.filter((tag) => (tag.object_type_counts[value] ?? 0) > 0).length;
 }
 
+function tagTypeFilterLabel(value: string): string {
+  if (value === 'all') return '全部标签';
+  if (value === 'empty') return '无对象';
+  return OBJECT_TYPES.find((item) => item.value === value)?.label ?? value;
+}
+
+function tagSortLabel(value: string): string {
+  if (value === 'name') return '名称 A-Z';
+  if (value === 'count') return '对象数最多';
+  if (value === 'created') return '最新创建';
+  return '默认排序';
+}
+
 export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onUpdateTag, onMergeTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
   const [tags, setTags] = useState<TagSummaryResponse[]>([]);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
@@ -127,6 +140,12 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
     return 0;
   });
   const visibleTagIdsKey = visibleTags.map((tag) => tag.id).join(',');
+  const tagViewSummary = [
+    `显示 ${visibleTags.length} / ${tags.length} 个标签`,
+    normalizedTagSearchQuery ? `搜索「${tagSearchQuery.trim()}」` : '未搜索',
+    `类型：${tagTypeFilterLabel(tagObjectTypeFilter)}`,
+    `排序：${tagSortLabel(tagSortMode)}`,
+  ].join(' · ');
 
   useEffect(() => {
     if (selectedTagId !== null && !visibleTags.some((tag) => tag.id === selectedTagId)) {
@@ -348,46 +367,49 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       {!loading && tags.length === 0 && !error && <p className="ink-muted">还没有标签。创建一个标签来整理角色、伏笔、章节或事件。</p>}
 
       {tags.length > 0 && (
-        <div className="grid gap-3 md:grid-cols-[1fr_12rem_14rem_auto]">
-          <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
-            搜索标签
-            <input
-              className="paper-input mt-1"
-              aria-label="搜索标签"
-              value={tagSearchQuery}
-              onChange={(event) => setTagSearchQuery(event.target.value)}
-              placeholder="按名称、颜色、类型或数量搜索"
-            />
-            <span className="ink-muted mt-2 block text-xs">显示 {visibleTags.length} / {tags.length} 个标签</span>
-          </label>
-          <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
-            标签对象类型
-            <select
-              className="paper-input mt-1"
-              aria-label="标签对象类型"
-              value={tagObjectTypeFilter}
-              onChange={(event) => setTagObjectTypeFilter(event.target.value)}
-            >
-              <option value="all">全部标签 {tagTypeFilterCount(tags, 'all')}</option>
-              <option value="empty">无对象 {tagTypeFilterCount(tags, 'empty')}</option>
-              {OBJECT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label} {tagTypeFilterCount(tags, item.value)}</option>)}
-            </select>
-          </label>
-          <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
-            标签排序
-            <select
-              className="paper-input mt-1"
-              aria-label="标签排序"
-              value={tagSortMode}
-              onChange={(event) => setTagSortMode(event.target.value)}
-            >
-              <option value="default">默认排序</option>
-              <option value="name">名称 A-Z</option>
-              <option value="count">对象数最多</option>
-              <option value="created">最新创建</option>
-            </select>
-          </label>
-          <button className="secondary-button self-end" type="button" onClick={resetTagView}>重置标签视图</button>
+        <div className="space-y-2">
+          <div className="grid gap-3 md:grid-cols-[1fr_12rem_14rem_auto]">
+            <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
+              搜索标签
+              <input
+                className="paper-input mt-1"
+                aria-label="搜索标签"
+                value={tagSearchQuery}
+                onChange={(event) => setTagSearchQuery(event.target.value)}
+                placeholder="按名称、颜色、类型或数量搜索"
+              />
+              <span className="ink-muted mt-2 block text-xs">显示 {visibleTags.length} / {tags.length} 个标签</span>
+            </label>
+            <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
+              标签对象类型
+              <select
+                className="paper-input mt-1"
+                aria-label="标签对象类型"
+                value={tagObjectTypeFilter}
+                onChange={(event) => setTagObjectTypeFilter(event.target.value)}
+              >
+                <option value="all">全部标签 {tagTypeFilterCount(tags, 'all')}</option>
+                <option value="empty">无对象 {tagTypeFilterCount(tags, 'empty')}</option>
+                {OBJECT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label} {tagTypeFilterCount(tags, item.value)}</option>)}
+              </select>
+            </label>
+            <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
+              标签排序
+              <select
+                className="paper-input mt-1"
+                aria-label="标签排序"
+                value={tagSortMode}
+                onChange={(event) => setTagSortMode(event.target.value)}
+              >
+                <option value="default">默认排序</option>
+                <option value="name">名称 A-Z</option>
+                <option value="count">对象数最多</option>
+                <option value="created">最新创建</option>
+              </select>
+            </label>
+            <button className="secondary-button self-end" type="button" onClick={resetTagView}>重置标签视图</button>
+          </div>
+          <p className="ink-muted text-xs" aria-label="标签视图摘要">{tagViewSummary}</p>
         </div>
       )}
 
