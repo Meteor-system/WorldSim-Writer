@@ -27,6 +27,12 @@ function countText(tag: TagSummaryResponse): string {
   return counts.map(([type, count]) => `${type} ${count}`).join(' · ');
 }
 
+function tagTypeFilterCount(tags: TagSummaryResponse[], value: string): number {
+  if (value === 'all') return tags.length;
+  if (value === 'empty') return tags.filter((tag) => tag.assignment_count === 0).length;
+  return tags.filter((tag) => (tag.object_type_counts[value] ?? 0) > 0).length;
+}
+
 export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onUpdateTag, onMergeTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
   const [tags, setTags] = useState<TagSummaryResponse[]>([]);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
@@ -362,9 +368,9 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
               value={tagObjectTypeFilter}
               onChange={(event) => setTagObjectTypeFilter(event.target.value)}
             >
-              <option value="all">全部标签</option>
-              <option value="empty">无对象</option>
-              {OBJECT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              <option value="all">全部标签 {tagTypeFilterCount(tags, 'all')}</option>
+              <option value="empty">无对象 {tagTypeFilterCount(tags, 'empty')}</option>
+              {OBJECT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label} {tagTypeFilterCount(tags, item.value)}</option>)}
             </select>
           </label>
           <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">

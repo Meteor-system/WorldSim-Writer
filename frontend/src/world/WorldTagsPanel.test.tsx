@@ -590,6 +590,34 @@ describe('WorldTagsPanel', () => {
     expect(screen.getByText('许砚')).toBeInTheDocument();
   });
 
+  it('shows counts in tag-list object type filter options', async () => {
+    renderPanel({ onListTags: vi.fn().mockResolvedValue(sortableListResponse) });
+
+    await screen.findByText('灯塔线');
+    const typeFilter = screen.getByLabelText('标签对象类型');
+
+    expect(within(typeFilter).getByRole('option', { name: '全部标签 3' })).toBeInTheDocument();
+    expect(within(typeFilter).getByRole('option', { name: '无对象 1' })).toBeInTheDocument();
+    expect(within(typeFilter).getByRole('option', { name: '角色 1' })).toBeInTheDocument();
+    expect(within(typeFilter).getByRole('option', { name: '伏笔 1' })).toBeInTheDocument();
+    expect(within(typeFilter).getByRole('option', { name: '章节 1' })).toBeInTheDocument();
+    expect(within(typeFilter).getByRole('option', { name: '事件 0' })).toBeInTheDocument();
+  });
+
+  it('keeps tag-list object type counts based on all loaded tags while searching', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onListTags: vi.fn().mockResolvedValue(sortableListResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.type(screen.getByLabelText('搜索标签'), '档');
+
+    const typeFilter = screen.getByLabelText('标签对象类型');
+    expect(screen.getByText('显示 2 / 3 个标签')).toBeInTheDocument();
+    expect(within(typeFilter).getByRole('option', { name: '全部标签 3' })).toBeInTheDocument();
+    expect(within(typeFilter).getByRole('option', { name: '角色 1' })).toBeInTheDocument();
+    expect(within(typeFilter).getByRole('option', { name: '伏笔 1' })).toBeInTheDocument();
+  });
+
   it('filters visible tags by assigned object type', async () => {
     const user = userEvent.setup();
     renderPanel({ onListTags: vi.fn().mockResolvedValue(sortableListResponse) });
