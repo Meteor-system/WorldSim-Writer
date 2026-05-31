@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { WorldMarkdownExportResponse, WorldSnapshotSummary } from '../api/types';
 
 type Props = {
@@ -6,13 +6,27 @@ type Props = {
   onExportMarkdown: () => Promise<WorldMarkdownExportResponse>;
 };
 
+function archiveUrlFromBase64(archiveBase64: string) {
+  const binary = atob(archiveBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }));
+}
+
 export function WorldArchivePanel({ onCreateSnapshot, onExportMarkdown }: Props) {
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [snapshot, setSnapshot] = useState<WorldSnapshotSummary | null>(null);
   const [snapshotError, setSnapshotError] = useState('');
   const [exportLoading, setExportLoading] = useState(false);
   const [markdownExport, setMarkdownExport] = useState<WorldMarkdownExportResponse | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState('');
   const [exportError, setExportError] = useState('');
+
+  useEffect(() => () => {
+    if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+  }, [downloadUrl]);
 
   async function handleCreateSnapshot() {
     setSnapshotLoading(true);
@@ -31,9 +45,13 @@ export function WorldArchivePanel({ onCreateSnapshot, onExportMarkdown }: Props)
     setExportLoading(true);
     setExportError('');
     try {
-      setMarkdownExport(await onExportMarkdown());
+      const exported = await onExportMarkdown();
+      const nextUrl = archiveUrlFromBase64(exported.archive_base64);
+      setMarkdownExport(exported);
+      setDownloadUrl(nextUrl);
     } catch {
       setMarkdownExport(null);
+      setDownloadUrl('');
       setExportError('导出世界档案失败');
     } finally {
       setExportLoading(false);
@@ -78,6 +96,12 @@ export function WorldArchivePanel({ onCreateSnapshot, onExportMarkdown }: Props)
           {markdownExport && (
             <div className="mt-2 text-sm">
               <p className="manuscript">导出成功：{markdownExport.files.length} 个 Markdown 文件已生成</p>
+              <p className="mt-1 font-bold text-[#5e3b1c]">Archive：{markdownExport.archive_filename}</p>
+              {downloadUrl && (
+                <a className="secondary-button mt-3 inline-flex" href={downloadUrl} download={markdownExport.archive_filename}>
+                  下载 Markdown ZIP
+                </a>
+              )}
               <ul className="mt-2 space-y-1 ink-muted">
                 {markdownExport.files.map((file) => (
                   <li key={file.path}>{file.path}</li>

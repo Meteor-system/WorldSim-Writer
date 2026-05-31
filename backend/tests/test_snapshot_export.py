@@ -1,3 +1,7 @@
+import base64
+from io import BytesIO
+from zipfile import ZipFile
+
 from sqlalchemy import func, select
 
 from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
@@ -165,12 +169,125 @@ def test_export_markdown_returns_world_archive_files(client, monkeypatch):
     paths = [file['path'] for file in payload['files']]
     assert 'World.md' in paths
     assert 'Relations.md' in paths
-    assert 'Timeline/Events.md' in paths
+    assert 'Timeline.md' in paths
     assert any(path.startswith('Characters/') for path in paths)
     assert any(path.startswith('Foreshadows/') for path in paths)
     assert any(path.startswith('Chapters/') for path in paths)
     chapter_file = next(file for file in payload['files'] if file['path'].startswith('Chapters/'))
     assert approved['approved_content'] in chapter_file['content']
+
+
+def test_export_markdown_returns_downloadable_obsidian_zip_bundle(client, monkeypatch):
+    token, world_id = register_and_create_world(client, 'markdown-zip@example.com')
+    approved = approve_chapter(client, token, world_id, monkeypatch)
+
+    response = client.post(f'/worlds/{world_id}/export/markdown', headers=auth_headers(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['archive_filename'].endswith('-v2-markdown.zip')
+    assert payload['archive_base64']
+
+    files_by_path = {file['path']: file['content'] for file in payload['files']}
+    assert 'World.md' in files_by_path
+    assert 'Relations.md' in files_by_path
+    assert 'Timeline.md' in files_by_path
+    assert 'Timeline/Events.md' not in files_by_path
+    assert 'Chapters/Chapter-001.md' in files_by_path
+    assert approved['approved_content'] in files_by_path['Chapters/Chapter-001.md']
+    assert 'World Version: 2' in files_by_path['World.md']
+    assert 'Truth Canon Version:' in files_by_path['World.md']
+    assert '[[Timeline]]' in files_by_path['World.md']
+
+    archive_bytes = base64.b64decode(payload['archive_base64'])
+    with ZipFile(BytesIO(archive_bytes)) as archive:
+        archived_paths = set(archive.namelist())
+        assert archived_paths == set(files_by_path)
+        assert archive.read('Chapters/Chapter-001.md').decode('utf-8') == files_by_path['Chapters/Chapter-001.md']
+
+
+def test_export_markdown_sanitizes_and_deduplicates_markdown_paths(client, db_session):
+    token, world_id = register_and_create_world(client, 'markdown-sanitize@example.com')
+    world = db_session.get(World, world_id)
+    world.title = '青岚/城?'
+    world.current_characters = [
+        {
+            'id': 101,
+            'name': '林/砚?',
+            'role_type': 'protagonist',
+            'status': 'active',
+            'public_profile': {'origin': '雨巷'},
+            'hidden_traits': {'secret': '玉佩'},
+            'destiny_flag': None,
+            'current_goals': ['追查湿信'],
+        },
+        {
+            'id': 102,
+            'name': '林:砚',
+            'role_type': 'ally',
+            'status': 'active',
+            'public_profile': {},
+            'hidden_traits': {},
+            'destiny_flag': None,
+            'current_goals': [],
+        },
+    ]
+    world.current_relations = [
+        {
+            'id': 201,
+            'source_character_id': 101,
+            'target_character_id': 102,
+            'relation_type': 'mirror',
+            'intensity': 3,
+            'visibility': 'private',
+        }
+    ]
+    world.current_foreshadows = [
+        {
+            'id': 301,
+            'source_chapter_id': None,
+            'title': '../裂纹/玉佩?',
+            'description': '玉佩裂纹扩散。',
+            'foreshadow_type': 'item',
+            'status': 'advanced',
+            'urgency_level': 5,
+            'related_character_ids': [101],
+            'expected_resolution_window': '第3章',
+        },
+        {
+            'id': 302,
+            'source_chapter_id': None,
+            'title': '..:裂纹:玉佩',
+            'description': '重复标题用于测试去重。',
+            'foreshadow_type': 'item',
+            'status': 'planted',
+            'urgency_level': 4,
+            'related_character_ids': [102],
+            'expected_resolution_window': None,
+        },
+    ]
+    db_session.commit()
+
+    response = client.post(f'/worlds/{world_id}/export/markdown', headers=auth_headers(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    paths = [file['path'] for file in payload['files']]
+    assert payload['archive_filename'] == 'WorldSim-青岚-城-v1-markdown.zip'
+    assert 'Characters/林-砚.md' in paths
+    assert 'Characters/林-砚-2.md' in paths
+    assert 'Foreshadows/裂纹-玉佩.md' in paths
+    assert 'Foreshadows/裂纹-玉佩-2.md' in paths
+    assert all('/../' not in f'/{path}' for path in paths)
+    assert all('?' not in path and ':' not in path for path in paths)
+
+    relations = next(file for file in payload['files'] if file['path'] == 'Relations.md')['content']
+    assert '林/砚?' in relations
+    assert '林:砚' in relations
+
+    foreshadow = next(file for file in payload['files'] if file['path'] == 'Foreshadows/裂纹-玉佩.md')['content']
+    assert '林/砚?' in foreshadow
+    assert '[[Characters/林-砚]]' in foreshadow
 
 
 def test_export_markdown_does_not_mutate_world_or_create_snapshot(client, db_session):

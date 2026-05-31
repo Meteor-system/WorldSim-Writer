@@ -1,7 +1,10 @@
+import base64
 from copy import deepcopy
 from datetime import datetime, timezone
+from io import BytesIO
 import re
 from typing import Any
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
@@ -111,19 +114,41 @@ def _markdown_value(value: Any) -> str:
     return str(value)
 
 
-def _slug(value: str | None, fallback: str) -> str:
+def _safe_segment(value: str | None, fallback: str) -> str:
     base = (value or fallback).strip() or fallback
-    slug = re.sub(r'[^\w一-鿿.-]+', '-', base, flags=re.UNICODE).strip('-')
-    return slug or fallback
+    segment = re.sub(r'[^\w一-鿿.-]+', '-', base, flags=re.UNICODE).strip('-.')
+    return segment or fallback
 
 
-def _world_markdown(payload: dict[str, Any]) -> str:
+def _unique_markdown_path(directory: str, value: str | None, fallback: str, used_paths: set[str]) -> str:
+    stem = _safe_segment(value, fallback)
+    suffix = 1
+    while True:
+        candidate_stem = stem if suffix == 1 else f'{stem}-{suffix}'
+        path = f'{directory}/{candidate_stem}.md'
+        if path not in used_paths:
+            used_paths.add(path)
+            return path
+        suffix += 1
+
+
+def _wiki_path(path: str) -> str:
+    return path.removesuffix('.md')
+
+
+def _character_name(character_by_id: dict[int, dict[str, Any]], character_id: int | None) -> str:
+    character = character_by_id.get(character_id or -1)
+    return character.get('name') if character else str(character_id or '')
+
+
+def _world_markdown(payload: dict[str, Any], character_paths: dict[int, str], foreshadow_paths: dict[int, str], chapter_paths: dict[int, str]) -> str:
     world = payload['world']
     lines = [
         f"# {world['title']}",
         '',
         f"- Genre: {world['genre_template']}",
         f"- World Version: {world['world_version']}",
+        f"- Truth Canon Version: {world['truth_canon_version']}",
         f"- Status: {world['status']}",
         '',
         '## Truth Canon',
@@ -136,16 +161,31 @@ def _world_markdown(payload: dict[str, Any]) -> str:
     story_arc = world.get('story_arc') or []
     lines.extend(f"- {_markdown_value(item)}" for item in story_arc) if story_arc else lines.append('- 暂无')
     lines.extend(['', '## Characters', ''])
-    lines.extend(f"- [[Characters/{_slug(character.get('name'), f'Character-{character.get("id")}')}]]" for character in payload['characters'])
+    lines.extend(
+        f"- [[{_wiki_path(character_paths[character['id']])}]] {character.get('name', '')}"
+        for character in payload['characters']
+        if character.get('id') in character_paths
+    )
     lines.extend(['', '## Foreshadows', ''])
-    lines.extend(f"- [[Foreshadows/{_slug(foreshadow.get('title'), f'Foreshadow-{foreshadow.get("id")}')}]]" for foreshadow in payload['foreshadows'])
+    lines.extend(
+        f"- [[{_wiki_path(foreshadow_paths[foreshadow['id']])}]] {foreshadow.get('title', '')}"
+        for foreshadow in payload['foreshadows']
+        if foreshadow.get('id') in foreshadow_paths
+    )
     lines.extend(['', '## Approved Chapters', ''])
-    lines.extend(f"- [[Chapters/Chapter-{chapter['id']}]] {chapter['title']}" for chapter in payload['approved_chapters'])
-    lines.extend(['', '## Timeline', '', '- [[Timeline/Events]]', ''])
+    if payload['approved_chapters']:
+        lines.extend(
+            f"- [[{_wiki_path(chapter_paths[chapter['id']])}]] {chapter['title']}"
+            for chapter in payload['approved_chapters']
+            if chapter.get('id') in chapter_paths
+        )
+    else:
+        lines.append('- 暂无')
+    lines.extend(['', '## Timeline', '', '- [[Timeline]]', ''])
     return '\n'.join(lines)
 
 
-def _character_markdown(character: dict[str, Any], relations: list[dict[str, Any]]) -> str:
+def _character_markdown(character: dict[str, Any], relations: list[dict[str, Any]], character_by_id: dict[int, dict[str, Any]], character_paths: dict[int, str]) -> str:
     character_id = character.get('id')
     related = [relation for relation in relations if character_id in {relation.get('source_character_id'), relation.get('target_character_id')}]
     lines = [
@@ -160,18 +200,38 @@ def _character_markdown(character: dict[str, Any], relations: list[dict[str, Any
         '',
         _markdown_value(character.get('public_profile', {})) or '暂无',
         '',
+        '## Hidden Traits',
+        '',
+        _markdown_value(character.get('hidden_traits', {})) or '暂无',
+        '',
         '## Relations',
         '',
     ]
-    lines.extend(
-        f"- {relation.get('source_character_id')} → {relation.get('target_character_id')}: {relation.get('relation_type')} "
-        f"(intensity {relation.get('intensity')}, {relation.get('visibility')})"
-        for relation in related
-    ) if related else lines.append('- 暂无')
+    if related:
+        for relation in related:
+            source_id = relation.get('source_character_id')
+            target_id = relation.get('target_character_id')
+            source_name = _character_name(character_by_id, source_id)
+            target_name = _character_name(character_by_id, target_id)
+            source_link = f"[[{_wiki_path(character_paths[source_id])}]]" if source_id in character_paths else source_name
+            target_link = f"[[{_wiki_path(character_paths[target_id])}]]" if target_id in character_paths else target_name
+            lines.append(
+                f"- {source_link} {source_name} → {target_link} {target_name}: {relation.get('relation_type')} "
+                f"(intensity {relation.get('intensity')}, {relation.get('visibility')})"
+            )
+    else:
+        lines.append('- 暂无')
     return '\n'.join(lines) + '\n'
 
 
-def _foreshadow_markdown(foreshadow: dict[str, Any]) -> str:
+def _foreshadow_markdown(foreshadow: dict[str, Any], character_by_id: dict[int, dict[str, Any]], character_paths: dict[int, str]) -> str:
+    related_character_lines = []
+    for character_id in foreshadow.get('related_character_ids', []):
+        name = _character_name(character_by_id, character_id)
+        if character_id in character_paths:
+            related_character_lines.append(f"[[{_wiki_path(character_paths[character_id])}]] {name}")
+        else:
+            related_character_lines.append(name)
     return '\n'.join(
         [
             f"# {foreshadow.get('title', f'Foreshadow {foreshadow.get("id")}')}",
@@ -179,7 +239,8 @@ def _foreshadow_markdown(foreshadow: dict[str, Any]) -> str:
             f"- Type: {foreshadow.get('foreshadow_type', '')}",
             f"- Status: {foreshadow.get('status', '')}",
             f"- Urgency: {foreshadow.get('urgency_level', '')}",
-            f"- Related Characters: {_markdown_value(foreshadow.get('related_character_ids', []))}",
+            f"- Source Chapter: {foreshadow.get('source_chapter_id') or ''}",
+            f"- Related Characters: {_markdown_value(related_character_lines)}",
             f"- Expected Resolution: {foreshadow.get('expected_resolution_window') or ''}",
             '',
             '## Description',
@@ -190,20 +251,28 @@ def _foreshadow_markdown(foreshadow: dict[str, Any]) -> str:
     )
 
 
-def _relations_markdown(relations: list[dict[str, Any]]) -> str:
+def _relations_markdown(relations: list[dict[str, Any]], character_by_id: dict[int, dict[str, Any]], character_paths: dict[int, str]) -> str:
     lines = ['# Character Relations', '', '| Source | Target | Type | Intensity | Visibility |', '|---|---|---|---:|---|']
-    lines.extend(
-        f"| {relation.get('source_character_id')} | {relation.get('target_character_id')} | {relation.get('relation_type')} | {relation.get('intensity')} | {relation.get('visibility')} |"
-        for relation in relations
-    )
+    for relation in relations:
+        source_id = relation.get('source_character_id')
+        target_id = relation.get('target_character_id')
+        source_name = _character_name(character_by_id, source_id)
+        target_name = _character_name(character_by_id, target_id)
+        source = f"[[{_wiki_path(character_paths[source_id])}]] {source_name}" if source_id in character_paths else source_name
+        target = f"[[{_wiki_path(character_paths[target_id])}]] {target_name}" if target_id in character_paths else target_name
+        lines.append(
+            f"| {source} | {target} | {relation.get('relation_type')} | {relation.get('intensity')} | {relation.get('visibility')} |"
+        )
     return '\n'.join(lines) + '\n'
 
 
-def _chapter_markdown(chapter: dict[str, Any]) -> str:
+def _chapter_markdown(chapter: dict[str, Any], sequence: int) -> str:
     return '\n'.join(
         [
             f"# {chapter['title']}",
             '',
+            f"- Chapter Number: {sequence}",
+            f"- Chapter ID: {chapter['id']}",
             f"- Status: {chapter['status']}",
             f"- Approved Version: {chapter['approved_version']}",
             f"- Base World Version: {chapter['base_world_version']}",
@@ -217,7 +286,7 @@ def _chapter_markdown(chapter: dict[str, Any]) -> str:
 
 
 def _events_markdown(events: list[dict[str, Any]]) -> str:
-    lines = ['# Event Timeline', '', '| ID | Version | Type | Source | Chapter | Created |', '|---:|---|---|---|---|---|']
+    lines = ['# Timeline', '', '## Event History', '', '| ID | Version | Type | Source | Chapter | Created |', '|---:|---|---|---|---|---|']
     lines.extend(
         f"| {event['id']} | {event['world_version_before']} → {event['world_version_after']} | {event['event_type']} | {event['source_type']} | {event.get('chapter_id') or ''} | {event['created_at']} |"
         for event in events
@@ -226,41 +295,71 @@ def _events_markdown(events: list[dict[str, Any]]) -> str:
 
 
 def render_markdown_bundle(payload: dict[str, Any]) -> list[dict[str, str]]:
+    used_paths = {'World.md', 'Relations.md', 'Timeline.md'}
+    character_paths = {
+        character['id']: _unique_markdown_path('Characters', character.get('name'), f"Character-{character.get('id')}", used_paths)
+        for character in payload['characters']
+    }
+    foreshadow_paths = {
+        foreshadow['id']: _unique_markdown_path('Foreshadows', foreshadow.get('title'), f"Foreshadow-{foreshadow.get('id')}", used_paths)
+        for foreshadow in payload['foreshadows']
+    }
+    chapter_paths = {
+        chapter['id']: f'Chapters/Chapter-{index:03d}.md'
+        for index, chapter in enumerate(payload['approved_chapters'], start=1)
+    }
+    character_by_id = {character['id']: character for character in payload['characters']}
+
     files = [
-        {'path': 'World.md', 'content': _world_markdown(payload)},
-        {'path': 'Relations.md', 'content': _relations_markdown(payload['relations'])},
+        {'path': 'World.md', 'content': _world_markdown(payload, character_paths, foreshadow_paths, chapter_paths)},
+        {'path': 'Relations.md', 'content': _relations_markdown(payload['relations'], character_by_id, character_paths)},
     ]
     files.extend(
         {
-            'path': f"Characters/{_slug(character.get('name'), f'Character-{character.get("id")}')}.md",
-            'content': _character_markdown(character, payload['relations']),
+            'path': character_paths[character['id']],
+            'content': _character_markdown(character, payload['relations'], character_by_id, character_paths),
         }
         for character in payload['characters']
     )
     files.extend(
         {
-            'path': f"Foreshadows/{_slug(foreshadow.get('title'), f'Foreshadow-{foreshadow.get("id")}')}.md",
-            'content': _foreshadow_markdown(foreshadow),
+            'path': foreshadow_paths[foreshadow['id']],
+            'content': _foreshadow_markdown(foreshadow, character_by_id, character_paths),
         }
         for foreshadow in payload['foreshadows']
     )
     files.extend(
         {
-            'path': f"Chapters/Chapter-{chapter['id']}.md",
-            'content': _chapter_markdown(chapter),
+            'path': chapter_paths[chapter['id']],
+            'content': _chapter_markdown(chapter, index),
         }
-        for chapter in payload['approved_chapters']
+        for index, chapter in enumerate(payload['approved_chapters'], start=1)
     )
-    files.append({'path': 'Timeline/Events.md', 'content': _events_markdown(payload['events'])})
+    files.append({'path': 'Timeline.md', 'content': _events_markdown(payload['events'])})
     return files
+
+
+def _zip_markdown_files(files: list[dict[str, str]]) -> str:
+    buffer = BytesIO()
+    with ZipFile(buffer, mode='w', compression=ZIP_DEFLATED) as archive:
+        for file in files:
+            archive.writestr(file['path'], file['content'])
+    return base64.b64encode(buffer.getvalue()).decode('ascii')
+
+
+def _archive_filename(world: World) -> str:
+    return f"WorldSim-{_safe_segment(world.title, f'World-{world.id}')}-v{world.world_version}-markdown.zip"
 
 
 def export_world_markdown(db: Session, user: User, world_id: int) -> dict[str, Any]:
     world = require_owned_world(db, user, world_id)
     payload = build_world_archive_payload(db, world)
+    files = render_markdown_bundle(payload)
     return {
         'world_id': world.id,
         'world_version': world.world_version,
         'generated_at': datetime.now(timezone.utc),
-        'files': render_markdown_bundle(payload),
+        'archive_filename': _archive_filename(world),
+        'archive_base64': _zip_markdown_files(files),
+        'files': files,
     }

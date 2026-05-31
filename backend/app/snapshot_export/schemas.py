@@ -38,4 +38,6 @@ class WorldMarkdownExportResponse(BaseModel):
     world_id: int
     world_version: int
     generated_at: datetime
+    archive_filename: str
+    archive_base64: str
     files: list[MarkdownExportFile]

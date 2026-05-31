@@ -17,9 +17,11 @@ const markdownExport = {
   world_id: 7,
   world_version: 3,
   generated_at: '2026-05-30T00:00:00Z',
+  archive_filename: 'WorldSim-青岚城-v3-markdown.zip',
+  archive_base64: 'emlwLWRhdGE=',
   files: [
     { path: 'World.md', content: '# World' },
-    { path: 'Timeline/Events.md', content: '# Timeline' },
+    { path: 'Timeline.md', content: '# Timeline' },
   ],
 };
 
@@ -60,9 +62,12 @@ describe('WorldArchivePanel', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('创建快照失败');
   });
 
-  it('shows export success state with generated files', async () => {
+  it('shows export success state with generated files and download action', async () => {
     const user = userEvent.setup();
     const onExportMarkdown = vi.fn(async () => markdownExport);
+    const createObjectURL = vi.fn(() => 'blob:markdown-zip');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
 
     render(<WorldArchivePanel onCreateSnapshot={vi.fn()} onExportMarkdown={onExportMarkdown} />);
 
@@ -70,8 +75,11 @@ describe('WorldArchivePanel', () => {
 
     expect(onExportMarkdown).toHaveBeenCalledOnce();
     expect(await screen.findByText('导出成功：2 个 Markdown 文件已生成')).toBeInTheDocument();
+    expect(screen.getByText('Archive：WorldSim-青岚城-v3-markdown.zip')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '下载 Markdown ZIP' })).toHaveAttribute('href', 'blob:markdown-zip');
+    expect(createObjectURL).toHaveBeenCalledOnce();
     expect(screen.getByText('World.md')).toBeInTheDocument();
-    expect(screen.getByText('Timeline/Events.md')).toBeInTheDocument();
+    expect(screen.getByText('Timeline.md')).toBeInTheDocument();
   });
 
   it('shows export error state', async () => {

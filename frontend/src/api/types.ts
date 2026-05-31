@@ -538,6 +538,8 @@ export type WorldMarkdownExportResponse = {
   world_id: number;
   world_version: number;
   generated_at: string;
+  archive_filename: string;
+  archive_base64: string;
   files: MarkdownExportFile[];
 };
 
