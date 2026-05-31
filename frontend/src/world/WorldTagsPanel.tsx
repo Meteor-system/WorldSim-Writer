@@ -123,6 +123,17 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
     }
   }, [selectedTagId, visibleTagIdsKey]);
 
+  function resetTagView() {
+    setTagSearchQuery('');
+    setTagSortMode('default');
+  }
+
+  function resetDetailView() {
+    setDetailObjectTypeFilter('all');
+    setDetailSearchQuery('');
+    setDetailSortMode('default');
+  }
+
   async function submitTag(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = tagName.trim();
@@ -323,7 +334,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       {!loading && tags.length === 0 && !error && <p className="ink-muted">还没有标签。创建一个标签来整理角色、伏笔、章节或事件。</p>}
 
       {tags.length > 0 && (
-        <div className="grid gap-3 md:grid-cols-[1fr_14rem]">
+        <div className="grid gap-3 md:grid-cols-[1fr_14rem_auto]">
           <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
             搜索标签
             <input
@@ -349,6 +360,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
               <option value="created">最新创建</option>
             </select>
           </label>
+          <button className="secondary-button self-end" type="button" onClick={resetTagView}>重置标签视图</button>
         </div>
       )}
 
@@ -450,7 +462,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
             </div>
           </div>
 
-          <div className="grid gap-3 md:grid-cols-[1fr_14rem]">
+          <div className="grid gap-3 md:grid-cols-[1fr_14rem_auto]">
             <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
               搜索当前标签对象
               <input
@@ -476,6 +488,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
                 <option value="id">ID 从小到大</option>
               </select>
             </label>
+            <button className="secondary-button self-end" type="button" onClick={resetDetailView}>重置对象视图</button>
           </div>
 
           <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitAssignment}>

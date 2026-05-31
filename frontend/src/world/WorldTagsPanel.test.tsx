@@ -590,6 +590,70 @@ describe('WorldTagsPanel', () => {
     expect(screen.getByText('许砚')).toBeInTheDocument();
   });
 
+  it('resets tag-list search and sort controls', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onListTags: vi.fn().mockResolvedValue(sortableListResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.type(screen.getByLabelText('搜索标签'), '档');
+    await user.selectOptions(screen.getByLabelText('标签排序'), 'name');
+    expect(screen.getByLabelText('搜索标签')).toHaveValue('档');
+    expect(screen.getByLabelText('标签排序')).toHaveValue('name');
+
+    await user.click(screen.getByRole('button', { name: '重置标签视图' }));
+
+    expect(screen.getByLabelText('搜索标签')).toHaveValue('');
+    expect(screen.getByLabelText('标签排序')).toHaveValue('default');
+    const tagButtons = screen.getAllByRole('button', { name: /查看 / });
+    expect(tagButtons.map((button) => button.textContent)).toEqual([
+      '主线归档总数 0无对象',
+      '灯塔线总数 3character 1 · chapter 2',
+      '阿尔法档案总数 1foreshadow 1',
+    ]);
+    expect(screen.getByText('显示 3 / 3 个标签')).toBeInTheDocument();
+  });
+
+  it('resets selected tag object filter search and sort controls', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onLoadTag: vi.fn().mockResolvedValue(mixedDetailResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    await screen.findByText('黑匣子脉冲');
+    await user.click(screen.getByRole('button', { name: '只看章节 1' }));
+    await user.type(screen.getByLabelText('搜索当前标签对象'), '许');
+    await user.selectOptions(screen.getByLabelText('对象排序'), 'id');
+    expect(screen.getByText('显示 1 / 3 个对象')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '重置对象视图' }));
+
+    expect(screen.getByRole('button', { name: '查看全部对象 3' })).toHaveClass('ring-2');
+    expect(screen.getByLabelText('搜索当前标签对象')).toHaveValue('');
+    expect(screen.getByLabelText('对象排序')).toHaveValue('default');
+    expect(screen.getByText('显示 3 / 3 个对象')).toBeInTheDocument();
+    expect(screen.getByText('许砚')).toBeInTheDocument();
+    expect(screen.getByText('黑匣子脉冲')).toBeInTheDocument();
+    expect(screen.getByText('第一章 灯塔低鸣')).toBeInTheDocument();
+  });
+
+  it('keeps selected tag detail when resetting tag-list controls', async () => {
+    const user = userEvent.setup();
+    renderPanel({
+      onListTags: vi.fn().mockResolvedValue(sortableListResponse),
+      onLoadTag: vi.fn().mockResolvedValue(detailResponse),
+    });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    expect(await screen.findByText('许砚')).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('标签排序'), 'name');
+
+    await user.click(screen.getByRole('button', { name: '重置标签视图' }));
+
+    expect(screen.getByText('当前标签')).toBeInTheDocument();
+    expect(screen.getByText('许砚')).toBeInTheDocument();
+  });
+
   it('shows empty and error states', async () => {
     const { unmount } = renderPanel({ onListTags: vi.fn().mockResolvedValue({ world_id: 7, tags: [] }) });
     expect(await screen.findByText('还没有标签。创建一个标签来整理角色、伏笔、章节或事件。')).toBeInTheDocument();
