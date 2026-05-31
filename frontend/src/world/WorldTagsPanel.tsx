@@ -29,6 +29,7 @@ function countText(tag: TagSummaryResponse): string {
 
 export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onUpdateTag, onMergeTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
   const [tags, setTags] = useState<TagSummaryResponse[]>([]);
+  const [tagSearchQuery, setTagSearchQuery] = useState('');
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
   const [detail, setDetail] = useState<TagDetailResponse | null>(null);
   const [detailObjectTypeFilter, setDetailObjectTypeFilter] = useState('all');
@@ -95,6 +96,23 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
   useEffect(() => {
     void loadTags();
   }, [worldId]);
+
+  const normalizedTagSearchQuery = tagSearchQuery.trim().toLowerCase();
+  const visibleTags = normalizedTagSearchQuery
+    ? tags.filter((tag) => {
+        const haystack = [tag.name, tag.slug, tag.color ?? '', String(tag.assignment_count), countText(tag)].join(' ').toLowerCase();
+        return haystack.includes(normalizedTagSearchQuery);
+      })
+    : tags;
+  const visibleTagIdsKey = visibleTags.map((tag) => tag.id).join(',');
+
+  useEffect(() => {
+    if (selectedTagId !== null && !visibleTags.some((tag) => tag.id === selectedTagId)) {
+      setSelectedTagId(null);
+      setDetail(null);
+      setDeleteConfirming(false);
+    }
+  }, [selectedTagId, visibleTagIdsKey]);
 
   async function submitTag(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -290,8 +308,22 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       {!loading && tags.length === 0 && !error && <p className="ink-muted">还没有标签。创建一个标签来整理角色、伏笔、章节或事件。</p>}
 
       {tags.length > 0 && (
+        <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
+          搜索标签
+          <input
+            className="paper-input mt-1"
+            aria-label="搜索标签"
+            value={tagSearchQuery}
+            onChange={(event) => setTagSearchQuery(event.target.value)}
+            placeholder="按名称、颜色、类型或数量搜索"
+          />
+          <span className="ink-muted mt-2 block text-xs">显示 {visibleTags.length} / {tags.length} 个标签</span>
+        </label>
+      )}
+
+      {visibleTags.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {tags.map((tag) => (
+          {visibleTags.map((tag) => (
             <button
               key={tag.id}
               className={`rounded-2xl border border-amber-900/15 bg-white/40 px-4 py-3 text-left ${selectedTagId === tag.id ? 'ring-2 ring-amber-800' : ''}`}
@@ -306,6 +338,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
           ))}
         </div>
       )}
+      {tags.length > 0 && visibleTags.length === 0 && !error && <p className="ink-muted">当前搜索没有匹配标签。</p>}
 
       {detailLoading && <p className="ink-muted" role="status">正在读取标签详情...</p>}
       {detail && (

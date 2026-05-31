@@ -414,6 +414,56 @@ describe('WorldTagsPanel', () => {
     expect(onDeleteTag).not.toHaveBeenCalled();
   });
 
+  it('searches visible tags by name', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await screen.findByText('灯塔线');
+    expect(screen.getByText('主线归档')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('搜索标签'), '归档');
+
+    expect(screen.queryByText('灯塔线')).not.toBeInTheDocument();
+    expect(screen.getByText('主线归档')).toBeInTheDocument();
+    expect(screen.getByText('显示 1 / 2 个标签')).toBeInTheDocument();
+  });
+
+  it('searches visible tags by object summary', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await screen.findByText('灯塔线');
+    await user.type(screen.getByLabelText('搜索标签'), 'character 1');
+
+    expect(screen.getByText('灯塔线')).toBeInTheDocument();
+    expect(screen.queryByText('主线归档')).not.toBeInTheDocument();
+  });
+
+  it('shows an empty state when tag search has no matches', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await screen.findByText('灯塔线');
+    await user.type(screen.getByLabelText('搜索标签'), '不存在的标签');
+
+    expect(await screen.findByText('当前搜索没有匹配标签。')).toBeInTheDocument();
+    expect(screen.getByText('显示 0 / 2 个标签')).toBeInTheDocument();
+  });
+
+  it('clears selected tag detail when tag search hides it', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onLoadTag: vi.fn().mockResolvedValue(detailResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    expect(await screen.findByText('许砚')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('搜索标签'), '归档');
+
+    expect(screen.queryByText('许砚')).not.toBeInTheDocument();
+    expect(screen.queryByText('当前标签')).not.toBeInTheDocument();
+  });
+
   it('shows empty and error states', async () => {
     const { unmount } = renderPanel({ onListTags: vi.fn().mockResolvedValue({ world_id: 7, tags: [] }) });
     expect(await screen.findByText('还没有标签。创建一个标签来整理角色、伏笔、章节或事件。')).toBeInTheDocument();
