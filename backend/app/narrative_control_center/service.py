@@ -6,6 +6,7 @@ from app.auth.models import User
 from app.character.models import Character
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow
+from app.foreshadow.service import build_foreshadow_ledger
 from app.narrative.models import Chapter, ChapterDraft
 from app.world.models import World
 from app.world.service import count_approved_chapters, require_owned_world
@@ -201,7 +202,7 @@ def _priority_characters(characters: list[Character], selected_hint: dict | None
     return priority
 
 
-def _priority_foreshadows(foreshadows: list[Foreshadow], selected_hint: dict | None) -> list[dict]:
+def _priority_foreshadows(foreshadows: list[Foreshadow], selected_hint: dict | None, ledger_high_pressure: list[dict] | None = None) -> list[dict]:
     foreshadow_by_id = _foreshadows_by_id(foreshadows)
     priority: list[dict] = []
     seen: set[int] = set()
@@ -222,6 +223,12 @@ def _priority_foreshadows(foreshadows: list[Foreshadow], selected_hint: dict | N
 
     for foreshadow_id in (selected_hint or {}).get('related_foreshadow_ids') or []:
         add(foreshadow_by_id.get(foreshadow_id), '该伏笔与上一章 progression hint 相关。')
+
+    for entry in ledger_high_pressure or []:
+        foreshadow = entry['foreshadow']
+        reasons = entry.get('pressure_reasons') or []
+        reason = '；'.join(reasons) if reasons else '该伏笔仍处于可推进状态且紧迫度较高。'
+        add(foreshadow, reason)
 
     urgent = sorted(
         [foreshadow for foreshadow in foreshadows if foreshadow.status in {'planted', 'advanced'}],
@@ -366,6 +373,9 @@ def get_next_chapter_prep(db: Session, user: User, world_id: int) -> dict:
         )
     )
 
+    ledger = build_foreshadow_ledger(db, world)
+    high_pressure_foreshadows = ledger['high_pressure']
+
     source_signals: list[str] = []
     if selected_hint is not None:
         suggested_goal = selected_hint['suggested_next_beat']
@@ -374,7 +384,8 @@ def get_next_chapter_prep(db: Session, user: User, world_id: int) -> dict:
         suggested_goal = story_arc_chapter['summary']
         source_signals.append('story_arc')
     else:
-        urgent_foreshadow = next((foreshadow for foreshadow in foreshadows if foreshadow.status in {'planted', 'advanced'}), None)
+        urgent_entry = next(iter(high_pressure_foreshadows), None)
+        urgent_foreshadow = urgent_entry['foreshadow'] if urgent_entry is not None else next((foreshadow for foreshadow in foreshadows if foreshadow.status in {'planted', 'advanced'}), None)
         if urgent_foreshadow is not None:
             suggested_goal = f'推进伏笔《{urgent_foreshadow.title}》，让相关角色围绕该线索做出新的选择。'
             source_signals.append('urgent_foreshadow')
@@ -395,7 +406,7 @@ def get_next_chapter_prep(db: Session, user: User, world_id: int) -> dict:
         'recommended_pov_character_name': recommended_pov_character_name,
         'source_signals': source_signals,
         'priority_characters': _priority_characters(characters, selected_hint, latest_chapter),
-        'priority_foreshadows': _priority_foreshadows(foreshadows, selected_hint),
+        'priority_foreshadows': _priority_foreshadows(foreshadows, selected_hint, high_pressure_foreshadows),
         'progression_hints': (latest_chapter.character_arc_report or {}).get('progression_hints', []) if latest_chapter else [],
         'continuity_warnings': _continuity_warnings(latest_chapter, story_arc_chapter, characters),
         'recent_events': _recent_events(db, world.id),

@@ -107,6 +107,48 @@ export type ForeshadowEvent = {
   created_at: string;
 };
 
+export type RelatedCharacterBrief = {
+  id: number;
+  name: string;
+  role_type: string;
+};
+
+export type ForeshadowPressureLevel = 'medium' | 'high' | 'critical' | 'resolved' | 'expired';
+
+export type ForeshadowLedgerSummary = {
+  total: number;
+  open_count: number;
+  planted_count: number;
+  advanced_count: number;
+  resolved_count: number;
+  expired_count: number;
+  high_urgency_count: number;
+  stale_count: number;
+  overdue_count: number;
+};
+
+export type ForeshadowLedgerEntry = {
+  foreshadow: Foreshadow;
+  status_group: ForeshadowStatus;
+  is_open: boolean;
+  is_high_urgency: boolean;
+  is_stale: boolean;
+  is_overdue: boolean;
+  chapters_since_planted: number;
+  pressure_level: ForeshadowPressureLevel;
+  pressure_reasons: string[];
+  related_characters: RelatedCharacterBrief[];
+  recent_events: ForeshadowEvent[];
+};
+
+export type ForeshadowLedgerResponse = {
+  world_id: number;
+  world_version: number;
+  summary: ForeshadowLedgerSummary;
+  groups: Record<ForeshadowStatus, ForeshadowLedgerEntry[]>;
+  high_pressure: ForeshadowLedgerEntry[];
+};
+
 export type StaleForeshadow = {
   foreshadow: Foreshadow;
   chapters_since_planted: number;

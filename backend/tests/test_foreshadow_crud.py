@@ -530,3 +530,75 @@ def test_foreshadow_rejects_foreign_source_chapter(client, db_session):
 
     assert response.status_code == 404
     assert response.json()['detail'] == 'SOURCE_CHAPTER_NOT_FOUND'
+
+
+def test_foreshadow_ledger_groups_pressure_related_characters_and_events(client, db_session):
+    token = register(client)
+    world_id = create_world(client, token)
+    character_id = first_character_id(client, token, world_id)
+    source_id = create_approved_chapter(db_session, world_id, '源章节')
+    urgent = client.post(
+        f'/worlds/{world_id}/foreshadows',
+        headers=auth(token),
+        json={
+            'source_chapter_id': source_id,
+            'title': '裂纹玉佩',
+            'description': '玉佩出现裂纹。',
+            'foreshadow_type': 'plot',
+            'status': 'planted',
+            'urgency_level': 5,
+            'related_character_ids': [character_id],
+            'expected_resolution_window': '第2-4章',
+        },
+    ).json()
+    assert client.put(f"/foreshadows/{urgent['id']}", headers=auth(token), json={'status': 'advanced'}).status_code == 200
+    resolved = create_foreshadow(client, token, world_id, title='旧盟约', status='planted')
+    assert client.put(f"/foreshadows/{resolved['id']}", headers=auth(token), json={'status': 'advanced'}).status_code == 200
+    assert client.put(f"/foreshadows/{resolved['id']}", headers=auth(token), json={'status': 'resolved'}).status_code == 200
+
+    response = client.get(f'/worlds/{world_id}/foreshadows/ledger', headers=auth(token))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body['world_id'] == world_id
+    assert body['summary']['total'] >= 2
+    assert body['summary']['advanced_count'] >= 1
+    assert body['summary']['resolved_count'] >= 1
+    advanced_entry = next(item for item in body['groups']['advanced'] if item['foreshadow']['id'] == urgent['id'])
+    assert advanced_entry['status_group'] == 'advanced'
+    assert advanced_entry['is_open'] is True
+    assert advanced_entry['is_high_urgency'] is True
+    assert advanced_entry['pressure_level'] == 'high'
+    assert '高紧迫度：5' in advanced_entry['pressure_reasons']
+    assert advanced_entry['related_characters'][0]['id'] == character_id
+    assert advanced_entry['related_characters'][0]['name']
+    assert advanced_entry['recent_events'][-1]['event_type'] == 'advanced'
+    assert body['high_pressure'][0]['foreshadow']['id'] == urgent['id']
+
+
+def test_foreshadow_ledger_marks_stale_overdue_and_does_not_mutate_world(client, db_session):
+    token = register(client)
+    world_id = create_world(client, token)
+    source_id = create_approved_chapter(db_session, world_id, '源章节')
+    stale = create_foreshadow(client, token, world_id, title='井中红光', source_chapter_id=source_id)
+    for index in range(6):
+        create_approved_chapter(db_session, world_id, f'后续 {index}')
+    world_before = world_state(db_session, world_id)
+    version_before = world_before.world_version
+    event_count_before = len(world_events(db_session, world_id))
+
+    response = client.get(f'/worlds/{world_id}/foreshadows/ledger', headers=auth(token))
+
+    assert response.status_code == 200
+    body = response.json()
+    entry = next(item for item in body['groups']['planted'] if item['foreshadow']['id'] == stale['id'])
+    assert entry['is_stale'] is True
+    assert entry['is_overdue'] is True
+    assert entry['chapters_since_planted'] == 6
+    assert entry['pressure_level'] == 'critical'
+    assert '已埋设 6 章未推进' in entry['pressure_reasons']
+    assert body['summary']['stale_count'] >= 1
+    assert body['summary']['overdue_count'] >= 1
+    db_session.expire_all()
+    assert world_state(db_session, world_id).world_version == version_before
+    assert len(world_events(db_session, world_id)) == event_count_before

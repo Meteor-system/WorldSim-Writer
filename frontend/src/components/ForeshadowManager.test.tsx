@@ -5,17 +5,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createForeshadow,
   deleteForeshadow,
+  getForeshadowLedger,
   getForeshadowTimeline,
   getForeshadows,
   getStaleForeshadows,
   updateForeshadow,
 } from '../api/client';
-import type { Character, Foreshadow, StaleForeshadow } from '../api/types';
+import type { Character, Foreshadow, ForeshadowLedgerResponse, StaleForeshadow } from '../api/types';
 import { ForeshadowManager } from './ForeshadowManager';
 
 vi.mock('../api/client', () => ({
   createForeshadow: vi.fn(),
   deleteForeshadow: vi.fn(),
+  getForeshadowLedger: vi.fn(),
   getForeshadowTimeline: vi.fn(),
   getForeshadows: vi.fn(),
   getStaleForeshadows: vi.fn(),
@@ -78,9 +80,90 @@ const staleForeshadows: StaleForeshadow[] = [
   { foreshadow: foreshadows[1], chapters_since_planted: 6, alert_level: 'critical' },
 ];
 
+const ledgerResponse: ForeshadowLedgerResponse = {
+  world_id: 7,
+  world_version: 3,
+  summary: {
+    total: 4,
+    open_count: 2,
+    planted_count: 1,
+    advanced_count: 1,
+    resolved_count: 1,
+    expired_count: 1,
+    high_urgency_count: 2,
+    stale_count: 1,
+    overdue_count: 1,
+  },
+  groups: {
+    planted: [
+      {
+        foreshadow: foreshadows[1],
+        status_group: 'planted',
+        is_open: true,
+        is_high_urgency: true,
+        is_stale: true,
+        is_overdue: true,
+        chapters_since_planted: 6,
+        pressure_level: 'critical',
+        pressure_reasons: ['高紧迫度：5', '已埋设 6 章未推进', '超过建议回收窗口，请优先推进或收束'],
+        related_characters: [{ id: 2, name: '沈微霜', role_type: 'ally' }],
+        recent_events: [{ event_type: 'planted', chapter_id: 1, chapter_title: '第一章', note: '井底红光首次出现', created_at: '2026-05-31T00:00:00Z' }],
+      },
+    ],
+    advanced: [
+      {
+        foreshadow: foreshadows[0],
+        status_group: 'advanced',
+        is_open: true,
+        is_high_urgency: true,
+        is_stale: false,
+        is_overdue: false,
+        chapters_since_planted: 0,
+        pressure_level: 'high',
+        pressure_reasons: ['高紧迫度：4', '预期收束窗口：第2-4章'],
+        related_characters: [{ id: 1, name: '林砚', role_type: 'protagonist' }],
+        recent_events: [{ event_type: 'advanced', chapter_id: 3, chapter_title: '第三章', note: '玉佩裂纹扩大', created_at: '2026-05-31T00:00:00Z' }],
+      },
+    ],
+    resolved: [
+      {
+        foreshadow: foreshadows[2],
+        status_group: 'resolved',
+        is_open: false,
+        is_high_urgency: false,
+        is_stale: false,
+        is_overdue: false,
+        chapters_since_planted: 0,
+        pressure_level: 'resolved',
+        pressure_reasons: ['预期收束窗口：第5章'],
+        related_characters: [],
+        recent_events: [],
+      },
+    ],
+    expired: [
+      {
+        foreshadow: foreshadows[3],
+        status_group: 'expired',
+        is_open: false,
+        is_high_urgency: false,
+        is_stale: false,
+        is_overdue: false,
+        chapters_since_planted: 0,
+        pressure_level: 'expired',
+        pressure_reasons: [],
+        related_characters: [],
+        recent_events: [],
+      },
+    ],
+  },
+  high_pressure: [],
+};
+ledgerResponse.high_pressure = [ledgerResponse.groups.planted[0], ledgerResponse.groups.advanced[0]];
+
 beforeEach(() => {
   vi.mocked(createForeshadow).mockReset().mockResolvedValue(foreshadows[0]);
   vi.mocked(deleteForeshadow).mockReset().mockResolvedValue(undefined);
+  vi.mocked(getForeshadowLedger).mockReset().mockResolvedValue(ledgerResponse);
   vi.mocked(getForeshadowTimeline).mockReset().mockResolvedValue([]);
   vi.mocked(getForeshadows).mockReset().mockResolvedValue(foreshadows);
   vi.mocked(getStaleForeshadows).mockReset().mockResolvedValue(staleForeshadows);
@@ -103,16 +186,21 @@ describe('ForeshadowManager', () => {
     render(<ForeshadowManager worldId={7} characters={characters} />);
 
     expect(await screen.findByText('Foreshadow Ledger')).toBeInTheDocument();
+    expect(getForeshadowLedger).toHaveBeenCalledWith(7);
     expect(screen.getByText('总数：4')).toBeInTheDocument();
     expect(screen.getByText('未收束：2')).toBeInTheDocument();
     expect(screen.getByText('Stale：1')).toBeInTheDocument();
     expect(screen.getByText('Overdue：1')).toBeInTheDocument();
     expect(screen.getByText('高紧迫：2')).toBeInTheDocument();
+    expect(screen.getByText('高压力：2')).toBeInTheDocument();
+    expect(screen.getByText('优先处理：井中红光、裂纹玉佩')).toBeInTheDocument();
     expect(screen.getByText((_, element) => element?.textContent === '来源章节：#3')).toBeInTheDocument();
     expect(screen.getByText((_, element) => element?.textContent === '收束窗口：第2-4章')).toBeInTheDocument();
     expect(screen.getByText((_, element) => element?.textContent === '关联角色：林砚')).toBeInTheDocument();
     expect(screen.getByText((_, element) => element?.textContent === '生命周期：活跃推进')).toBeInTheDocument();
     expect(screen.getByText((_, element) => element?.textContent === '状态：advanced')).toBeInTheDocument();
+    expect(screen.getByText('压力：高紧迫度：4；预期收束窗口：第2-4章')).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.textContent === '最近轨迹：advanced · 第三章 · 玉佩裂纹扩大')).toBeInTheDocument();
   });
 
   it('filters unresolved stale overdue resolved and dropped foreshadows', async () => {
@@ -219,8 +307,7 @@ describe('ForeshadowManager', () => {
     await user.click(screen.getAllByRole('button', { name: '放弃伏笔' })[0]);
 
     await waitFor(() => expect(updateForeshadow).toHaveBeenCalledWith(1, { status: 'expired' }));
-    expect(getForeshadows).toHaveBeenCalledTimes(2);
-    expect(getStaleForeshadows).toHaveBeenCalledTimes(2);
+    expect(getForeshadowLedger).toHaveBeenCalledTimes(2);
     expect(onChanged).toHaveBeenCalledTimes(1);
   });
 

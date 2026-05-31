@@ -24,6 +24,7 @@ import type {
   Foreshadow,
   ForeshadowCreate,
   ForeshadowEvent,
+  ForeshadowLedgerResponse,
   ForeshadowStatus,
   ForeshadowUpdate,
   NextChapterPrepResponse,
@@ -363,6 +364,10 @@ export function getForeshadows(worldId: number, params: { status?: ForeshadowSta
 
 export function getForeshadowTimeline(foreshadowId: number) {
   return apiRequest<ForeshadowEvent[]>(`/foreshadows/${foreshadowId}/timeline`);
+}
+
+export function getForeshadowLedger(worldId: number) {
+  return apiRequest<ForeshadowLedgerResponse>(`/worlds/${worldId}/foreshadows/ledger`);
 }
 
 export function getStaleForeshadows(worldId: number) {

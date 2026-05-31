@@ -2,9 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   createForeshadow,
   deleteForeshadow,
+  getForeshadowLedger,
   getForeshadowTimeline,
-  getForeshadows,
-  getStaleForeshadows,
   updateForeshadow,
 } from '../api/client';
 import type {
@@ -12,9 +11,10 @@ import type {
   Foreshadow,
   ForeshadowCreate,
   ForeshadowEvent,
+  ForeshadowLedgerEntry,
+  ForeshadowLedgerResponse,
   ForeshadowStatus,
   ForeshadowUpdate,
-  StaleForeshadow,
 } from '../api/types';
 
 type Props = { worldId: number; characters: Character[]; onChanged?: () => Promise<void> | void };
@@ -131,8 +131,7 @@ function nextForwardStatus(statusValue: ForeshadowStatus): ForeshadowStatus | nu
 }
 
 export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
-  const [foreshadows, setForeshadows] = useState<Foreshadow[]>([]);
-  const [staleForeshadows, setStaleForeshadows] = useState<StaleForeshadow[]>([]);
+  const [ledger, setLedger] = useState<ForeshadowLedgerResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -150,12 +149,7 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
     setLoading(true);
     setError('');
     try {
-      const [foreshadowItems, staleItems] = await Promise.all([
-        getForeshadows(worldId),
-        getStaleForeshadows(worldId),
-      ]);
-      setForeshadows(foreshadowItems);
-      setStaleForeshadows(staleItems);
+      setLedger(await getForeshadowLedger(worldId));
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载伏笔失败');
     } finally {
@@ -271,8 +265,11 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
 
   function renderForeshadowCard(f: Foreshadow) {
     const next = nextForwardStatus(f.status);
-    const staleItem = staleById.get(f.id);
-    const isOverdue = overdueIds.has(f.id);
+    const entry = ledgerEntryById.get(f.id);
+    const isHighUrgency = entry?.is_high_urgency ?? f.urgency_level >= 4;
+    const isStale = entry?.is_stale ?? false;
+    const isOverdue = entry?.is_overdue ?? false;
+    const relatedNames = entry?.related_characters.map((character) => character.name) ?? f.related_character_ids.map(charName);
     return (
       <article
         key={f.id}
@@ -328,20 +325,31 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
           </p>
         </div>
 
-        {(staleItem || f.urgency_level >= 4) && (
+        {(isStale || isHighUrgency) && (
           <div className="flex flex-wrap gap-2 text-xs font-black">
-            {f.urgency_level >= 4 && <span className="rounded-full border border-red-700/25 bg-red-100 px-2 py-0.5 text-red-800">高紧迫</span>}
-            {staleItem && <span className="rounded-full border border-amber-700/25 bg-amber-100 px-2 py-0.5 text-amber-900">Stale · {staleItem.chapters_since_planted} 章未推进</span>}
+            {isHighUrgency && <span className="rounded-full border border-red-700/25 bg-red-100 px-2 py-0.5 text-red-800">高紧迫</span>}
+            {isStale && <span className="rounded-full border border-amber-700/25 bg-amber-100 px-2 py-0.5 text-amber-900">Stale · {entry?.chapters_since_planted ?? 0} 章未推进</span>}
             {isOverdue && <span className="rounded-full border border-red-700/25 bg-red-100 px-2 py-0.5 text-red-800">Overdue</span>}
           </div>
         )}
 
-        {f.related_character_ids.length > 0 && (
+        {entry?.pressure_reasons.length ? (
+          <p className="text-xs font-semibold text-amber-900">压力：{entry.pressure_reasons.join('；')}</p>
+        ) : null}
+
+        {relatedNames.length > 0 && (
           <p className="text-xs ink-muted">
             <span className="font-semibold">关联角色：</span>
-            {f.related_character_ids.map(charName).join('、')}
+            {relatedNames.join('、')}
           </p>
         )}
+
+        {entry?.recent_events.length ? (
+          <p className="text-xs ink-muted">
+            <span className="font-semibold">最近轨迹：</span>
+            {entry.recent_events.map((event) => [event.event_type, event.chapter_title, event.note].filter(Boolean).join(' · ')).join('；')}
+          </p>
+        ) : null}
 
         <button className="ghost-button text-sm self-start" onClick={() => setExpandedId(expandedId === f.id ? null : f.id)}>
           {expandedId === f.id ? '收起时间线' : '展开时间线'}
@@ -392,28 +400,36 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
 
   if (loading) return <p className="ink-muted py-4">正在加载伏笔列表…</p>;
 
-  const staleMinChapters = staleForeshadows.length
-    ? Math.min(...staleForeshadows.map((item) => item.chapters_since_planted))
+  const ledgerGroups = ledger?.groups ?? { planted: [], advanced: [], resolved: [], expired: [] };
+  const ledgerEntries: ForeshadowLedgerEntry[] = [
+    ...ledgerGroups.planted,
+    ...ledgerGroups.advanced,
+    ...ledgerGroups.resolved,
+    ...ledgerGroups.expired,
+  ];
+  const foreshadows = ledgerEntries.map((entry) => entry.foreshadow).sort((left, right) => left.id - right.id);
+  const ledgerEntryById = new Map(ledgerEntries.map((entry) => [entry.foreshadow.id, entry]));
+  const highPressure = ledger?.high_pressure ?? [];
+  const staleMinChapters = ledgerEntries.filter((entry) => entry.is_stale).length
+    ? Math.min(...ledgerEntries.filter((entry) => entry.is_stale).map((entry) => entry.chapters_since_planted))
     : 0;
-  const staleById = new Map(staleForeshadows.map((item) => [item.foreshadow.id, item]));
-  const overdueIds = new Set(staleForeshadows.filter((item) => item.alert_level === 'critical').map((item) => item.foreshadow.id));
   const summary = {
-    total: foreshadows.length,
-    unresolved: foreshadows.filter((item) => isUnresolved(item.status)).length,
-    stale: staleForeshadows.length,
-    overdue: overdueIds.size,
-    highUrgency: foreshadows.filter((item) => item.urgency_level >= 4).length,
-    resolved: foreshadows.filter((item) => item.status === 'resolved').length,
-    dropped: foreshadows.filter((item) => item.status === 'expired').length,
+    total: ledger?.summary.total ?? 0,
+    unresolved: ledger?.summary.open_count ?? 0,
+    stale: ledger?.summary.stale_count ?? 0,
+    overdue: ledger?.summary.overdue_count ?? 0,
+    highUrgency: ledger?.summary.high_urgency_count ?? 0,
+    resolved: ledger?.summary.resolved_count ?? 0,
+    dropped: ledger?.summary.expired_count ?? 0,
   };
-  const visibleForeshadows = foreshadows.filter((item) => {
-    if (ledgerFilter === 'unresolved') return isUnresolved(item.status);
-    if (ledgerFilter === 'stale') return staleById.has(item.id);
-    if (ledgerFilter === 'overdue') return overdueIds.has(item.id);
-    if (ledgerFilter === 'resolved') return item.status === 'resolved';
-    if (ledgerFilter === 'dropped') return item.status === 'expired';
+  const visibleForeshadows = ledgerEntries.filter((entry) => {
+    if (ledgerFilter === 'unresolved') return entry.is_open;
+    if (ledgerFilter === 'stale') return entry.is_stale;
+    if (ledgerFilter === 'overdue') return entry.is_overdue;
+    if (ledgerFilter === 'resolved') return entry.foreshadow.status === 'resolved';
+    if (ledgerFilter === 'dropped') return entry.foreshadow.status === 'expired';
     return true;
-  });
+  }).map((entry) => entry.foreshadow).sort((left, right) => left.id - right.id);
   const filterCounts: Record<LedgerFilter, number> = {
     all: summary.total,
     unresolved: summary.unresolved,
@@ -455,6 +471,7 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
             <span className="rounded-full bg-white/70 px-3 py-1">Stale：{summary.stale}</span>
             <span className="rounded-full bg-white/70 px-3 py-1">Overdue：{summary.overdue}</span>
             <span className="rounded-full bg-white/70 px-3 py-1">高紧迫：{summary.highUrgency}</span>
+            <span className="rounded-full bg-white/70 px-3 py-1">高压力：{highPressure.length}</span>
           </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -471,14 +488,20 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
         </div>
       </section>
 
-      {staleForeshadows.length > 0 && (
+      {summary.stale > 0 && (
         <button
           type="button"
           className="mt-4 w-full rounded-2xl border border-amber-700/30 bg-amber-100 px-4 py-3 text-left text-sm font-semibold text-amber-900 shadow-sm"
           onClick={() => setViewMode('kanban')}
         >
-          ⚠️ 有 {staleForeshadows.length} 条伏笔已超过 {staleMinChapters} 章未推进，建议尽快处理
+          ⚠️ 有 {summary.stale} 条伏笔已超过 {staleMinChapters} 章未推进，建议尽快处理
         </button>
+      )}
+
+      {highPressure.length > 0 && (
+        <p className="mt-3 rounded-2xl border border-red-700/25 bg-red-50 px-4 py-3 text-sm font-black text-red-900">
+          优先处理：{highPressure.map((entry) => entry.foreshadow.title).join('、')}
+        </p>
       )}
 
       {error && (

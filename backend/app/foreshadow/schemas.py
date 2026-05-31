@@ -73,3 +73,43 @@ class StaleForeshadowResponse(BaseModel):
     foreshadow: ForeshadowResponse
     chapters_since_planted: int
     alert_level: Literal['warning', 'critical']
+
+
+class RelatedCharacterBrief(BaseModel):
+    id: int
+    name: str
+    role_type: str
+
+
+class ForeshadowLedgerSummary(BaseModel):
+    total: int
+    open_count: int
+    planted_count: int
+    advanced_count: int
+    resolved_count: int
+    expired_count: int
+    high_urgency_count: int
+    stale_count: int
+    overdue_count: int
+
+
+class ForeshadowLedgerEntry(BaseModel):
+    foreshadow: ForeshadowResponse
+    status_group: Literal['planted', 'advanced', 'resolved', 'expired']
+    is_open: bool
+    is_high_urgency: bool
+    is_stale: bool
+    is_overdue: bool
+    chapters_since_planted: int
+    pressure_level: Literal['medium', 'high', 'critical', 'resolved', 'expired']
+    pressure_reasons: list[str]
+    related_characters: list[RelatedCharacterBrief]
+    recent_events: list[ForeshadowEventResponse]
+
+
+class ForeshadowLedgerResponse(BaseModel):
+    world_id: int
+    world_version: int
+    summary: ForeshadowLedgerSummary
+    groups: dict[Literal['planted', 'advanced', 'resolved', 'expired'], list[ForeshadowLedgerEntry]]
+    high_pressure: list[ForeshadowLedgerEntry]

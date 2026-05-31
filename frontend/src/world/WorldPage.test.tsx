@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadows, getNextChapterPrep, getRelations, getStaleForeshadows } from '../api/client';
+import { apiRequest, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNextChapterPrep, getRelations } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -14,9 +14,8 @@ vi.mock('../api/client', () => ({
   getChapterHistoryDetail: vi.fn(),
   getNextChapterPrep: vi.fn(),
   getCharacters: vi.fn(),
-  getForeshadows: vi.fn(),
+  getForeshadowLedger: vi.fn(),
   getForeshadowTimeline: vi.fn(),
-  getStaleForeshadows: vi.fn(),
   getRelations: vi.fn(),
 }));
 
@@ -52,12 +51,33 @@ beforeEach(() => {
   vi.mocked(getChapterHistoryDetail).mockReset();
   vi.mocked(getNextChapterPrep).mockReset();
   vi.mocked(getCharacters).mockReset();
-  vi.mocked(getForeshadows).mockReset();
-  vi.mocked(getStaleForeshadows).mockReset();
+  vi.mocked(getForeshadowLedger).mockReset();
   vi.mocked(getRelations).mockReset();
   vi.mocked(getCharacters).mockResolvedValue(world.characters);
-  vi.mocked(getForeshadows).mockResolvedValue(world.foreshadows);
-  vi.mocked(getStaleForeshadows).mockResolvedValue([]);
+  vi.mocked(getForeshadowLedger).mockResolvedValue({
+    world_id: 7,
+    world_version: 2,
+    summary: { total: 1, open_count: 1, planted_count: 0, advanced_count: 1, resolved_count: 0, expired_count: 0, high_urgency_count: 1, stale_count: 0, overdue_count: 0 },
+    groups: {
+      planted: [],
+      advanced: [{
+        foreshadow: world.foreshadows[0],
+        status_group: 'advanced',
+        is_open: true,
+        is_high_urgency: true,
+        is_stale: false,
+        is_overdue: false,
+        chapters_since_planted: 0,
+        pressure_level: 'high',
+        pressure_reasons: ['高紧迫度：4'],
+        related_characters: [{ id: 1, name: '林砚', role_type: 'protagonist' }],
+        recent_events: [],
+      }],
+      resolved: [],
+      expired: [],
+    },
+    high_pressure: [],
+  });
   vi.mocked(getRelations).mockResolvedValue([]);
   vi.mocked(apiRequest)
     .mockResolvedValueOnce([{ id: 7 }])
@@ -161,7 +181,7 @@ describe('WorldPage Narrative Control Center', () => {
 
     await user.click(screen.getByRole('button', { name: '伏笔账本' }));
     expect(screen.getAllByText('伏笔账本').length).toBeGreaterThanOrEqual(2);
-    expect(getForeshadows).toHaveBeenCalledWith(7);
+    expect(getForeshadowLedger).toHaveBeenCalledWith(7);
     expect(await screen.findByText('Foreshadow Ledger')).toBeInTheDocument();
     expect(screen.getByText('伏笔治理台')).toBeInTheDocument();
     expect(screen.getByText('总数：1')).toBeInTheDocument();

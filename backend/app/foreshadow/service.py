@@ -17,6 +17,8 @@ VALID_STATUS_TRANSITIONS = {
     'resolved': set(),
     'expired': set(),
 }
+LEDGER_GROUPS = ('planted', 'advanced', 'resolved', 'expired')
+PRESSURE_RANK = {'critical': 0, 'high': 1, 'medium': 2, 'resolved': 3, 'expired': 4}
 
 
 def validate_foreshadow_status(status_value: str) -> None:
@@ -169,6 +171,148 @@ def get_foreshadow_timeline(db: Session, user: User, foreshadow_id: int) -> list
         }
         for event, chapter_title in rows
     ]
+
+
+def _approved_chapters_after_source(db: Session, world_id: int, source_chapter_id: int | None) -> int:
+    if source_chapter_id is None:
+        return 0
+    return db.scalar(
+        select(func.count())
+        .select_from(Chapter)
+        .where(Chapter.world_id == world_id)
+        .where(Chapter.status == 'approved')
+        .where(Chapter.id > source_chapter_id)
+    ) or 0
+
+
+def _recent_foreshadow_events(db: Session, foreshadow_id: int, limit: int = 3) -> list[dict]:
+    rows = db.execute(
+        select(ForeshadowEvent, Chapter.title)
+        .outerjoin(Chapter, ForeshadowEvent.chapter_id == Chapter.id)
+        .where(ForeshadowEvent.foreshadow_id == foreshadow_id)
+        .order_by(ForeshadowEvent.created_at.desc(), ForeshadowEvent.id.desc())
+        .limit(limit)
+    ).all()
+    return [
+        {
+            'event_type': event.event_type,
+            'chapter_id': event.chapter_id,
+            'chapter_title': chapter_title,
+            'note': event.note,
+            'created_at': event.created_at,
+        }
+        for event, chapter_title in reversed(rows)
+    ]
+
+
+def _ledger_pressure(db: Session, foreshadow: Foreshadow) -> dict:
+    is_open = foreshadow.status in {'planted', 'advanced'}
+    is_high_urgency = is_open and foreshadow.urgency_level >= 4
+    chapters_since = _approved_chapters_after_source(db, foreshadow.world_id, foreshadow.source_chapter_id)
+    is_stale = foreshadow.status == 'planted' and foreshadow.source_chapter_id is not None and chapters_since >= 3
+    is_overdue = is_stale and chapters_since >= 6
+    reasons: list[str] = []
+    if is_high_urgency:
+        reasons.append(f'高紧迫度：{foreshadow.urgency_level}')
+    if is_stale:
+        reasons.append(f'已埋设 {chapters_since} 章未推进')
+    if is_overdue:
+        reasons.append('超过建议回收窗口，请优先推进或收束')
+    if foreshadow.expected_resolution_window:
+        reasons.append(f'预期收束窗口：{foreshadow.expected_resolution_window}')
+
+    if foreshadow.status == 'resolved':
+        pressure_level = 'resolved'
+    elif foreshadow.status == 'expired':
+        pressure_level = 'expired'
+    elif is_overdue:
+        pressure_level = 'critical'
+    elif is_stale or is_high_urgency:
+        pressure_level = 'high'
+    else:
+        pressure_level = 'medium'
+
+    return {
+        'is_open': is_open,
+        'is_high_urgency': is_high_urgency,
+        'is_stale': is_stale,
+        'is_overdue': is_overdue,
+        'chapters_since_planted': chapters_since,
+        'pressure_level': pressure_level,
+        'pressure_reasons': reasons,
+    }
+
+
+def build_foreshadow_ledger_entry(db: Session, foreshadow: Foreshadow, character_by_id: dict[int, Character]) -> dict:
+    pressure = _ledger_pressure(db, foreshadow)
+    related_characters = [
+        {
+            'id': character.id,
+            'name': character.name,
+            'role_type': character.role_type,
+        }
+        for character_id in foreshadow.related_character_ids
+        if (character := character_by_id.get(character_id)) is not None
+    ]
+    return {
+        'foreshadow': foreshadow,
+        'status_group': foreshadow.status,
+        **pressure,
+        'related_characters': related_characters,
+        'recent_events': _recent_foreshadow_events(db, foreshadow.id),
+    }
+
+
+def _sort_high_pressure(entries: list[dict]) -> list[dict]:
+    high_pressure = [
+        entry for entry in entries
+        if entry['is_open'] and entry['pressure_level'] in {'critical', 'high'}
+    ]
+    return sorted(
+        high_pressure,
+        key=lambda entry: (
+            PRESSURE_RANK[entry['pressure_level']],
+            -entry['chapters_since_planted'],
+            -entry['foreshadow'].urgency_level,
+            entry['foreshadow'].id,
+        ),
+    )
+
+
+def build_foreshadow_ledger(db: Session, world) -> dict:
+    characters = list(db.scalars(select(Character).where(Character.world_id == world.id).order_by(Character.id)))
+    character_by_id = {character.id: character for character in characters}
+    foreshadows = list(db.scalars(select(Foreshadow).where(Foreshadow.world_id == world.id).order_by(Foreshadow.id)))
+    entries = [build_foreshadow_ledger_entry(db, foreshadow, character_by_id) for foreshadow in foreshadows]
+    groups = {status_value: [] for status_value in LEDGER_GROUPS}
+    for entry in entries:
+        if entry['status_group'] in groups:
+            groups[entry['status_group']].append(entry)
+
+    high_pressure = _sort_high_pressure(entries)
+    summary = {
+        'total': len(entries),
+        'open_count': sum(1 for entry in entries if entry['is_open']),
+        'planted_count': len(groups['planted']),
+        'advanced_count': len(groups['advanced']),
+        'resolved_count': len(groups['resolved']),
+        'expired_count': len(groups['expired']),
+        'high_urgency_count': sum(1 for entry in entries if entry['is_high_urgency']),
+        'stale_count': sum(1 for entry in entries if entry['is_stale']),
+        'overdue_count': sum(1 for entry in entries if entry['is_overdue']),
+    }
+    return {
+        'world_id': world.id,
+        'world_version': world.world_version,
+        'summary': summary,
+        'groups': groups,
+        'high_pressure': high_pressure,
+    }
+
+
+def get_foreshadow_ledger(db: Session, user: User, world_id: int) -> dict:
+    world = require_owned_world(db, user, world_id)
+    return build_foreshadow_ledger(db, world)
 
 
 def update_foreshadow(db: Session, user: User, foreshadow_id: int, data: ForeshadowUpdate) -> Foreshadow:

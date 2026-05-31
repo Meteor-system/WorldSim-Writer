@@ -28,7 +28,7 @@ const prep: NextChapterPrepResponse = {
       title: '裂纹玉佩',
       status: 'advanced',
       urgency_level: 4,
-      reason: '该伏笔与上一章 progression hint 相关。',
+      reason: '高紧迫度：5；已埋设 6 章未推进',
     },
   ],
   progression_hints: [
@@ -78,6 +78,7 @@ describe('NextChapterPrepPanel', () => {
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
     expect(screen.getByText('林砚 · protagonist')).toBeInTheDocument();
     expect(screen.getByText('裂纹玉佩 · advanced · urgency 4')).toBeInTheDocument();
+    expect(screen.getByText('理由：高紧迫度：5；已埋设 6 章未推进')).toBeInTheDocument();
     expect(screen.getByText('试探沈微霜是否可信')).toBeInTheDocument();
     expect(screen.getByText('下一章需要补足试探过程。')).toBeInTheDocument();
     expect(screen.getByText('chapter_approved · 世界 1 → 2')).toBeInTheDocument();

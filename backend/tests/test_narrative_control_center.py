@@ -51,6 +51,22 @@ def approve_chapter(client, token, world_id, monkeypatch):
     return approve_draft(client, token, draft)
 
 
+def create_approved_chapter(db_session, world_id, title):
+    chapter = Chapter(
+        world_id=world_id,
+        title=title,
+        status='approved',
+        draft_version=1,
+        approved_version=1,
+        base_world_version=1,
+        approved_content='正文',
+    )
+    db_session.add(chapter)
+    db_session.commit()
+    db_session.refresh(chapter)
+    return chapter.id
+
+
 def test_chapter_history_returns_only_approved_chapters(client, monkeypatch):
     token, world_id = register_and_create_world(client)
     approved = approve_chapter(client, token, world_id, monkeypatch)
@@ -211,6 +227,33 @@ def test_next_chapter_prep_falls_back_to_highest_urgency_foreshadow(client, db_s
     assert payload['suggested_goal'].startswith('推进伏笔《')
     assert 'urgent_foreshadow' in payload['source_signals']
     assert payload['priority_foreshadows'][0]['urgency_level'] >= 1
+
+
+def test_next_chapter_prep_prioritizes_stale_ledger_foreshadows(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    approve_chapter(client, token, world_id, monkeypatch)
+    world = db_session.get(World, world_id)
+    world.story_arc = []
+    db_session.commit()
+    from app.foreshadow.models import Foreshadow
+    stale = db_session.get(Foreshadow, 1)
+    assert stale is not None
+    stale.status = 'planted'
+    stale.urgency_level = 5
+    stale.source_chapter_id = create_approved_chapter(db_session, world_id, '伏笔源章节')
+    db_session.commit()
+    for index in range(6):
+        create_approved_chapter(db_session, world_id, f'后续章节 {index}')
+
+    response = client.get(f'/worlds/{world_id}/next-chapter-prep', headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['priority_foreshadows'][0]['foreshadow_id'] == stale.id
+    assert payload['priority_foreshadows'][0]['urgency_level'] == 5
+    assert '已埋设 6 章未推进' in payload['priority_foreshadows'][0]['reason']
+    assert payload['suggested_goal'].startswith('推进伏笔《')
+    assert 'urgent_foreshadow' in payload['source_signals']
 
 
 def test_next_chapter_prep_does_not_mutate_world_version_or_write_events(client, db_session, monkeypatch):

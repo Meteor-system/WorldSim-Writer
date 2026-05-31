@@ -7,6 +7,7 @@ from app.core.database import get_db
 from app.foreshadow.schemas import (
     ForeshadowCreate,
     ForeshadowEventResponse,
+    ForeshadowLedgerResponse,
     ForeshadowResponse,
     ForeshadowUpdate,
     StaleForeshadowResponse,
@@ -15,6 +16,7 @@ from app.foreshadow.service import (
     create_foreshadow,
     delete_foreshadow,
     get_foreshadow,
+    get_foreshadow_ledger,
     get_foreshadow_timeline,
     get_foreshadows,
     get_stale_foreshadows,
@@ -58,6 +60,15 @@ def stale(
         StaleForeshadowResponse.model_validate(item)
         for item in get_stale_foreshadows(db, current_user, world_id)
     ]
+
+
+@router.get('/worlds/{world_id}/foreshadows/ledger', response_model=ForeshadowLedgerResponse)
+def ledger(
+    world_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> ForeshadowLedgerResponse:
+    return ForeshadowLedgerResponse.model_validate(get_foreshadow_ledger(db, current_user, world_id))
 
 
 @router.get('/foreshadows/{foreshadow_id}/timeline', response_model=list[ForeshadowEventResponse])
