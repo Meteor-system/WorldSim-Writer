@@ -49,6 +49,26 @@ class TagUpdateRequest(BaseModel):
         return stripped or None
 
 
+class TagMergeRequest(BaseModel):
+    target_tag_id: int
+
+    @field_validator('target_tag_id')
+    @classmethod
+    def validate_target_tag_id(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError('target_tag_id must be positive')
+        return value
+
+
+class TagMergeResponse(BaseModel):
+    world_id: int
+    source_tag_id: int
+    target_tag_id: int
+    moved_count: int
+    already_assigned_count: int
+    deleted_source_tag: bool
+
+
 class ObjectTagAssignRequest(BaseModel):
     object_type: str
     object_id: int

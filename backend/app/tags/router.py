@@ -12,10 +12,12 @@ from app.tags.schemas import (
     TagCreateRequest,
     TagDetailResponse,
     TagListResponse,
+    TagMergeRequest,
+    TagMergeResponse,
     TagResponse,
     TagUpdateRequest,
 )
-from app.tags.service import assign_tag, bulk_assign_tag, create_tag, delete_tag, get_tag_detail, list_tags, unassign_tag, update_tag
+from app.tags.service import assign_tag, bulk_assign_tag, create_tag, delete_tag, get_tag_detail, list_tags, merge_tag, unassign_tag, update_tag
 
 router = APIRouter(tags=['tags'])
 
@@ -48,6 +50,17 @@ def update_world_tag(
     db: Session = Depends(get_db),
 ) -> TagResponse:
     return TagResponse.model_validate(update_tag(db, current_user, world_id, tag_id, data))
+
+
+@router.post('/worlds/{world_id}/tags/{source_tag_id}/merge', response_model=TagMergeResponse)
+def merge_world_tag(
+    world_id: int,
+    source_tag_id: int,
+    data: TagMergeRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> TagMergeResponse:
+    return TagMergeResponse.model_validate(merge_tag(db, current_user, world_id, source_tag_id, data))
 
 
 @router.get('/worlds/{world_id}/tags/{tag_id}', response_model=TagDetailResponse)

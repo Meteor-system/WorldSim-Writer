@@ -271,6 +271,19 @@ export type TagUpdateRequest = {
   color?: string | null;
 };
 
+export type TagMergeRequest = {
+  target_tag_id: number;
+};
+
+export type TagMergeResponse = {
+  world_id: number;
+  source_tag_id: number;
+  target_tag_id: number;
+  moved_count: number;
+  already_assigned_count: number;
+  deleted_source_tag: boolean;
+};
+
 export type TagSummaryResponse = TagResponse & {
   assignment_count: number;
   object_type_counts: Record<string, number>;

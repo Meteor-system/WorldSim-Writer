@@ -25,6 +25,7 @@ import {
   listWorldSeeds,
   listWorldSnapshots,
   listWorldTags,
+  mergeWorldTag,
   searchWorld,
   unassignWorldTag,
   updateWorldTag,
@@ -493,6 +494,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 onCreateTag={createWorldTag}
                 onLoadTag={getWorldTag}
                 onUpdateTag={updateWorldTag}
+                onMergeTag={mergeWorldTag}
                 onAssignTag={assignWorldTag}
                 onBulkAssignTag={bulkAssignWorldTag}
                 onUnassignTag={unassignWorldTag}

@@ -40,6 +40,8 @@ import type {
   ObjectTagResponse,
   TagDetailResponse,
   TagListResponse,
+  TagMergeRequest,
+  TagMergeResponse,
   TagResponse,
   TagUpdateRequest,
   WorldCreateRequest,
@@ -156,6 +158,13 @@ export function createWorldTag(worldId: number, data: { name: string; color?: st
 export function updateWorldTag(worldId: number, tagId: number, data: TagUpdateRequest) {
   return apiRequest<TagResponse>(`/worlds/${worldId}/tags/${tagId}`, {
     method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export function mergeWorldTag(worldId: number, sourceTagId: number, data: TagMergeRequest) {
+  return apiRequest<TagMergeResponse>(`/worlds/${worldId}/tags/${sourceTagId}/merge`, {
+    method: 'POST',
     body: JSON.stringify(data),
   });
 }

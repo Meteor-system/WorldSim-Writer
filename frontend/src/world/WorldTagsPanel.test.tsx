@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ObjectTagBulkAssignResponse, ObjectTagResponse, TagDetailResponse, TagListResponse, TagResponse } from '../api/types';
+import type { ObjectTagBulkAssignResponse, ObjectTagResponse, TagDetailResponse, TagListResponse, TagMergeResponse, TagResponse } from '../api/types';
 import { WorldTagsPanel } from './WorldTagsPanel';
 
 const tag: TagResponse = {
@@ -14,9 +14,21 @@ const tag: TagResponse = {
   created_at: '2026-05-31T00:00:00Z',
 };
 
+const targetTag: TagResponse = {
+  id: 4,
+  world_id: 7,
+  name: '主线归档',
+  slug: '主线归档',
+  color: 'blue',
+  created_at: '2026-05-31T00:00:00Z',
+};
+
 const listResponse: TagListResponse = {
   world_id: 7,
-  tags: [{ ...tag, assignment_count: 1, object_type_counts: { character: 1 } }],
+  tags: [
+    { ...tag, assignment_count: 1, object_type_counts: { character: 1 } },
+    { ...targetTag, assignment_count: 0, object_type_counts: {} },
+  ],
 };
 
 const detailResponse: TagDetailResponse = {
@@ -53,6 +65,15 @@ const bulkAssignment: ObjectTagBulkAssignResponse = {
   already_assigned_object_ids: [1],
 };
 
+const mergeResponse: TagMergeResponse = {
+  world_id: 7,
+  source_tag_id: 3,
+  target_tag_id: 4,
+  moved_count: 1,
+  already_assigned_count: 1,
+  deleted_source_tag: true,
+};
+
 function renderPanel(overrides: Partial<React.ComponentProps<typeof WorldTagsPanel>> = {}) {
   return render(
     <WorldTagsPanel
@@ -61,6 +82,7 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof WorldTagsPan
       onCreateTag={vi.fn().mockResolvedValue(tag)}
       onLoadTag={vi.fn().mockResolvedValue(detailResponse)}
       onUpdateTag={vi.fn().mockResolvedValue(tag)}
+      onMergeTag={vi.fn().mockResolvedValue(mergeResponse)}
       onAssignTag={vi.fn().mockResolvedValue(assignment)}
       onBulkAssignTag={vi.fn().mockResolvedValue(bulkAssignment)}
       onUnassignTag={vi.fn().mockResolvedValue(undefined)}
@@ -180,6 +202,39 @@ describe('WorldTagsPanel', () => {
 
     expect(onUpdateTag).not.toHaveBeenCalled();
     expect(await screen.findByRole('alert')).toHaveTextContent('请输入标签名称');
+  });
+
+  it('merges the selected tag into another tag and loads the target detail', async () => {
+    const user = userEvent.setup();
+    const targetDetail: TagDetailResponse = {
+      ...detailResponse,
+      tag: { ...targetTag, assignment_count: 2, object_type_counts: { character: 1, foreshadow: 1 } },
+    };
+    const onMergeTag = vi.fn().mockResolvedValue(mergeResponse);
+    const onLoadTag = vi.fn()
+      .mockResolvedValueOnce(detailResponse)
+      .mockResolvedValueOnce(targetDetail);
+    renderPanel({ onMergeTag, onLoadTag });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    expect(await screen.findByText('合并标签')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('合并到标签'), '4');
+    await user.click(screen.getByRole('button', { name: '合并当前标签' }));
+
+    expect(onMergeTag).toHaveBeenCalledWith(7, 3, { target_tag_id: 4 });
+    expect(await screen.findByText('标签已合并：移动 1，跳过重复 1。')).toBeInTheDocument();
+    await waitFor(() => expect(onLoadTag).toHaveBeenLastCalledWith(7, 4));
+  });
+
+  it('explains that another tag is required before merging', async () => {
+    renderPanel({ onListTags: vi.fn().mockResolvedValue({ world_id: 7, tags: [{ ...tag, assignment_count: 1, object_type_counts: { character: 1 } }] }) });
+
+    await screen.findByText('灯塔线');
+    await userEvent.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+
+    expect(await screen.findByText('需要至少另一个标签才能合并当前标签。')).toBeInTheDocument();
   });
 
   it('shows empty and error states', async () => {

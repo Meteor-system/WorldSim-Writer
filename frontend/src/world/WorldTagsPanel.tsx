@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from 'react';
-import type { ObjectTagBulkAssignResponse, ObjectTagResponse, TagDetailResponse, TagListResponse, TagResponse, TagSummaryResponse, TagUpdateRequest } from '../api/types';
+import type { ObjectTagBulkAssignResponse, ObjectTagResponse, TagDetailResponse, TagListResponse, TagMergeRequest, TagMergeResponse, TagResponse, TagSummaryResponse, TagUpdateRequest } from '../api/types';
 
 type Props = {
   worldId: number;
@@ -7,6 +7,7 @@ type Props = {
   onCreateTag: (worldId: number, data: { name: string; color?: string }) => Promise<TagResponse>;
   onLoadTag: (worldId: number, tagId: number) => Promise<TagDetailResponse>;
   onUpdateTag: (worldId: number, tagId: number, data: TagUpdateRequest) => Promise<TagResponse>;
+  onMergeTag: (worldId: number, sourceTagId: number, data: TagMergeRequest) => Promise<TagMergeResponse>;
   onAssignTag: (worldId: number, tagId: number, data: { object_type: string; object_id: number }) => Promise<ObjectTagResponse>;
   onBulkAssignTag?: (worldId: number, tagId: number, data: { object_type: string; object_ids: number[] }) => Promise<ObjectTagBulkAssignResponse>;
   onUnassignTag: (worldId: number, tagId: number, objectType: string, objectId: number) => Promise<unknown>;
@@ -26,7 +27,7 @@ function countText(tag: TagSummaryResponse): string {
   return counts.map(([type, count]) => `${type} ${count}`).join(' · ');
 }
 
-export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onUpdateTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
+export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onUpdateTag, onMergeTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
   const [tags, setTags] = useState<TagSummaryResponse[]>([]);
   const [selectedTagId, setSelectedTagId] = useState<number | null>(null);
   const [detail, setDetail] = useState<TagDetailResponse | null>(null);
@@ -39,6 +40,8 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
   const [editTagName, setEditTagName] = useState('');
   const [editTagColor, setEditTagColor] = useState('');
   const [editNotice, setEditNotice] = useState('');
+  const [mergeTargetTagId, setMergeTargetTagId] = useState('');
+  const [mergeNotice, setMergeNotice] = useState('');
   const [objectType, setObjectType] = useState('character');
   const [objectId, setObjectId] = useState('1');
   const [bulkObjectIds, setBulkObjectIds] = useState('');
@@ -58,6 +61,10 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
     }
   }
 
+  function availableMergeTargets(sourceTagId: number | null = selectedTagId) {
+    return tags.filter((tag) => tag.id !== sourceTagId);
+  }
+
   async function loadTag(tagId: number) {
     setSelectedTagId(tagId);
     setDetailLoading(true);
@@ -67,7 +74,10 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       setDetail(loaded);
       setEditTagName(loaded.tag.name);
       setEditTagColor(loaded.tag.color ?? '');
+      const firstTarget = tags.find((tag) => tag.id !== loaded.tag.id);
+      setMergeTargetTagId(firstTarget ? String(firstTarget.id) : '');
       setEditNotice('');
+      setMergeNotice('');
     } catch (err) {
       setDetail(null);
       setError(err instanceof Error ? err.message : '标签详情暂不可用');
@@ -119,6 +129,29 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       setEditNotice('标签已更新。');
     } catch (err) {
       setError(err instanceof Error ? err.message : '更新标签失败');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function submitTagMerge(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (selectedTagId === null) return;
+    const targetTagId = Number(mergeTargetTagId);
+    if (!Number.isInteger(targetTagId) || targetTagId <= 0 || targetTagId === selectedTagId) {
+      setError('请选择要合并到的目标标签');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    setMergeNotice('');
+    try {
+      const result = await onMergeTag(worldId, selectedTagId, { target_tag_id: targetTagId });
+      await loadTags();
+      await loadTag(targetTagId);
+      setMergeNotice(`标签已合并：移动 ${result.moved_count}，跳过重复 ${result.already_assigned_count}。`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '合并标签失败');
     } finally {
       setSaving(false);
     }
@@ -278,6 +311,22 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
             <button className="primary-button self-end" disabled={saving} type="submit">保存标签修改</button>
             {editNotice && <p className="ink-muted text-sm md:col-span-3">{editNotice}</p>}
           </form>
+
+          {availableMergeTargets().length === 0 ? (
+            <p className="ink-muted text-sm">需要至少另一个标签才能合并当前标签。</p>
+          ) : (
+            <form className="grid gap-3 rounded-2xl bg-white/45 p-4 md:grid-cols-[1fr_auto]" onSubmit={submitTagMerge}>
+              <p className="text-sm font-black text-[#3b2511] md:col-span-2">合并标签</p>
+              <label className="text-sm font-bold text-[#3b2511]">
+                合并到标签
+                <select className="paper-input mt-1" value={mergeTargetTagId} onChange={(event) => setMergeTargetTagId(event.target.value)}>
+                  {availableMergeTargets().map((tag) => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
+                </select>
+              </label>
+              <button className="secondary-button self-end" disabled={saving} type="submit">合并当前标签</button>
+              {mergeNotice && <p className="ink-muted text-sm md:col-span-2">{mergeNotice}</p>}
+            </form>
+          )}
 
           <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitAssignment}>
             <label className="text-sm font-bold text-[#3b2511]">

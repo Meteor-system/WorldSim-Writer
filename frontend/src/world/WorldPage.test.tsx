@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, searchWorld, unassignWorldTag, updateWorldTag } from '../api/client';
+import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, searchWorld, unassignWorldTag, updateWorldTag } from '../api/client';
 import type { WorldOverview, WorldSearchResponse } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -31,6 +31,7 @@ vi.mock('../api/client', () => ({
   getWorldTag: vi.fn(),
   listWorldSeeds: vi.fn(),
   listWorldTags: vi.fn(),
+  mergeWorldTag: vi.fn(),
   searchWorld: vi.fn(),
   unassignWorldTag: vi.fn(),
   updateWorldTag: vi.fn(),
@@ -107,6 +108,7 @@ beforeEach(() => {
   vi.mocked(getWorldTag).mockReset();
   vi.mocked(listWorldSeeds).mockReset();
   vi.mocked(listWorldTags).mockReset();
+  vi.mocked(mergeWorldTag).mockReset();
   vi.mocked(searchWorld).mockReset();
   vi.mocked(searchWorld).mockResolvedValue(worldSearchResponse);
   vi.mocked(unassignWorldTag).mockReset();
@@ -189,6 +191,7 @@ beforeEach(() => {
   vi.mocked(bulkAssignWorldTag).mockResolvedValue({ world_id: 7, tag_id: 3, object_type: 'character', requested_count: 2, assigned_count: 2, already_assigned_count: 0, assigned_object_ids: [1, 2], already_assigned_object_ids: [] });
   vi.mocked(unassignWorldTag).mockResolvedValue(undefined);
   vi.mocked(updateWorldTag).mockResolvedValue({ id: 3, world_id: 7, name: '灯塔线', slug: '灯塔线', color: 'amber', created_at: '2026-05-31T00:00:00Z' });
+  vi.mocked(mergeWorldTag).mockResolvedValue({ world_id: 7, source_tag_id: 3, target_tag_id: 4, moved_count: 1, already_assigned_count: 0, deleted_source_tag: true });
   vi.mocked(deleteWorldTag).mockResolvedValue(undefined);
   vi.mocked(getWorldSeed).mockResolvedValue({
     key: 'forgotten-sun-city',

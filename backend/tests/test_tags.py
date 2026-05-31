@@ -158,6 +158,97 @@ def test_update_tag_can_clear_color_without_incrementing_world_version(client):
     assert events['summary']['event_type_counts'] == {'WORLD_CREATED': 1}
 
 
+def test_merge_tag_moves_assignments_deduplicates_and_deletes_source(client):
+    token = register(client, 'tags-merge@example.com')
+    world = create_world(client, token)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    character_id = overview['characters'][0]['id']
+    foreshadow_id = overview['foreshadows'][0]['id']
+    source = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '灯塔旧线'}).json()
+    target = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '灯塔线'}).json()
+    client.post(
+        f"/worlds/{world['id']}/tags/{source['id']}/objects",
+        headers=auth(token),
+        json={'object_type': 'character', 'object_id': character_id},
+    )
+    client.post(
+        f"/worlds/{world['id']}/tags/{source['id']}/objects",
+        headers=auth(token),
+        json={'object_type': 'foreshadow', 'object_id': foreshadow_id},
+    )
+    client.post(
+        f"/worlds/{world['id']}/tags/{target['id']}/objects",
+        headers=auth(token),
+        json={'object_type': 'character', 'object_id': character_id},
+    )
+
+    response = client.post(
+        f"/worlds/{world['id']}/tags/{source['id']}/merge",
+        headers=auth(token),
+        json={'target_tag_id': target['id']},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        'world_id': world['id'],
+        'source_tag_id': source['id'],
+        'target_tag_id': target['id'],
+        'moved_count': 1,
+        'already_assigned_count': 1,
+        'deleted_source_tag': True,
+    }
+    assert client.get(f"/worlds/{world['id']}/tags/{source['id']}", headers=auth(token)).status_code == 404
+    detail = client.get(f"/worlds/{world['id']}/tags/{target['id']}", headers=auth(token)).json()
+    assert detail['tag']['assignment_count'] == 2
+    assert detail['tag']['object_type_counts'] == {'character': 1, 'foreshadow': 1}
+    assert {(item['object_type'], item['object_id']) for item in detail['objects']} == {
+        ('character', character_id),
+        ('foreshadow', foreshadow_id),
+    }
+
+
+def test_merge_tag_rejects_self_merge_without_deleting_source(client):
+    token = register(client, 'tags-merge-self@example.com')
+    world = create_world(client, token)
+    tag = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '自合并'}).json()
+
+    response = client.post(
+        f"/worlds/{world['id']}/tags/{tag['id']}/merge",
+        headers=auth(token),
+        json={'target_tag_id': tag['id']},
+    )
+
+    assert response.status_code == 422
+    assert response.json()['detail'] == 'TAG_MERGE_TARGET_REQUIRED'
+    detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
+    assert detail['tag']['name'] == '自合并'
+
+
+def test_merge_tag_does_not_increment_world_version(client):
+    token = register(client, 'tags-merge-version@example.com')
+    world = create_world(client, token)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    source = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '旧归档'}).json()
+    target = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '新归档'}).json()
+    client.post(
+        f"/worlds/{world['id']}/tags/{source['id']}/objects",
+        headers=auth(token),
+        json={'object_type': 'character', 'object_id': overview['characters'][0]['id']},
+    )
+
+    response = client.post(
+        f"/worlds/{world['id']}/tags/{source['id']}/merge",
+        headers=auth(token),
+        json={'target_tag_id': target['id']},
+    )
+    after = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    events = client.get(f"/worlds/{world['id']}/events", headers=auth(token)).json()
+
+    assert response.status_code == 200
+    assert after['world_version'] == overview['world_version']
+    assert events['summary']['event_type_counts'] == {'WORLD_CREATED': 1}
+
+
 def test_duplicate_tag_names_are_rejected_per_world(client):
     token = register(client, 'tags-duplicate@example.com')
     world = create_world(client, token)
@@ -341,6 +432,7 @@ def test_tag_endpoints_require_login(client):
     detail_response = client.get('/worlds/1/tags/1')
     assign_response = client.post('/worlds/1/tags/1/objects', json={'object_type': 'character', 'object_id': 1})
     bulk_assign_response = client.post('/worlds/1/tags/1/objects/bulk', json={'object_type': 'character', 'object_ids': [1, 2]})
+    merge_response = client.post('/worlds/1/tags/1/merge', json={'target_tag_id': 2})
     unassign_response = client.delete('/worlds/1/tags/1/objects/character/1')
     delete_response = client.delete('/worlds/1/tags/1')
 
@@ -349,5 +441,6 @@ def test_tag_endpoints_require_login(client):
     assert detail_response.status_code == 401
     assert assign_response.status_code == 401
     assert bulk_assign_response.status_code == 401
+    assert merge_response.status_code == 401
     assert unassign_response.status_code == 401
     assert delete_response.status_code == 401

@@ -13,7 +13,7 @@ from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow
 from app.narrative.models import Chapter
 from app.tags.models import ObjectTag, Tag
-from app.tags.schemas import ObjectTagAssignRequest, ObjectTagBulkAssignRequest, TagCreateRequest, TagUpdateRequest
+from app.tags.schemas import ObjectTagAssignRequest, ObjectTagBulkAssignRequest, TagCreateRequest, TagMergeRequest, TagUpdateRequest
 from app.world.service import require_owned_world
 
 SUPPORTED_OBJECT_TYPES = {'character', 'foreshadow', 'chapter', 'event'}
@@ -161,6 +161,43 @@ def update_tag(db: Session, user: User, world_id: int, tag_id: int, data: TagUpd
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='TAG_ALREADY_EXISTS') from exc
     db.refresh(tag)
     return tag
+
+
+def merge_tag(db: Session, user: User, world_id: int, source_tag_id: int, data: TagMergeRequest) -> dict:
+    world = require_owned_world(db, user, world_id)
+    source_tag = _require_tag(db, world.id, source_tag_id)
+    target_tag = _require_tag(db, world.id, data.target_tag_id)
+    if source_tag.id == target_tag.id:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='TAG_MERGE_TARGET_REQUIRED')
+
+    source_assignments = list(db.scalars(select(ObjectTag).where(ObjectTag.tag_id == source_tag.id).order_by(ObjectTag.id)))
+    target_assignments = set(
+        db.execute(select(ObjectTag.object_type, ObjectTag.object_id).where(ObjectTag.tag_id == target_tag.id)).all()
+    )
+    moved_count = 0
+    already_assigned_count = 0
+    for assignment in source_assignments:
+        key = (assignment.object_type, assignment.object_id)
+        if key in target_assignments:
+            db.delete(assignment)
+            already_assigned_count += 1
+        else:
+            assignment.tag_id = target_tag.id
+            target_assignments.add(key)
+            moved_count += 1
+
+    db.flush()
+    db.delete(source_tag)
+    db.commit()
+    return {
+        'world_id': world.id,
+        'source_tag_id': source_tag_id,
+        'target_tag_id': target_tag.id,
+        'moved_count': moved_count,
+        'already_assigned_count': already_assigned_count,
+        'deleted_source_tag': True,
+    }
+
 
 
 def delete_tag(db: Session, user: User, world_id: int, tag_id: int) -> None:
