@@ -44,6 +44,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
   const [editNotice, setEditNotice] = useState('');
   const [mergeTargetTagId, setMergeTargetTagId] = useState('');
   const [mergeNotice, setMergeNotice] = useState('');
+  const [deleteConfirming, setDeleteConfirming] = useState(false);
   const [objectType, setObjectType] = useState('character');
   const [objectId, setObjectId] = useState('1');
   const [bulkObjectIds, setBulkObjectIds] = useState('');
@@ -82,6 +83,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       setDetailSearchQuery('');
       setEditNotice('');
       setMergeNotice('');
+      setDeleteConfirming(false);
     } catch (err) {
       setDetail(null);
       setError(err instanceof Error ? err.message : '标签详情暂不可用');
@@ -238,6 +240,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       await onDeleteTag(worldId, selectedTagId);
       setSelectedTagId(null);
       setDetail(null);
+      setDeleteConfirming(false);
       await loadTags();
     } catch (err) {
       setError(err instanceof Error ? err.message : '删除标签失败');
@@ -312,8 +315,18 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
               <p className="text-sm font-bold text-[#5e3b1c]">当前标签</p>
               <h3 className="mt-1 text-xl font-black text-[#34210f]">{detail.tag.name}</h3>
             </div>
-            <button className="secondary-button" disabled={saving} onClick={deleteSelectedTag}>删除当前标签</button>
+            <button className="secondary-button" disabled={saving} onClick={() => setDeleteConfirming(true)}>删除当前标签</button>
           </div>
+
+          {deleteConfirming && (
+            <div className="rounded-2xl border border-red-900/20 bg-red-50/70 p-4">
+              <p className="text-sm font-bold text-red-900">确认删除标签「{detail.tag.name}」？这会移除 {detail.tag.assignment_count} 个对象关联。</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button className="secondary-button text-sm" disabled={saving} onClick={deleteSelectedTag}>确认删除标签</button>
+                <button className="secondary-button text-sm" disabled={saving} onClick={() => setDeleteConfirming(false)}>取消删除</button>
+              </div>
+            </div>
+          )}
 
           <form className="grid gap-3 rounded-2xl bg-amber-50/60 p-4 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitTagUpdate}>
             <p className="text-sm font-black text-[#3b2511] md:col-span-3">编辑标签</p>

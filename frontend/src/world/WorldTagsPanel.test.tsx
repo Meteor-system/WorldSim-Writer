@@ -167,6 +167,9 @@ describe('WorldTagsPanel', () => {
     expect(onUnassignTag).toHaveBeenCalledWith(7, 3, 'character', 1);
 
     await user.click(screen.getByRole('button', { name: '删除当前标签' }));
+    expect(onDeleteTag).not.toHaveBeenCalled();
+    expect(await screen.findByText('确认删除标签「灯塔线」？这会移除 1 个对象关联。')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '确认删除标签' }));
     expect(onDeleteTag).toHaveBeenCalledWith(7, 3);
   });
 
@@ -367,6 +370,48 @@ describe('WorldTagsPanel', () => {
 
     expect(await screen.findByText('许砚')).toBeInTheDocument();
     expect(screen.getByLabelText('搜索当前标签对象')).toHaveValue('');
+  });
+
+  it('cancels selected tag deletion before calling the API', async () => {
+    const user = userEvent.setup();
+    const onDeleteTag = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ onDeleteTag });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    await screen.findByText('许砚');
+    await user.click(screen.getByRole('button', { name: '删除当前标签' }));
+    expect(await screen.findByText('确认删除标签「灯塔线」？这会移除 1 个对象关联。')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '取消删除' }));
+
+    expect(onDeleteTag).not.toHaveBeenCalled();
+    expect(screen.queryByText('确认删除标签「灯塔线」？这会移除 1 个对象关联。')).not.toBeInTheDocument();
+  });
+
+  it('resets pending tag deletion when loading another tag', async () => {
+    const user = userEvent.setup();
+    const targetDetail: TagDetailResponse = {
+      tag: { ...targetTag, assignment_count: 0, object_type_counts: {} },
+      objects: [],
+    };
+    const onLoadTag = vi.fn()
+      .mockResolvedValueOnce(detailResponse)
+      .mockResolvedValueOnce(targetDetail);
+    const onDeleteTag = vi.fn().mockResolvedValue(undefined);
+    renderPanel({ onLoadTag, onDeleteTag });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    await screen.findByText('许砚');
+    await user.click(screen.getByRole('button', { name: '删除当前标签' }));
+    expect(await screen.findByText('确认删除标签「灯塔线」？这会移除 1 个对象关联。')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '查看 主线归档' }));
+
+    expect(await screen.findByText('这个标签还没有关联对象。')).toBeInTheDocument();
+    expect(screen.queryByText('确认删除标签「灯塔线」？这会移除 1 个对象关联。')).not.toBeInTheDocument();
+    expect(onDeleteTag).not.toHaveBeenCalled();
   });
 
   it('shows empty and error states', async () => {
