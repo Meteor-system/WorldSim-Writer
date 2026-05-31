@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ObjectTagBulkAssignResponse, ObjectTagResponse, TagDetailResponse, TagListResponse, TagMergeResponse, TagResponse } from '../api/types';
@@ -480,6 +480,66 @@ describe('WorldTagsPanel', () => {
 
     expect(screen.queryByText('许砚')).not.toBeInTheDocument();
     expect(screen.queryByText('当前标签')).not.toBeInTheDocument();
+  });
+
+  it('sorts selected tag objects by title', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onLoadTag: vi.fn().mockResolvedValue(mixedDetailResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    await screen.findByText('许砚');
+
+    await user.selectOptions(screen.getByLabelText('对象排序'), 'title');
+
+    const objectCards = screen.getAllByRole('article');
+    expect(objectCards.map((card) => within(card).getByRole('heading', { level: 4 }).textContent)).toEqual([
+      '第一章 灯塔低鸣',
+      '黑匣子脉冲',
+      '许砚',
+    ]);
+  });
+
+  it('sorts searched selected tag objects by id', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onLoadTag: vi.fn().mockResolvedValue(mixedDetailResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    await screen.findByText('黑匣子脉冲');
+
+    await user.type(screen.getByLabelText('搜索当前标签对象'), '许');
+    await user.selectOptions(screen.getByLabelText('对象排序'), 'id');
+
+    const objectCards = screen.getAllByRole('article');
+    expect(objectCards.map((card) => within(card).getByRole('heading', { level: 4 }).textContent)).toEqual([
+      '许砚',
+      '第一章 灯塔低鸣',
+    ]);
+    expect(screen.getByText('显示 2 / 3 个对象')).toBeInTheDocument();
+  });
+
+  it('resets selected tag object sort when loading another tag', async () => {
+    const user = userEvent.setup();
+    const targetDetail: TagDetailResponse = {
+      tag: { ...targetTag, assignment_count: 1, object_type_counts: { character: 1 } },
+      objects: [detailResponse.objects[0]],
+    };
+    const onLoadTag = vi.fn()
+      .mockResolvedValueOnce(mixedDetailResponse)
+      .mockResolvedValueOnce(targetDetail);
+    renderPanel({ onLoadTag });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    await screen.findByText('黑匣子脉冲');
+    await user.selectOptions(screen.getByLabelText('对象排序'), 'title');
+    expect(screen.getByLabelText('对象排序')).toHaveValue('title');
+
+    await user.click(screen.getByRole('button', { name: '查看 主线归档' }));
+
+    expect(await screen.findByText('许砚')).toBeInTheDocument();
+    expect(screen.getByLabelText('对象排序')).toHaveValue('default');
   });
 
   it('sorts visible tags by assignment count', async () => {

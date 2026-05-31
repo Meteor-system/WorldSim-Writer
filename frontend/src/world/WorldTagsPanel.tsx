@@ -35,6 +35,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
   const [detail, setDetail] = useState<TagDetailResponse | null>(null);
   const [detailObjectTypeFilter, setDetailObjectTypeFilter] = useState('all');
   const [detailSearchQuery, setDetailSearchQuery] = useState('');
+  const [detailSortMode, setDetailSortMode] = useState('default');
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -83,6 +84,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       setMergeTargetTagId(firstTarget ? String(firstTarget.id) : '');
       setDetailObjectTypeFilter('all');
       setDetailSearchQuery('');
+      setDetailSortMode('default');
       setEditNotice('');
       setMergeNotice('');
       setDeleteConfirming(false);
@@ -280,12 +282,18 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
       ? detail.objects
       : detail.objects.filter((item) => item.object_type === detailObjectTypeFilter)
     : [];
-  const filteredObjects = normalizedDetailSearchQuery
+  const searchedObjects = normalizedDetailSearchQuery
     ? typeFilteredObjects.filter((item) => {
         const haystack = [item.title, item.subtitle, item.snippet, item.object_type, String(item.object_id)].join(' ').toLowerCase();
         return haystack.includes(normalizedDetailSearchQuery);
       })
     : typeFilteredObjects;
+  const filteredObjects = [...searchedObjects].sort((left, right) => {
+    if (detailSortMode === 'title') return left.title.localeCompare(right.title) || left.object_type.localeCompare(right.object_type) || left.object_id - right.object_id;
+    if (detailSortMode === 'type') return left.object_type.localeCompare(right.object_type) || left.title.localeCompare(right.title) || left.object_id - right.object_id;
+    if (detailSortMode === 'id') return left.object_id - right.object_id || left.object_type.localeCompare(right.object_type);
+    return 0;
+  });
 
   return (
     <section className="book-card space-y-5 p-5">
@@ -442,17 +450,33 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
             </div>
           </div>
 
-          <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
-            搜索当前标签对象
-            <input
-              className="paper-input mt-1"
-              aria-label="搜索当前标签对象"
-              value={detailSearchQuery}
-              onChange={(event) => setDetailSearchQuery(event.target.value)}
-              placeholder="按标题、摘要、类型或 ID 搜索"
-            />
-            <span className="ink-muted mt-2 block text-xs">显示 {filteredObjects.length} / {detail.tag.assignment_count} 个对象</span>
-          </label>
+          <div className="grid gap-3 md:grid-cols-[1fr_14rem]">
+            <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
+              搜索当前标签对象
+              <input
+                className="paper-input mt-1"
+                aria-label="搜索当前标签对象"
+                value={detailSearchQuery}
+                onChange={(event) => setDetailSearchQuery(event.target.value)}
+                placeholder="按标题、摘要、类型或 ID 搜索"
+              />
+              <span className="ink-muted mt-2 block text-xs">显示 {filteredObjects.length} / {detail.tag.assignment_count} 个对象</span>
+            </label>
+            <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
+              对象排序
+              <select
+                className="paper-input mt-1"
+                aria-label="对象排序"
+                value={detailSortMode}
+                onChange={(event) => setDetailSortMode(event.target.value)}
+              >
+                <option value="default">默认排序</option>
+                <option value="title">标题 A-Z</option>
+                <option value="type">类型 A-Z</option>
+                <option value="id">ID 从小到大</option>
+              </select>
+            </label>
+          </div>
 
           <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitAssignment}>
             <label className="text-sm font-bold text-[#3b2511]">
