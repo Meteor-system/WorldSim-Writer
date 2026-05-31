@@ -29,6 +29,7 @@ import type {
   ForeshadowUpdate,
   NarrativeHealthResponse,
   NextChapterPrepResponse,
+  OpenThreadsResponse,
   OutlineResponse,
   ParagraphReviseRequest,
   ReviseDraftRequest,
@@ -278,6 +279,10 @@ export function getNextChapterPrep(worldId: number) {
 
 export function getNarrativeHealth(worldId: number) {
   return apiRequest<NarrativeHealthResponse>(`/worlds/${worldId}/narrative-health`);
+}
+
+export function getOpenThreads(worldId: number) {
+  return apiRequest<OpenThreadsResponse>(`/worlds/${worldId}/open-threads`);
 }
 
 export function createWorldSnapshot(worldId: number, data: { label?: string; note?: string } = {}) {

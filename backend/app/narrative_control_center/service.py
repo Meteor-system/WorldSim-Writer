@@ -447,6 +447,226 @@ def get_narrative_health(db: Session, user: User, world_id: int) -> dict:
     }
 
 
+PRIORITY_RANK = {'must_close': 0, 'should_advance': 1, 'can_delay': 2, 'can_leave_open': 3}
+THREAD_PRESSURE_RANK = {'critical': 0, 'high': 1, 'medium': 2, 'low': 3}
+
+
+def _open_thread(
+    thread_id: str,
+    thread_type: str,
+    priority: str,
+    pressure_level: str,
+    title: str,
+    summary: str,
+    suggested_action: str,
+    related_object_type: str | None = None,
+    related_object_id: int | None = None,
+    related_character_ids: list[int] | None = None,
+    related_foreshadow_ids: list[int] | None = None,
+    can_seed_next_chapter_goal: bool = False,
+) -> dict:
+    return {
+        'thread_id': thread_id,
+        'thread_type': thread_type,
+        'priority': priority,
+        'pressure_level': pressure_level,
+        'title': title,
+        'summary': summary,
+        'related_object_type': related_object_type,
+        'related_object_id': related_object_id,
+        'related_character_ids': related_character_ids or [],
+        'related_foreshadow_ids': related_foreshadow_ids or [],
+        'suggested_action': suggested_action,
+        'can_seed_next_chapter_goal': can_seed_next_chapter_goal,
+    }
+
+
+def _thread_priority_counts(threads: list[dict]) -> dict[str, int]:
+    return {
+        'must_close_count': sum(1 for thread in threads if thread['priority'] == 'must_close'),
+        'should_advance_count': sum(1 for thread in threads if thread['priority'] == 'should_advance'),
+        'can_delay_count': sum(1 for thread in threads if thread['priority'] == 'can_delay'),
+        'can_leave_open_count': sum(1 for thread in threads if thread['priority'] == 'can_leave_open'),
+    }
+
+
+def _narrative_entropy(total_open_threads: int, must_close_count: int) -> str:
+    if must_close_count >= 2 or total_open_threads >= 10:
+        return 'high'
+    if must_close_count >= 1 or total_open_threads >= 5:
+        return 'medium'
+    return 'low'
+
+
+def _foreshadow_thread(entry: dict) -> dict:
+    foreshadow = entry['foreshadow']
+    pressure_level = entry['pressure_level']
+    if pressure_level == 'critical' or entry.get('is_overdue'):
+        priority = 'must_close'
+        action = '下一章优先回收或明确处理该伏笔，避免叙事债务继续累积。'
+    elif pressure_level == 'high':
+        priority = 'should_advance'
+        action = '下一章推进该伏笔，给出新信息、反转或阶段性兑现。'
+    else:
+        priority = 'can_delay'
+        action = '保持记录，可在后续章节继续铺垫或合并到更高压线索。'
+    reasons = entry.get('pressure_reasons') or []
+    summary = '；'.join(reasons) if reasons else foreshadow.description
+    return _open_thread(
+        thread_id=f'foreshadow:{foreshadow.id}',
+        thread_type='foreshadow',
+        priority=priority,
+        pressure_level=pressure_level,
+        title=foreshadow.title,
+        summary=summary,
+        related_object_type='foreshadow',
+        related_object_id=foreshadow.id,
+        related_character_ids=list(foreshadow.related_character_ids or []),
+        related_foreshadow_ids=[foreshadow.id],
+        suggested_action=action,
+        can_seed_next_chapter_goal=priority in {'must_close', 'should_advance'},
+    )
+
+
+def _character_goal_threads(characters: list[Character]) -> list[dict]:
+    threads: list[dict] = []
+    for character in characters:
+        for index, goal in enumerate(character.current_goals or []):
+            is_core = character.role_type in {'protagonist', 'major'}
+            threads.append(
+                _open_thread(
+                    thread_id=f'character_goal:{character.id}:{index}',
+                    thread_type='character_goal',
+                    priority='should_advance' if is_core else 'can_delay',
+                    pressure_level='medium' if is_core else 'low',
+                    title=f'{character.name}：{goal}',
+                    summary=f'{character.name} 当前仍有 active goal：{goal}',
+                    related_object_type='character',
+                    related_object_id=character.id,
+                    related_character_ids=[character.id],
+                    suggested_action='在下一章给该目标一次选择、阻力或阶段性结果。' if is_core else '可延后处理，或合并到主线/伏笔推进中。',
+                    can_seed_next_chapter_goal=is_core,
+                )
+            )
+    return threads
+
+
+def _progression_hint_threads(latest_chapter: Chapter | None) -> list[dict]:
+    if latest_chapter is None:
+        return []
+    hints = ((latest_chapter.character_arc_report or {}).get('progression_hints') or [])
+    threads: list[dict] = []
+    for index, hint in enumerate(hints):
+        priority = 'should_advance' if hint.get('priority') == 'high' else 'can_delay'
+        threads.append(
+            _open_thread(
+                thread_id=f'progression_hint:{index}',
+                thread_type='progression_hint',
+                priority=priority,
+                pressure_level='medium' if priority == 'should_advance' else 'low',
+                title=hint.get('title') or '上一章推进提示',
+                summary=hint.get('rationale') or hint.get('suggested_next_beat') or '上一章报告建议继续推进该线索。',
+                related_character_ids=hint.get('related_character_ids') or [],
+                related_foreshadow_ids=hint.get('related_foreshadow_ids') or [],
+                suggested_action=hint.get('suggested_next_beat') or '将该提示转化为下一章目标。',
+                can_seed_next_chapter_goal=bool(hint.get('can_seed_next_chapter_goal')),
+            )
+        )
+    return threads
+
+
+def _health_risk_threads(health: dict) -> list[dict]:
+    threads: list[dict] = []
+    for index, risk in enumerate(health.get('risks') or []):
+        severity = risk.get('severity')
+        priority = 'must_close' if severity == 'high' else 'should_advance'
+        threads.append(
+            _open_thread(
+                thread_id=f"health_risk:{risk.get('source', 'risk')}:{index}",
+                thread_type='health_risk',
+                priority=priority,
+                pressure_level='high' if severity == 'high' else 'medium',
+                title=risk.get('object_title') or risk.get('source') or '叙事风险',
+                summary=risk.get('message') or 'Narrative Health 检测到需要处理的风险。',
+                related_object_type=risk.get('object_type'),
+                related_object_id=risk.get('object_id'),
+                suggested_action=risk.get('suggested_action') or '优先复核该风险。',
+                can_seed_next_chapter_goal=priority == 'must_close',
+            )
+        )
+    return threads
+
+
+def get_open_threads(db: Session, user: User, world_id: int) -> dict:
+    world = require_owned_world(db, user, world_id)
+    ledger = build_foreshadow_ledger(db, world)
+    characters = list(db.scalars(select(Character).where(Character.world_id == world.id).order_by(Character.id)))
+    latest_chapter = _latest_approved_chapter(db, world.id)
+    health = get_narrative_health(db, user, world.id)
+
+    threads: list[dict] = []
+    ledger_entries = [entry for group in ledger['groups'].values() for entry in group]
+    threads.extend(_foreshadow_thread(entry) for entry in ledger_entries if entry['is_open'])
+    threads.extend(_character_goal_threads(characters))
+    threads.extend(_progression_hint_threads(latest_chapter))
+    threads.extend(_health_risk_threads(health))
+
+    seen: set[str] = set()
+    deduped_threads: list[dict] = []
+    for thread in threads:
+        if thread['thread_id'] in seen:
+            continue
+        seen.add(thread['thread_id'])
+        deduped_threads.append(thread)
+    deduped_threads.sort(
+        key=lambda thread: (
+            PRIORITY_RANK.get(thread['priority'], 9),
+            THREAD_PRESSURE_RANK.get(thread['pressure_level'], 9),
+            thread['thread_id'],
+        )
+    )
+
+    counts = _thread_priority_counts(deduped_threads)
+    total_foreshadows = ledger['summary']['total']
+    closed_foreshadows = ledger['summary']['resolved_count'] + ledger['summary']['expired_count']
+    convergence_ratio = round(closed_foreshadows / max(total_foreshadows, 1), 2)
+    recent_event_count = db.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world.id)) or 0
+    suggested_next_actions = []
+    seed_thread = next((thread for thread in deduped_threads if thread['can_seed_next_chapter_goal']), None)
+    if seed_thread is not None:
+        suggested_next_actions.append(
+            {
+                'action_key': 'seed_next_chapter_goal',
+                'label': '用最高压开放线索规划下一章',
+                'detail': seed_thread['suggested_action'],
+                'thread_id': seed_thread['thread_id'],
+            }
+        )
+    if counts['must_close_count']:
+        suggested_next_actions.append(
+            {
+                'action_key': 'reduce_entropy',
+                'label': '先收束再扩张',
+                'detail': '当前存在 must_close 线索，建议下一章减少新增设定，优先兑现旧承诺。',
+            }
+        )
+
+    return {
+        'world_id': world.id,
+        'world_version': world.world_version,
+        'summary': {
+            'total_open_threads': len(deduped_threads),
+            **counts,
+            'convergence_ratio': convergence_ratio,
+            'narrative_entropy_level': _narrative_entropy(len(deduped_threads), counts['must_close_count']),
+            'recent_event_count': recent_event_count,
+        },
+        'threads': deduped_threads[:20],
+        'suggested_next_actions': suggested_next_actions,
+    }
+
+
+
 def get_approved_chapter_history(db: Session, user: User, world_id: int) -> dict:
     world = require_owned_world(db, user, world_id)
     chapters = list(db.scalars(_approved_chapters_query(world.id)))

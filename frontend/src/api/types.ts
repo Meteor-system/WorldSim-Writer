@@ -567,6 +567,40 @@ export type NarrativeHealthResponse = {
   suggested_actions: NarrativeHealthAction[];
 };
 
+export type OpenThreadItem = {
+  thread_id: string;
+  thread_type: string;
+  priority: 'must_close' | 'should_advance' | 'can_delay' | 'can_leave_open';
+  pressure_level: string;
+  title: string;
+  summary: string;
+  related_object_type: string | null;
+  related_object_id: number | null;
+  related_character_ids: number[];
+  related_foreshadow_ids: number[];
+  suggested_action: string;
+  can_seed_next_chapter_goal: boolean;
+};
+
+export type OpenThreadsSummary = {
+  total_open_threads: number;
+  must_close_count: number;
+  should_advance_count: number;
+  can_delay_count: number;
+  can_leave_open_count: number;
+  convergence_ratio: number;
+  narrative_entropy_level: 'low' | 'medium' | 'high';
+  recent_event_count: number;
+};
+
+export type OpenThreadsResponse = {
+  world_id: number;
+  world_version: number;
+  summary: OpenThreadsSummary;
+  threads: OpenThreadItem[];
+  suggested_next_actions: Array<Record<string, unknown>>;
+};
+
 export type WorldSnapshotSummary = {
   id: number;
   world_id: number;

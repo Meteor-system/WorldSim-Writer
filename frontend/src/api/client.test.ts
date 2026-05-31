@@ -18,6 +18,7 @@ import {
   getNextChapterPrep,
   getForeshadowLedger,
   getNarrativeHealth,
+  getOpenThreads,
   exportWorldArchiveMarkdown,
   getDraftDiff,
   getWorldEvents,
@@ -153,6 +154,39 @@ describe('world snapshot compare API helper', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/snapshots/12/compare/13', expect.any(Object));
     expect(response.summary.total_changes).toBe(1);
+  });
+});
+
+describe('open threads API helper', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('calls open threads endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      world_id: 7,
+      world_version: 3,
+      summary: {
+        total_open_threads: 1,
+        must_close_count: 0,
+        should_advance_count: 1,
+        can_delay_count: 0,
+        can_leave_open_count: 0,
+        convergence_ratio: 0.25,
+        narrative_entropy_level: 'medium',
+        recent_event_count: 4,
+      },
+      threads: [],
+      suggested_next_actions: [],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await getOpenThreads(7);
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/worlds/7/open-threads', expect.any(Object));
+    expect(response.summary.narrative_entropy_level).toBe('medium');
   });
 });
 

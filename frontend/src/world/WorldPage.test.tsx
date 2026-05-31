@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, compareWorldSnapshots, createSampleWorld, createWorld, createWorldSnapshot, exportWorldArchiveMarkdown, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getRelations, getWorldEvents, listWorldSnapshots, searchWorld } from '../api/client';
+import { apiRequest, compareWorldSnapshots, createSampleWorld, createWorld, createWorldSnapshot, exportWorldArchiveMarkdown, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, listWorldSnapshots, searchWorld } from '../api/client';
 import type { WorldOverview } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -18,6 +18,7 @@ vi.mock('../api/client', () => ({
   getChapterHistoryDetail: vi.fn(),
   getNextChapterPrep: vi.fn(),
   getNarrativeHealth: vi.fn(),
+  getOpenThreads: vi.fn(),
   getWorldEvents: vi.fn(),
   searchWorld: vi.fn(),
   getCharacters: vi.fn(),
@@ -64,6 +65,7 @@ beforeEach(() => {
   vi.mocked(getChapterHistoryDetail).mockReset();
   vi.mocked(getNextChapterPrep).mockReset();
   vi.mocked(getNarrativeHealth).mockReset();
+  vi.mocked(getOpenThreads).mockReset();
   vi.mocked(getWorldEvents).mockReset();
   vi.mocked(searchWorld).mockReset();
   vi.mocked(listWorldSnapshots).mockReset();
@@ -159,6 +161,37 @@ beforeEach(() => {
     risks: [],
     suggested_actions: [{ action_key: 'continue_next_chapter', label: '继续下一章', detail: '当前没有高风险阻塞。' }],
   });
+  vi.mocked(getOpenThreads).mockResolvedValue({
+    world_id: 7,
+    world_version: 2,
+    summary: {
+      total_open_threads: 1,
+      must_close_count: 0,
+      should_advance_count: 1,
+      can_delay_count: 0,
+      can_leave_open_count: 0,
+      convergence_ratio: 0,
+      narrative_entropy_level: 'low',
+      recent_event_count: 1,
+    },
+    threads: [
+      {
+        thread_id: 'foreshadow:1',
+        thread_type: 'foreshadow',
+        priority: 'should_advance',
+        pressure_level: 'high',
+        title: '裂纹玉佩',
+        summary: '高紧迫度：4',
+        related_object_type: 'foreshadow',
+        related_object_id: 1,
+        related_character_ids: [1],
+        related_foreshadow_ids: [1],
+        suggested_action: '下一章推进该伏笔。',
+        can_seed_next_chapter_goal: true,
+      },
+    ],
+    suggested_next_actions: [],
+  });
   vi.mocked(getWorldEvents).mockResolvedValue({
     items: [],
     total: 0,
@@ -228,7 +261,9 @@ describe('WorldPage Narrative Control Center', () => {
     expect(getChapterHistory).toHaveBeenCalledWith(7);
     expect(getNextChapterPrep).toHaveBeenCalledWith(7);
     expect(getNarrativeHealth).toHaveBeenCalledWith(7);
+    expect(getOpenThreads).toHaveBeenCalledWith(7);
     expect(await screen.findByText('Narrative Health')).toBeInTheDocument();
+    expect(await screen.findByText('Open Threads Board')).toBeInTheDocument();
     expect(await screen.findByText('章节历史')).toBeInTheDocument();
     expect(screen.getByText('第一章 雨巷密谈 · v1 · 世界 1 → 2')).toBeInTheDocument();
     expect(screen.getByText('下一章准备台')).toBeInTheDocument();

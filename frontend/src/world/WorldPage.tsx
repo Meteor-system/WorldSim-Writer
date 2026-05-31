@@ -11,17 +11,19 @@ import {
   getChapterHistoryDetail,
   getNarrativeHealth,
   getNextChapterPrep,
+  getOpenThreads,
   getWorldEvents,
   listWorldSnapshots,
   searchWorld,
 } from '../api/client';
-import type { ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview } from '../api/types';
+import type { ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
 import { ChapterHistoryPanel } from './ChapterHistoryPanel';
 import { NarrativeHealthPanel } from './NarrativeHealthPanel';
 import { NextChapterPrepPanel } from './NextChapterPrepPanel';
+import { OpenThreadsPanel } from './OpenThreadsPanel';
 import { WorldArchivePanel } from './WorldArchivePanel';
 import { WorldCreationForm } from './WorldCreationForm';
 import { WorldSearchPanel } from './WorldSearchPanel';
@@ -132,6 +134,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [narrativeHealth, setNarrativeHealth] = useState<NarrativeHealthResponse | null>(null);
   const [narrativeHealthLoading, setNarrativeHealthLoading] = useState(false);
   const [narrativeHealthError, setNarrativeHealthError] = useState('');
+  const [openThreads, setOpenThreads] = useState<OpenThreadsResponse | null>(null);
+  const [openThreadsLoading, setOpenThreadsLoading] = useState(false);
+  const [openThreadsError, setOpenThreadsError] = useState('');
   const [selectedExecutionContext, setSelectedExecutionContext] = useState<ChapterExecutionContext | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -140,9 +145,11 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     setChapterHistoryLoading(true);
     setNextPrepLoading(true);
     setNarrativeHealthLoading(true);
+    setOpenThreadsLoading(true);
     setChapterHistoryError('');
     setNextPrepError('');
     setNarrativeHealthError('');
+    setOpenThreadsError('');
     try {
       setChapterHistory(await getChapterHistory(worldId));
     } catch {
@@ -166,6 +173,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setNarrativeHealthError('叙事健康度暂不可用');
     } finally {
       setNarrativeHealthLoading(false);
+    }
+    try {
+      setOpenThreads(await getOpenThreads(worldId));
+    } catch {
+      setOpenThreads(null);
+      setOpenThreadsError('开放线索看板暂不可用');
+    } finally {
+      setOpenThreadsLoading(false);
     }
   }
 
@@ -374,6 +389,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 {selectedExecutionContext && <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已设为下一章目标：{selectedExecutionContext.goal}</p>}
               </div>
               <NarrativeHealthPanel health={narrativeHealth} loading={narrativeHealthLoading} error={narrativeHealthError} />
+              <OpenThreadsPanel openThreads={openThreads} loading={openThreadsLoading} error={openThreadsError} />
               <NextChapterPrepPanel
                 prep={nextPrep}
                 loading={nextPrepLoading}

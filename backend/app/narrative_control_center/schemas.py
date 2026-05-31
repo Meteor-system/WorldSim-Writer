@@ -137,3 +137,37 @@ class NarrativeHealthResponse(BaseModel):
     metrics: list[NarrativeHealthMetric]
     risks: list[NarrativeHealthRisk]
     suggested_actions: list[NarrativeHealthAction]
+
+
+class OpenThreadItem(BaseModel):
+    thread_id: str
+    thread_type: str
+    priority: str
+    pressure_level: str
+    title: str
+    summary: str
+    related_object_type: str | None = None
+    related_object_id: int | None = None
+    related_character_ids: list[int]
+    related_foreshadow_ids: list[int]
+    suggested_action: str
+    can_seed_next_chapter_goal: bool
+
+
+class OpenThreadsSummary(BaseModel):
+    total_open_threads: int
+    must_close_count: int
+    should_advance_count: int
+    can_delay_count: int
+    can_leave_open_count: int
+    convergence_ratio: float
+    narrative_entropy_level: str
+    recent_event_count: int
+
+
+class OpenThreadsResponse(BaseModel):
+    world_id: int
+    world_version: int
+    summary: OpenThreadsSummary
+    threads: list[OpenThreadItem]
+    suggested_next_actions: list[dict]
