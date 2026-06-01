@@ -3,6 +3,7 @@ import type { ObjectTagBulkAssignResponse, ObjectTagResponse, TagDetailResponse,
 
 type Props = {
   worldId: number;
+  readOnly?: boolean;
   onListTags: (worldId: number) => Promise<TagListResponse>;
   onCreateTag: (worldId: number, data: { name: string; color?: string }) => Promise<TagResponse>;
   onLoadTag: (worldId: number, tagId: number) => Promise<TagDetailResponse>;
@@ -62,7 +63,7 @@ function constraintText(parts: string[]): string {
   return parts.length > 0 ? parts.join('，') : '当前条件';
 }
 
-export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, onUpdateTag, onMergeTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
+export function WorldTagsPanel({ worldId, readOnly = false, onListTags, onCreateTag, onLoadTag, onUpdateTag, onMergeTag, onAssignTag, onBulkAssignTag, onUnassignTag, onDeleteTag }: Props) {
   const [tags, setTags] = useState<TagSummaryResponse[]>([]);
   const [tagSearchQuery, setTagSearchQuery] = useState('');
   const [tagObjectTypeFilter, setTagObjectTypeFilter] = useState('all');
@@ -380,20 +381,27 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
           <p className="chapter-kicker">Tools Workspace</p>
           <h2 className="text-2xl font-black text-[#34210f]">Tags / Collections</h2>
           <p className="manuscript mt-2 text-sm text-[#5e3b1c]">标签只用于资料归档，不会写入 canon 或推进世界版本。</p>
+          {readOnly && (
+            <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">
+              已归档小说为只读模式；恢复写作后才能编辑标签和对象关联。
+            </p>
+          )}
         </div>
       </div>
 
-      <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitTag}>
-        <label className="text-sm font-bold text-[#3b2511]">
-          新标签名称
-          <input className="paper-input mt-1" value={tagName} onChange={(event) => setTagName(event.target.value)} placeholder="例如：主线压力" />
-        </label>
-        <label className="text-sm font-bold text-[#3b2511]">
-          标签颜色
-          <input className="paper-input mt-1" value={tagColor} onChange={(event) => setTagColor(event.target.value)} placeholder="amber" />
-        </label>
-        <button className="primary-button self-end" disabled={saving} type="submit">创建标签</button>
-      </form>
+      {!readOnly && (
+        <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitTag}>
+          <label className="text-sm font-bold text-[#3b2511]">
+            新标签名称
+            <input className="paper-input mt-1" value={tagName} onChange={(event) => setTagName(event.target.value)} placeholder="例如：主线压力" />
+          </label>
+          <label className="text-sm font-bold text-[#3b2511]">
+            标签颜色
+            <input className="paper-input mt-1" value={tagColor} onChange={(event) => setTagColor(event.target.value)} placeholder="amber" />
+          </label>
+          <button className="primary-button self-end" disabled={saving} type="submit">创建标签</button>
+        </form>
+      )}
 
       {loading && <p className="ink-muted" role="status">正在加载标签...</p>}
       {error && <p className="paper-error" role="alert">{error}</p>}
@@ -474,10 +482,10 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
               <p className="text-sm font-bold text-[#5e3b1c]">当前标签</p>
               <h3 className="mt-1 text-xl font-black text-[#34210f]">{detail.tag.name}</h3>
             </div>
-            <button className="secondary-button" disabled={saving} onClick={() => setDeleteConfirming(true)}>删除当前标签</button>
+            {!readOnly && <button className="secondary-button" disabled={saving} onClick={() => setDeleteConfirming(true)}>删除当前标签</button>}
           </div>
 
-          {deleteConfirming && (
+          {!readOnly && deleteConfirming && (
             <div className="rounded-2xl border border-red-900/20 bg-red-50/70 p-4">
               <p className="text-sm font-bold text-red-900">确认删除标签「{detail.tag.name}」？这会移除 {detail.tag.assignment_count} 个对象关联。</p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -487,21 +495,23 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
             </div>
           )}
 
-          <form className="grid gap-3 rounded-2xl bg-amber-50/60 p-4 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitTagUpdate}>
-            <p className="text-sm font-black text-[#3b2511] md:col-span-3">编辑标签</p>
-            <label className="text-sm font-bold text-[#3b2511]">
-              编辑标签名称
-              <input className="paper-input mt-1" value={editTagName} onChange={(event) => setEditTagName(event.target.value)} />
-            </label>
-            <label className="text-sm font-bold text-[#3b2511]">
-              编辑标签颜色
-              <input className="paper-input mt-1" value={editTagColor} onChange={(event) => setEditTagColor(event.target.value)} placeholder="留空清除颜色" />
-            </label>
-            <button className="primary-button self-end" disabled={saving} type="submit">保存标签修改</button>
-            {editNotice && <p className="ink-muted text-sm md:col-span-3">{editNotice}</p>}
-          </form>
+          {!readOnly && (
+            <form className="grid gap-3 rounded-2xl bg-amber-50/60 p-4 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitTagUpdate}>
+              <p className="text-sm font-black text-[#3b2511] md:col-span-3">编辑标签</p>
+              <label className="text-sm font-bold text-[#3b2511]">
+                编辑标签名称
+                <input className="paper-input mt-1" value={editTagName} onChange={(event) => setEditTagName(event.target.value)} />
+              </label>
+              <label className="text-sm font-bold text-[#3b2511]">
+                编辑标签颜色
+                <input className="paper-input mt-1" value={editTagColor} onChange={(event) => setEditTagColor(event.target.value)} placeholder="留空清除颜色" />
+              </label>
+              <button className="primary-button self-end" disabled={saving} type="submit">保存标签修改</button>
+              {editNotice && <p className="ink-muted text-sm md:col-span-3">{editNotice}</p>}
+            </form>
+          )}
 
-          {availableMergeTargets().length === 0 ? (
+          {!readOnly && (availableMergeTargets().length === 0 ? (
             <p className="ink-muted text-sm">需要至少另一个标签才能合并当前标签。</p>
           ) : (
             <form className="grid gap-3 rounded-2xl bg-white/45 p-4 md:grid-cols-[1fr_auto]" onSubmit={submitTagMerge}>
@@ -515,7 +525,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
               <button className="secondary-button self-end" disabled={saving} type="submit">合并当前标签</button>
               {mergeNotice && <p className="ink-muted text-sm md:col-span-2">{mergeNotice}</p>}
             </form>
-          )}
+          ))}
 
           <div className="space-y-2 rounded-2xl bg-amber-50/40 p-3">
             <p className="text-sm font-black text-[#3b2511]">对象筛选</p>
@@ -577,21 +587,23 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
             <p className="ink-muted text-xs" aria-label="标签对象视图摘要">{detailViewSummary}</p>
           </div>
 
-          <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitAssignment}>
-            <label className="text-sm font-bold text-[#3b2511]">
-              对象类型
-              <select className="paper-input mt-1" value={objectType} onChange={(event) => setObjectType(event.target.value)}>
-                {OBJECT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-              </select>
-            </label>
-            <label className="text-sm font-bold text-[#3b2511]">
-              对象 ID
-              <input className="paper-input mt-1" type="number" min="1" value={objectId} onChange={(event) => setObjectId(event.target.value)} />
-            </label>
-            <button className="primary-button self-end" disabled={saving} type="submit">添加对象标签</button>
-          </form>
+          {!readOnly && (
+            <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitAssignment}>
+              <label className="text-sm font-bold text-[#3b2511]">
+                对象类型
+                <select className="paper-input mt-1" value={objectType} onChange={(event) => setObjectType(event.target.value)}>
+                  {OBJECT_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+              </label>
+              <label className="text-sm font-bold text-[#3b2511]">
+                对象 ID
+                <input className="paper-input mt-1" type="number" min="1" value={objectId} onChange={(event) => setObjectId(event.target.value)} />
+              </label>
+              <button className="primary-button self-end" disabled={saving} type="submit">添加对象标签</button>
+            </form>
+          )}
 
-          {onBulkAssignTag && (
+          {!readOnly && onBulkAssignTag && (
             <form className="grid gap-3 md:grid-cols-[1fr_auto]" onSubmit={submitBulkAssignment}>
               <label className="text-sm font-bold text-[#3b2511]">
                 批量对象 ID
@@ -620,7 +632,7 @@ export function WorldTagsPanel({ worldId, onListTags, onCreateTag, onLoadTag, on
                       <p className="text-xs font-black uppercase tracking-[0.2em] text-[#8a5a2b]">{item.object_type} #{item.object_id}</p>
                       <h4 className="mt-1 font-black text-[#3b2511]">{item.title}</h4>
                     </div>
-                    <button className="secondary-button text-sm" disabled={saving} onClick={() => void removeAssignment(item.object_type, item.object_id)}>移除标签</button>
+                    {!readOnly && <button className="secondary-button text-sm" disabled={saving} onClick={() => void removeAssignment(item.object_type, item.object_id)}>移除标签</button>}
                   </div>
                   <p className="mt-1 text-xs font-bold text-[#5e3b1c]">{item.subtitle}</p>
                   <p className="manuscript mt-2 text-sm">{item.snippet}</p>

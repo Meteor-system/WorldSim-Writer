@@ -3,6 +3,7 @@ import type { ObjectTagBulkAssignResponse, TagListResponse, TagSummaryResponse, 
 
 type Props = {
   worldId: number;
+  readOnly?: boolean;
   onSearch: (worldId: number, params: { q: string; object_types?: string[]; tags?: string[]; limit?: number }) => Promise<WorldSearchResponse>;
   onListTags?: (worldId: number) => Promise<TagListResponse>;
   onBulkAssignTag?: (worldId: number, tagId: number, data: { object_type: string; object_ids: number[] }) => Promise<ObjectTagBulkAssignResponse>;
@@ -54,7 +55,7 @@ function groupedResultIds(response: WorldSearchResponse | null): Array<{ object_
   return Array.from(grouped.entries()).map(([object_type, ids]) => ({ object_type, object_ids: uniqueIds(ids) }));
 }
 
-export function WorldSearchPanel({ worldId, onSearch, onListTags, onBulkAssignTag }: Props) {
+export function WorldSearchPanel({ worldId, readOnly = false, onSearch, onListTags, onBulkAssignTag }: Props) {
   const [query, setQuery] = useState('');
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [response, setResponse] = useState<WorldSearchResponse | null>(null);
@@ -242,7 +243,7 @@ export function WorldSearchPanel({ worldId, onSearch, onListTags, onBulkAssignTa
             ))}
           </div>
 
-          {onBulkAssignTag && tags.length > 0 && taggableResultCount > 0 && (
+          {!readOnly && onBulkAssignTag && tags.length > 0 && taggableResultCount > 0 && (
             <form className="space-y-3 rounded-2xl bg-amber-50/60 p-4" onSubmit={submitBulkAssignment}>
               <div>
                 <p className="text-sm font-black text-[#3b2511]">搜索结果批量打标</p>

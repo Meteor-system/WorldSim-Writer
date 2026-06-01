@@ -191,6 +191,54 @@ describe('WorldTagsPanel', () => {
     expect(onDeleteTag).toHaveBeenCalledWith(7, 3);
   });
 
+  it('keeps archived tag collections read-only while preserving tag detail browsing', async () => {
+    const user = userEvent.setup();
+    const onCreateTag = vi.fn().mockResolvedValue(tag);
+    const onUpdateTag = vi.fn().mockResolvedValue(tag);
+    const onMergeTag = vi.fn().mockResolvedValue(mergeResponse);
+    const onAssignTag = vi.fn().mockResolvedValue(assignment);
+    const onBulkAssignTag = vi.fn().mockResolvedValue(bulkAssignment);
+    const onUnassignTag = vi.fn().mockResolvedValue(undefined);
+    const onDeleteTag = vi.fn().mockResolvedValue(undefined);
+    const onLoadTag = vi.fn().mockResolvedValue(detailResponse);
+
+    renderPanel({
+      readOnly: true,
+      onCreateTag,
+      onUpdateTag,
+      onMergeTag,
+      onAssignTag,
+      onBulkAssignTag,
+      onUnassignTag,
+      onDeleteTag,
+      onLoadTag,
+    });
+
+    expect(await screen.findByText('灯塔线')).toBeInTheDocument();
+    expect(screen.getByText('已归档小说为只读模式；恢复写作后才能编辑标签和对象关联。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建标签' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+
+    expect(await screen.findByText('许砚')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看全部对象 1' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除当前标签' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '保存标签修改' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '合并当前标签' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '添加对象标签' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '批量添加对象标签' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '移除标签' })).not.toBeInTheDocument();
+
+    expect(onLoadTag).toHaveBeenCalledWith(7, 3);
+    expect(onCreateTag).not.toHaveBeenCalled();
+    expect(onUpdateTag).not.toHaveBeenCalled();
+    expect(onMergeTag).not.toHaveBeenCalled();
+    expect(onAssignTag).not.toHaveBeenCalled();
+    expect(onBulkAssignTag).not.toHaveBeenCalled();
+    expect(onUnassignTag).not.toHaveBeenCalled();
+    expect(onDeleteTag).not.toHaveBeenCalled();
+  });
+
   it('rejects invalid bulk object ID lists', async () => {
     const user = userEvent.setup();
     const onBulkAssignTag = vi.fn().mockResolvedValue(bulkAssignment);

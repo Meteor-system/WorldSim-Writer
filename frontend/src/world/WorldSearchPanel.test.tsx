@@ -127,6 +127,24 @@ describe('WorldSearchPanel', () => {
     expect(onListTags).toHaveBeenCalledTimes(2);
   });
 
+  it('hides search-result bulk tagging in read-only mode while preserving search results', async () => {
+    const user = userEvent.setup();
+    const onSearch = vi.fn().mockResolvedValue(searchResponse);
+    const onListTags = vi.fn().mockResolvedValue(tagList);
+    const onBulkAssignTag = vi.fn().mockResolvedValue(characterBulkResponse);
+
+    render(<WorldSearchPanel worldId={7} readOnly onSearch={onSearch} onListTags={onListTags} onBulkAssignTag={onBulkAssignTag} />);
+
+    await user.type(screen.getByLabelText('搜索世界资料'), '灯塔');
+    await user.click(screen.getByRole('button', { name: '搜索' }));
+
+    expect(await screen.findByText('许砚')).toBeInTheDocument();
+    expect(screen.getByText('灯塔线 · 1')).toBeInTheDocument();
+    expect(screen.queryByText('搜索结果批量打标')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '给搜索结果打标签' })).not.toBeInTheDocument();
+    expect(onBulkAssignTag).not.toHaveBeenCalled();
+  });
+
   it('requires a target tag before bulk assigning visible search results', async () => {
     const user = userEvent.setup();
     const onSearch = vi.fn().mockResolvedValue(searchResponse);
