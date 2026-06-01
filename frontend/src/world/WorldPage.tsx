@@ -109,22 +109,28 @@ function describeEvent(event: { event_type: string; payload: Record<string, unkn
 }
 
 function StoryArcCard({ chapter }: { chapter: StoryArcChapter }) {
+  const [expanded, setExpanded] = useState(false);
+  const detailId = `story-arc-chapter-${chapter.chapter_number}-detail`;
+
   return (
     <article className="rounded-2xl border border-amber-900/15 bg-white/35 p-4">
-      <p className="chapter-kicker">第 {chapter.chapter_number} 章</p>
-      <h3 className="mt-2 text-xl font-black text-[#34210f]">{chapter.title}</h3>
-      <p className="manuscript mt-3">{chapter.summary}</p>
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <div className="rounded-2xl bg-amber-50/60 p-3">
-          <p className="text-sm font-bold text-[#5e3b1c]">核心冲突</p>
-          <p className="manuscript mt-1">{chapter.core_conflict}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="chapter-kicker">第 {chapter.chapter_number} 章</p>
+          <h3 className="mt-2 text-xl font-black text-[#34210f]">{chapter.title}</h3>
+          <p className="manuscript mt-2 line-clamp-2 text-sm">{chapter.summary}</p>
         </div>
-        <div className="rounded-2xl bg-amber-50/60 p-3">
-          <p className="text-sm font-bold text-[#5e3b1c]">POV 建议</p>
-          <p className="manuscript mt-1">{chapter.pov_suggestion}</p>
-        </div>
+        <button
+          type="button"
+          className="secondary-button shrink-0"
+          aria-expanded={expanded}
+          aria-controls={detailId}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? `收起第 ${chapter.chapter_number} 章详情` : `展开第 ${chapter.chapter_number} 章详情`}
+        </button>
       </div>
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap gap-2">
         {chapter.foreshadow_hints.length === 0 && <span className="ink-muted text-sm">无指定伏笔</span>}
         {chapter.foreshadow_hints.map((hint) => (
           <span key={hint} className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c]">
@@ -132,6 +138,22 @@ function StoryArcCard({ chapter }: { chapter: StoryArcChapter }) {
           </span>
         ))}
       </div>
+      {expanded && (
+        <div id={detailId} className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="rounded-2xl bg-amber-50/60 p-3">
+            <p className="text-sm font-bold text-[#5e3b1c]">核心冲突</p>
+            <p className="manuscript mt-1">{chapter.core_conflict}</p>
+          </div>
+          <div className="rounded-2xl bg-amber-50/60 p-3">
+            <p className="text-sm font-bold text-[#5e3b1c]">POV 建议</p>
+            <p className="manuscript mt-1">{chapter.pov_suggestion}</p>
+          </div>
+          <div className="rounded-2xl bg-amber-50/60 p-3 md:col-span-2">
+            <p className="text-sm font-bold text-[#5e3b1c]">伏笔提示</p>
+            <p className="manuscript mt-1">{chapter.foreshadow_hints.length ? chapter.foreshadow_hints.join('、') : '无指定伏笔'}</p>
+          </div>
+        </div>
+      )}
     </article>
   );
 }
@@ -447,7 +469,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 </div>
               </article>
             </div>
-            <section className="book-card p-5 md:col-span-2">
+            <section id="story-arc-planner" className="book-card scroll-mt-6 p-5 md:col-span-2">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="chapter-kicker">Story Arc Planner</p>
@@ -455,6 +477,12 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 </div>
                 <p className="ink-muted text-sm">下一章目标会按已批准章节数自动带入创作台。</p>
               </div>
+              <nav aria-label="世界模块快速导航" className="mt-4 flex flex-wrap gap-2">
+                <a className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c] hover:bg-amber-200" href="#story-arc-planner">故事弧线</a>
+                <a className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c] hover:bg-amber-200" href="#narrative-control-center">叙事控制台</a>
+                <a className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c] hover:bg-amber-200" href="#world-archive">导出/快照</a>
+                <a className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c] hover:bg-amber-200" href="#chapter-history">章节历史</a>
+              </nav>
               {world.story_arc.length === 0 ? (
                 <p className="manuscript mt-4">还没有故事弧线。生成后会自动为创作台填入下一章目标。</p>
               ) : (
@@ -466,7 +494,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               )}
             </section>
 
-            <section className="md:col-span-2 space-y-5">
+            <section id="narrative-control-center" className="md:col-span-2 space-y-5 scroll-mt-6">
               <div>
                 <p className="chapter-kicker">Narrative Console</p>
                 <h2 className="mt-2 text-3xl font-black text-[#34210f]">Narrative Control Center</h2>
@@ -500,19 +528,23 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 onUnassignTag={unassignWorldTag}
                 onDeleteTag={deleteWorldTag}
               />
+              <div id="chapter-history" className="scroll-mt-6">
+                <ChapterHistoryPanel
+                  history={chapterHistory}
+                  loading={chapterHistoryLoading}
+                  error={chapterHistoryError}
+                  onLoadDetail={(chapterId) => getChapterHistoryDetail(chapterId)}
+                />
+              </div>
               <WorldTimelinePanel worldId={world.id} onLoadEvents={getWorldEvents} />
-              <WorldArchivePanel
-                onCreateSnapshot={() => createWorldSnapshot(world.id)}
-                onExportMarkdown={() => exportWorldArchiveMarkdown(world.id)}
-                onListSnapshots={() => listWorldSnapshots(world.id)}
-                onCompareSnapshots={compareWorldSnapshots}
-              />
-              <ChapterHistoryPanel
-                history={chapterHistory}
-                loading={chapterHistoryLoading}
-                error={chapterHistoryError}
-                onLoadDetail={(chapterId) => getChapterHistoryDetail(chapterId)}
-              />
+              <div id="world-archive" className="scroll-mt-6">
+                <WorldArchivePanel
+                  onCreateSnapshot={() => createWorldSnapshot(world.id)}
+                  onExportMarkdown={() => exportWorldArchiveMarkdown(world.id)}
+                  onListSnapshots={() => listWorldSnapshots(world.id)}
+                  onCompareSnapshots={compareWorldSnapshots}
+                />
+              </div>
             </section>
           </div>
         )}

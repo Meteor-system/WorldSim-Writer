@@ -82,6 +82,21 @@ const world: WorldOverview = {
   approved_chapter_count: 1,
 };
 
+const storyArcWorld: WorldOverview = {
+  ...world,
+  story_arc: Array.from({ length: 10 }, (_, index) => {
+    const chapterNumber = index + 1;
+    return {
+      chapter_number: chapterNumber,
+      title: `第 ${chapterNumber} 章标题`,
+      summary: `第 ${chapterNumber} 章摘要：林砚推进裂纹玉佩线索。`,
+      core_conflict: `第 ${chapterNumber} 章核心冲突详情`,
+      pov_suggestion: `第 ${chapterNumber} 章 POV 建议`,
+      foreshadow_hints: chapterNumber === 1 ? ['裂纹玉佩', '雨巷铜铃'] : [],
+    };
+  }),
+};
+
 afterEach(() => cleanup());
 
 beforeEach(() => {
@@ -416,6 +431,71 @@ describe('WorldPage world creation', () => {
   });
 });
 
+describe('WorldPage Story Arc Planner', () => {
+  it('renders ten story arc chapters as compact expandable controls by default', async () => {
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('前 10 章故事弧线')).toBeInTheDocument();
+    const chapterButtons = screen.getAllByRole('button', { name: /展开第 \d+ 章详情/ });
+    expect(chapterButtons).toHaveLength(10);
+    expect(chapterButtons[0]).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText('第 1 章摘要：林砚推进裂纹玉佩线索。')).toBeInTheDocument();
+    expect(screen.getAllByText('裂纹玉佩').length).toBeGreaterThan(0);
+    expect(screen.queryByText('第 1 章核心冲突详情')).not.toBeInTheDocument();
+    expect(screen.queryByText('第 1 章 POV 建议')).not.toBeInTheDocument();
+  });
+
+  it('expands and collapses an individual story arc chapter detail panel', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    const expandButton = await screen.findByRole('button', { name: '展开第 1 章详情' });
+    expect(expandButton).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('核心冲突')).not.toBeInTheDocument();
+
+    await user.click(expandButton);
+
+    expect(screen.getByRole('button', { name: '收起第 1 章详情' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('核心冲突')).toBeInTheDocument();
+    expect(screen.getByText('第 1 章核心冲突详情')).toBeInTheDocument();
+    expect(screen.getByText('第 1 章 POV 建议')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '收起第 1 章详情' }));
+
+    expect(screen.getByRole('button', { name: '展开第 1 章详情' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('第 1 章核心冲突详情')).not.toBeInTheDocument();
+  });
+
+  it('renders quick navigation anchors to major narrative modules', async () => {
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('前 10 章故事弧线')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '故事弧线' })).toHaveAttribute('href', '#story-arc-planner');
+    expect(screen.getByRole('link', { name: '叙事控制台' })).toHaveAttribute('href', '#narrative-control-center');
+    expect(screen.getByRole('link', { name: '导出/快照' })).toHaveAttribute('href', '#world-archive');
+    expect(screen.getByRole('link', { name: '章节历史' })).toHaveAttribute('href', '#chapter-history');
+    expect(document.querySelector('#story-arc-planner')).toBeInTheDocument();
+    expect(document.querySelector('#narrative-control-center')).toBeInTheDocument();
+    expect(document.querySelector('#world-archive')).toBeInTheDocument();
+    expect(document.querySelector('#chapter-history')).toBeInTheDocument();
+  });
+});
+
 describe('WorldPage Narrative Control Center', () => {
   it('loads and displays Chapter History and Next Chapter Prep panels', async () => {
     const user = userEvent.setup();
@@ -432,7 +512,7 @@ describe('WorldPage Narrative Control Center', () => {
     expect(await screen.findByText('Arc Mode / Closure Plan')).toBeInTheDocument();
     expect(await screen.findByText('Narrative Health')).toBeInTheDocument();
     expect(await screen.findByText('Open Threads Board')).toBeInTheDocument();
-    expect(await screen.findByText('章节历史')).toBeInTheDocument();
+    expect((await screen.findAllByText('章节历史')).length).toBeGreaterThan(0);
     expect(screen.getByText('第一章 雨巷密谈 · v1 · 世界 1 → 2')).toBeInTheDocument();
     expect(screen.getByText('下一章准备台')).toBeInTheDocument();
     expect(screen.getByText('林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
