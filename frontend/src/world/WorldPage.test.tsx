@@ -538,6 +538,46 @@ describe('WorldPage bookshelf', () => {
     expect(screen.getByRole('button', { name: '取消归档当前小说' })).toBeInTheDocument();
   });
 
+  it('shows a paused state when opening an archived world', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'archived', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(archivedWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
+
+    expect(await screen.findByText('已归档：写作已暂停')).toBeInTheDocument();
+    expect(screen.getByText('这本小说已从活跃创作中移出。快照、章节、伏笔和导出都还在。恢复写作后再进入创作台。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '恢复写作' })).toBeInTheDocument();
+    expect(screen.queryByText('First Chapter Launchpad')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '进入创作台' })).not.toBeInTheDocument();
+  });
+
+  it('restores writing from the archived paused state', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'archived', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(archivedWorld);
+    vi.mocked(updateWorldStatus).mockResolvedValueOnce({ ...world, status: 'active' });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
+    await user.click(await screen.findByRole('button', { name: '恢复写作' }));
+
+    expect(updateWorldStatus).toHaveBeenCalledWith(7, { status: 'active' });
+    expect(await screen.findByText('First Chapter Launchpad')).toBeInTheDocument();
+    expect(screen.queryByText('已归档：写作已暂停')).not.toBeInTheDocument();
+  });
+
   it('returns from a single auto-opened world to the bookshelf', async () => {
     const user = userEvent.setup();
 

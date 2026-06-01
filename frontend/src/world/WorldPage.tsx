@@ -219,6 +219,28 @@ function FirstChapterLaunchpad({ world, nextChapter, arcLoading, onGenerateArc, 
   );
 }
 
+type ArchivedWorldPauseCardProps = {
+  archiveLoading: boolean;
+  onReturnToBookshelf: () => void;
+  onRestoreWriting: () => void;
+};
+
+function ArchivedWorldPauseCard({ archiveLoading, onReturnToBookshelf, onRestoreWriting }: ArchivedWorldPauseCardProps) {
+  return (
+    <article className="mt-8 rounded-2xl border border-amber-900/15 bg-amber-100/70 p-4 shadow-sm">
+      <p className="chapter-kicker">Archived Novel</p>
+      <h2 className="mt-2 text-2xl font-black text-[#34210f]">已归档：写作已暂停</h2>
+      <p className="manuscript mt-2 text-sm text-[#5e3b1c]">这本小说已从活跃创作中移出。快照、章节、伏笔和导出都还在。恢复写作后再进入创作台。</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button className="secondary-button" type="button" onClick={onReturnToBookshelf}>返回作品书架</button>
+        <button className="primary-button" type="button" disabled={archiveLoading} onClick={onRestoreWriting}>
+          {archiveLoading ? '恢复中...' : '恢复写作'}
+        </button>
+      </div>
+    </article>
+  );
+}
+
 export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [world, setWorld] = useState<WorldOverview | null>(null);
   const [worlds, setWorlds] = useState<WorldSummary[]>([]);
@@ -609,13 +631,21 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 第 {world.world_version} 版 · {world.genre_template} · {world.status}
               </p>
               <p className="manuscript mt-8 text-lg">{world.truth_canon}</p>
-              <FirstChapterLaunchpad
-                world={world}
-                nextChapter={nextStoryArcChapter}
-                arcLoading={arcLoading}
-                onGenerateArc={runStoryArcPlanner}
-                onLaunchChapter={launchStoryArcChapter}
-              />
+              {world.status === 'archived' ? (
+                <ArchivedWorldPauseCard
+                  archiveLoading={archiveLoading}
+                  onReturnToBookshelf={returnToBookshelf}
+                  onRestoreWriting={toggleWorldArchiveStatus}
+                />
+              ) : (
+                <FirstChapterLaunchpad
+                  world={world}
+                  nextChapter={nextStoryArcChapter}
+                  arcLoading={arcLoading}
+                  onGenerateArc={runStoryArcPlanner}
+                  onLaunchChapter={launchStoryArcChapter}
+                />
+              )}
               {error && (
                 <p className="paper-error mt-5" role="alert">
                   {error}
@@ -632,17 +662,19 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   </button>
                 </div>
               </div>
-              <div className="mt-8 flex flex-wrap gap-3">
-                <button className="primary-button" onClick={() => onEnterStudio(world, {
-                  initialChapterGoal: selectedExecutionContext?.goal,
-                  executionContext: selectedExecutionContext ?? undefined,
-                })}>
-                  进入创作台
-                </button>
-                <button className="secondary-button" disabled={arcLoading} onClick={runStoryArcPlanner}>
-                  {arcLoading ? '规划中...' : world.story_arc.length ? '重新生成故事大纲' : '生成故事大纲'}
-                </button>
-              </div>
+              {world.status !== 'archived' && (
+                <div className="mt-8 flex flex-wrap gap-3">
+                  <button className="primary-button" onClick={() => onEnterStudio(world, {
+                    initialChapterGoal: selectedExecutionContext?.goal,
+                    executionContext: selectedExecutionContext ?? undefined,
+                  })}>
+                    进入创作台
+                  </button>
+                  <button className="secondary-button" disabled={arcLoading} onClick={runStoryArcPlanner}>
+                    {arcLoading ? '规划中...' : world.story_arc.length ? '重新生成故事大纲' : '生成故事大纲'}
+                  </button>
+                </div>
+              )}
             </div>
             <div className="space-y-4">
               <article className="book-card p-5">
