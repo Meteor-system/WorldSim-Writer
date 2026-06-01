@@ -9,6 +9,7 @@ import httpx
 
 DEFAULT_BASE_URL = 'http://localhost:8000'
 DEFAULT_PASSWORD = 'strongpass123'
+DEFAULT_TIMEOUT_SECONDS = 60.0
 MAX_RESPONSE_BODY_CHARS = 1000
 
 _REDACTION_PATTERNS = [
@@ -28,6 +29,19 @@ def _env_bool(name: str) -> bool:
 
 def _base_url() -> str:
     return os.getenv('BASE_URL', DEFAULT_BASE_URL).rstrip('/')
+
+
+def _timeout_seconds() -> float:
+    raw_value = os.getenv('E2E_TIMEOUT_SECONDS', '').strip()
+    if not raw_value:
+        return DEFAULT_TIMEOUT_SECONDS
+    try:
+        timeout = float(raw_value)
+    except ValueError:
+        return DEFAULT_TIMEOUT_SECONDS
+    if timeout <= 0:
+        return DEFAULT_TIMEOUT_SECONDS
+    return timeout
 
 
 def _default_email() -> str:
@@ -129,8 +143,9 @@ def _register_or_login(client: httpx.Client, email: str, password: str, summary:
 def run_smoke(client: httpx.Client | None = None, email: str | None = None, password: str | None = None) -> dict:
     owns_client = client is None
     base_url = _base_url()
+    timeout_seconds = _timeout_seconds()
     if client is None:
-        client = httpx.Client(base_url=base_url, timeout=60.0)
+        client = httpx.Client(base_url=base_url, timeout=timeout_seconds)
     else:
         base_url = str(client.base_url).rstrip('/')
 
@@ -142,6 +157,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         'mode': mode,
         'base_url': base_url,
         'email': email,
+        'timeout_seconds': timeout_seconds,
         'requires_backend_llm_mock': mode == 'mock',
         'cleanup_command': "cd /opt/WorldSim-Writer/backend && PYTHONIOENCODING=utf-8 .venv/bin/python scripts/cleanup_e2e_data.py --confirm",
         'checks': {},

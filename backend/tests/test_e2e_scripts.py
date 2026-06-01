@@ -40,6 +40,59 @@ def json_response(payload, status_code=200):
     return httpx.Response(status_code, json=payload)
 
 
+def test_e2e_smoke_script_uses_default_timeout_seconds(monkeypatch):
+    monkeypatch.delenv('E2E_TIMEOUT_SECONDS', raising=False)
+    module = load_e2e_smoke_module()
+
+    assert module._timeout_seconds() == 60.0
+
+
+def test_e2e_smoke_script_reads_custom_timeout_seconds(monkeypatch):
+    monkeypatch.setenv('E2E_TIMEOUT_SECONDS', '180')
+    module = load_e2e_smoke_module()
+
+    assert module._timeout_seconds() == 180.0
+
+
+def test_e2e_smoke_script_falls_back_for_invalid_timeout_seconds(monkeypatch):
+    module = load_e2e_smoke_module()
+
+    for value in ['0', '-1', 'abc']:
+        monkeypatch.setenv('E2E_TIMEOUT_SECONDS', value)
+        assert module._timeout_seconds() == 60.0
+
+
+def test_e2e_smoke_script_passes_timeout_to_owned_client(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    monkeypatch.setenv('E2E_TIMEOUT_SECONDS', '180')
+    module = load_e2e_smoke_module()
+    captured = {}
+
+    class CapturingClient:
+        def __init__(self, base_url, timeout):
+            self.base_url = base_url
+            self.timeout = timeout
+            self.closed = False
+            captured['timeout'] = timeout
+            captured['client'] = self
+
+        def get(self, path):
+            raise RuntimeError(f'controlled failure at {path}')
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(module.httpx, 'Client', CapturingClient)
+
+    summary = module.run_smoke()
+
+    assert captured['timeout'] == 180.0
+    assert captured['client'].closed is True
+    assert summary['timeout_seconds'] == 180.0
+    assert summary['failed_step'] == 'health'
+    assert summary['error'] == 'controlled failure at /health'
+
+
 def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test/')
     monkeypatch.delenv('E2E_REAL_LLM', raising=False)
