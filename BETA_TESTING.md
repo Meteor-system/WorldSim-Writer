@@ -69,7 +69,7 @@ cd /opt/WorldSim-Writer/backend
 E2E_REAL_LLM=1 BASE_URL=http://localhost:8000 PYTHONIOENCODING=utf-8 .venv/bin/python scripts/e2e_smoke.py
 ```
 
-Pass criteria are the same as mock smoke except `checks.health.llm_mock` must be `false`, proving the backend is not in mock mode. If the smoke JSON stops at `failed_step: "health"` with `error: "BACKEND_LLM_MOCK_ENABLED"`, restart the backend with real `LLM_*` settings and `LLM_MOCK=false`, then rerun real-LLM smoke. If the real-LLM smoke fails but mock smoke passes, include the model settings except secrets and the full smoke JSON in the bug report. When the smoke JSON has `ok: false`, capture the diagnostic fields as well: `failed_step` identifies the failing API step, `status_code` records the HTTP status when available, and `response_body` contains a short safe response snippet for triage.
+Pass criteria are the same as mock smoke except `checks.health.llm_mock` must be `false`, proving the backend is not in mock mode. If the smoke JSON stops at `failed_step: "health"` with `error: "BACKEND_LLM_MOCK_ENABLED"`, restart the backend with real `LLM_*` settings and `LLM_MOCK=false`, then rerun real-LLM smoke. If the real-LLM smoke fails but mock smoke passes, include the model settings except secrets and the full smoke JSON in the bug report. When the smoke JSON has `ok: false`, capture the diagnostic fields as well: `failed_step` identifies the failing API step, `status_code` records the HTTP status when available, and `response_body` contains a short safe response snippet for triage. If `error` is `MISSING_REQUIRED_FIELDS`, `missing_fields` lists the fields absent from a successful API response.
 
 ## 5. Manual main-flow QA
 

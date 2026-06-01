@@ -59,6 +59,16 @@ def _has_failed(summary: dict) -> bool:
     return 'failed_step' in summary
 
 
+def _require_fields(summary: dict, step: str, payload: dict, fields: list[str]) -> bool:
+    missing = [field for field in fields if field not in payload]
+    if not missing:
+        return True
+    summary['failed_step'] = step
+    summary['error'] = 'MISSING_REQUIRED_FIELDS'
+    summary['missing_fields'] = missing
+    return False
+
+
 def _register_or_login(client: httpx.Client, email: str, password: str, summary: dict) -> dict:
     try:
         response = client.post('/auth/register', json={'email': email, 'password': password})
@@ -118,12 +128,16 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         auth_payload = _register_or_login(client, email, password, summary)
         if _has_failed(summary):
             return summary
+        if not _require_fields(summary, 'register', auth_payload, ['access_token']):
+            return summary
         token = auth_payload['access_token']
         headers = {'Authorization': f'Bearer {token}'}
         summary['checks']['register'] = {'user_id': (auth_payload.get('user') or {}).get('id')}
 
         world = _step_json(summary, 'create_world', lambda: client.post('/worlds/from-template', headers=headers))
         if _has_failed(summary):
+            return summary
+        if not _require_fields(summary, 'create_world', world, ['id']):
             return summary
         world_id = world['id']
         initial_world_version = world.get('world_version')
@@ -140,6 +154,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             ),
         )
         if _has_failed(summary):
+            return summary
+        if not _require_fields(summary, 'draft', draft, ['chapter_id', 'draft_version']):
             return summary
         chapter_id = draft['chapter_id']
         draft_version = draft['draft_version']

@@ -34,6 +34,8 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'failed_step',
         'status_code',
         'response_body',
+        'MISSING_REQUIRED_FIELDS',
+        'missing_fields',
         'MIGRATION_NOT_UP_TO_DATE',
         'alembic upgrade head',
         'world_version_incremented',
