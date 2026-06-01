@@ -539,6 +539,29 @@ def test_e2e_smoke_script_requires_health_status_for_preflight(monkeypatch):
     assert [request.url.path for request in transport.requests] == ['/health']
 
 
+def test_e2e_smoke_script_stops_when_health_status_is_not_ok(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'degraded', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'health'
+    assert summary['error'] == 'HEALTH_STATUS_NOT_OK'
+    assert summary['checks']['health'] == {
+        'status': 'degraded',
+        'migration_up_to_date': True,
+        'llm_mock': True,
+    }
+    assert [request.url.path for request in transport.requests] == ['/health']
+
+
 def test_e2e_smoke_script_requires_health_llm_mode_for_preflight(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     monkeypatch.delenv('E2E_REAL_LLM', raising=False)

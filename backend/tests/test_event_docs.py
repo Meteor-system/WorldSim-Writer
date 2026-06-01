@@ -40,6 +40,8 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'alembic upgrade head',
         'world_version_incremented',
         'llm_mock',
+        'checks.health.status',
+        'HEALTH_STATUS_NOT_OK',
         'checks.register',
         'checks.login',
         'E2E_EMAIL',

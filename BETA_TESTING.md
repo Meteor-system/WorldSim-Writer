@@ -51,6 +51,7 @@ Pass criteria:
 - The script exits 0.
 - The printed JSON has `ok: true`.
 - Checks include health, register/login, world creation, draft, approval preview/readiness/consistency, approve, events, and markdown export.
+- `checks.health.status` is `ok`; if the smoke JSON stops at `failed_step: "health"` with `error: "HEALTH_STATUS_NOT_OK"`, inspect `/health`, backend startup logs, and dependency configuration before rerunning smoke.
 - Auth evidence appears as either `checks.register` for a newly created smoke user or `checks.login` when `E2E_EMAIL` reuses an existing smoke account, such as after a previous run created the email before cleanup.
 - `checks.health.migration_up_to_date` is `true`; if the smoke JSON stops at `failed_step: "health"` with `error: "MIGRATION_NOT_UP_TO_DATE"`, run `alembic upgrade head` from `backend/`, restart the backend, and rerun smoke.
 - `checks.health.llm_mock` is `true`; if the smoke JSON stops at `failed_step: "health"` with `error: "BACKEND_LLM_MOCK_DISABLED"`, restart the backend with `LLM_MOCK=true` and rerun mock smoke.

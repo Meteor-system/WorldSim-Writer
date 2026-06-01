@@ -131,6 +131,10 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             'migration_up_to_date': (health.get('migration') or {}).get('up_to_date'),
             'llm_mock': backend_llm_mock,
         }
+        if summary['checks']['health']['status'] != 'ok':
+            summary['failed_step'] = 'health'
+            summary['error'] = 'HEALTH_STATUS_NOT_OK'
+            return summary
         if summary['checks']['health']['migration_up_to_date'] is False:
             summary['failed_step'] = 'health'
             summary['error'] = 'MIGRATION_NOT_UP_TO_DATE'
