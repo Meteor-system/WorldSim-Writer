@@ -36,6 +36,7 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'response_body',
         'MIGRATION_NOT_UP_TO_DATE',
         'alembic upgrade head',
+        'world_version_incremented',
     ]
     for term in required_terms:
         assert term in playbook

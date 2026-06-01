@@ -53,7 +53,7 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
             json_response({'version_conflict': False, 'character_changes': [], 'foreshadow_changes': []}),
             json_response({'ready': False, 'status': 'needs_review', 'blocking_reasons': [], 'warnings': ['mock warnings']}),
             json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
-            json_response({'id': 20, 'status': 'approved', 'approved_version': 1}),
+            json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -68,6 +68,8 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
     assert summary['world_id'] == 10
     assert summary['chapter_id'] == 20
     assert summary['checks']['health']['migration_up_to_date'] is True
+    assert summary['checks']['approve']['expected_world_version_after'] == 2
+    assert summary['checks']['approve']['world_version_incremented'] is True
     assert summary['checks']['events']['chapter_approved_seen'] is True
     assert summary['checks']['markdown_export']['archive_format'] == 'zip'
     assert summary['checks']['markdown_export']['files_are_inline'] is True
@@ -97,7 +99,7 @@ def test_e2e_smoke_script_fails_when_expected_event_is_missing(monkeypatch):
             json_response({'version_conflict': False}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
-            json_response({'id': 20, 'status': 'approved', 'approved_version': 1}),
+            json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
             json_response({'items': [{'event_type': 'world_version_increment'}], 'summary': {'event_type_counts': {'world_version_increment': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -108,6 +110,33 @@ def test_e2e_smoke_script_fails_when_expected_event_is_missing(monkeypatch):
 
     assert summary['ok'] is False
     assert summary['checks']['events']['chapter_approved_seen'] is False
+
+
+def test_e2e_smoke_script_fails_when_approval_does_not_increment_world_version(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
+            json_response({'version_conflict': False}),
+            json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
+            json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
+            json_response({'id': 20, 'status': 'approved', 'approved_version': 1}),
+            json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
+            json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['checks']['approve']['approved_version'] == 1
+    assert summary['checks']['approve']['expected_world_version_after'] == 2
+    assert summary['checks']['approve']['world_version_incremented'] is False
 
 
 def test_e2e_smoke_script_returns_step_context_for_http_failure(monkeypatch):

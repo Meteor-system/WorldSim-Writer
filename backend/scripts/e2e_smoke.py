@@ -116,8 +116,9 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if _has_failed(summary):
             return summary
         world_id = world['id']
+        initial_world_version = world.get('world_version')
         summary['world_id'] = world_id
-        summary['checks']['create_world'] = {'world_version': world.get('world_version')}
+        summary['checks']['create_world'] = {'world_version': initial_world_version}
 
         draft = _step_json(
             summary,
@@ -167,7 +168,15 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         approved = _step_json(summary, 'approve', lambda: client.post(f'/chapters/{chapter_id}/approve', json={'draft_version': draft_version}, headers=headers))
         if _has_failed(summary):
             return summary
-        summary['checks']['approve'] = {'status': approved.get('status'), 'approved_version': approved.get('approved_version')}
+        approved_version = approved.get('approved_version')
+        expected_world_version_after = initial_world_version + 1 if isinstance(initial_world_version, int) else None
+        world_version_incremented = approved_version == expected_world_version_after
+        summary['checks']['approve'] = {
+            'status': approved.get('status'),
+            'approved_version': approved_version,
+            'expected_world_version_after': expected_world_version_after,
+            'world_version_incremented': world_version_incremented,
+        }
 
         events = _step_json(summary, 'events', lambda: client.get(f'/worlds/{world_id}/events', params={'limit': 100}, headers=headers))
         if _has_failed(summary):
@@ -197,6 +206,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 health.get('status') == 'ok',
                 preview.get('version_conflict') is False,
                 approved.get('status') == 'approved',
+                world_version_incremented,
                 chapter_approved_seen,
                 export.get('archive_format') == 'zip',
                 export.get('archive_encoding') == 'base64',
