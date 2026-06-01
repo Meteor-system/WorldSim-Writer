@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import json
 import os
+import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -9,6 +10,16 @@ import httpx
 DEFAULT_BASE_URL = 'http://localhost:8000'
 DEFAULT_PASSWORD = 'strongpass123'
 MAX_RESPONSE_BODY_CHARS = 1000
+
+_REDACTION_PATTERNS = [
+    (re.compile(r'Authorization\s*:\s*Bearer\s+[^\s,;]+', re.IGNORECASE), 'Authorization: Bearer [REDACTED_SECRET]'),
+    (re.compile(r'((?:api[_-]?key|llm_api_key|openai_api_key)\s*[=:]\s*)[^\s,;&}]+', re.IGNORECASE), r'\1[REDACTED_SECRET]'),
+    (re.compile(r'((?:password)\s*[=:]\s*)[^\s,;&}]+', re.IGNORECASE), r'\1[REDACTED_SECRET]'),
+    (re.compile(r'((?:llm_base_url|base_url)\s*[=:]\s*)https?://[^\s,;&}]+', re.IGNORECASE), r'\1[REDACTED_URL]'),
+    (re.compile(r'https?://[^\s,;&}]+', re.IGNORECASE), '[REDACTED_URL]'),
+    (re.compile(r'((?:llm_model|model)\s*[=:]\s*)[^\s,;&}]+', re.IGNORECASE), r'\1[REDACTED_MODEL]'),
+    (re.compile(r'messages\s*[=:]\s*\[[\s\S]*', re.IGNORECASE), 'messages=[REDACTED_MESSAGES]'),
+]
 
 
 def _env_bool(name: str) -> bool:
@@ -24,8 +35,15 @@ def _default_email() -> str:
     return f'e2e-smoke-{stamp}-{uuid4().hex[:8]}@example.com'
 
 
+def _redact_response_body(text: str) -> str:
+    redacted = text
+    for pattern, replacement in _REDACTION_PATTERNS:
+        redacted = pattern.sub(replacement, redacted)
+    return redacted
+
+
 def _response_body_snippet(response: httpx.Response) -> str:
-    return response.text[:MAX_RESPONSE_BODY_CHARS]
+    return _redact_response_body(response.text)[:MAX_RESPONSE_BODY_CHARS]
 
 
 def _json_response(response: httpx.Response) -> dict:
