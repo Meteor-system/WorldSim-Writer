@@ -150,6 +150,16 @@ def _require_list(summary: dict, step: str, payload: dict, field: str) -> bool:
     return False
 
 
+def _require_int_fields(summary: dict, step: str, payload: dict, fields: list[str]) -> bool:
+    invalid = [field for field in fields if not isinstance(payload.get(field), int) or isinstance(payload.get(field), bool)]
+    if not invalid:
+        return True
+    summary['failed_step'] = step
+    summary['error'] = 'INVALID_FIELD_TYPES'
+    summary['invalid_fields'] = invalid
+    return False
+
+
 def _require_int_path(summary: dict, step: str, payload: dict, path: str) -> bool:
     current = payload
     for part in path.split('.'):
@@ -255,6 +265,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             return summary
         if not _require_fields(summary, 'create_world', world, ['id', 'world_version']):
             return summary
+        if not _require_int_fields(summary, 'create_world', world, ['id', 'world_version']):
+            return summary
         world_id = world['id']
         initial_world_version = world.get('world_version')
         summary['world_id'] = world_id
@@ -272,6 +284,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if _has_failed(summary):
             return summary
         if not _require_fields(summary, 'draft', draft, ['chapter_id', 'draft_version']):
+            return summary
+        if not _require_int_fields(summary, 'draft', draft, ['chapter_id', 'draft_version']):
             return summary
         chapter_id = draft['chapter_id']
         draft_version = draft['draft_version']
@@ -361,6 +375,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if _has_failed(summary):
             return summary
         if not _require_fields(summary, 'approve', approved, ['status', 'approved_version']):
+            return summary
+        if not _require_int_fields(summary, 'approve', approved, ['approved_version']):
             return summary
         approved_version = approved.get('approved_version')
         expected_world_version_after = initial_world_version + 1 if isinstance(initial_world_version, int) else None
