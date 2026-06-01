@@ -27,6 +27,7 @@ def test_health_check_returns_ok_with_migration_status(monkeypatch):
     assert response.json() == {
         'status': 'ok',
         'migration': {'current': '0012_add_tags', 'head': '0012_add_tags', 'up_to_date': True, 'status': 'up_to_date'},
+        'llm': {'mock': False},
     }
 
 

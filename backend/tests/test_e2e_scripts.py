@@ -46,7 +46,7 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
     module = load_e2e_smoke_module()
     transport = SequencedTransport(
         [
-            json_response({'status': 'ok', 'migration': {'up_to_date': True}}),
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
@@ -68,6 +68,7 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
     assert summary['world_id'] == 10
     assert summary['chapter_id'] == 20
     assert summary['checks']['health']['migration_up_to_date'] is True
+    assert summary['checks']['health']['llm_mock'] is True
     assert summary['checks']['approve']['expected_world_version_after'] == 2
     assert summary['checks']['approve']['world_version_incremented'] is True
     assert summary['checks']['events']['chapter_approved_seen'] is True
@@ -92,7 +93,7 @@ def test_e2e_smoke_script_fails_when_expected_event_is_missing(monkeypatch):
     module = load_e2e_smoke_module()
     transport = SequencedTransport(
         [
-            json_response({'status': 'ok', 'migration': {'up_to_date': True}}),
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
@@ -117,7 +118,7 @@ def test_e2e_smoke_script_fails_when_approval_does_not_increment_world_version(m
     module = load_e2e_smoke_module()
     transport = SequencedTransport(
         [
-            json_response({'status': 'ok', 'migration': {'up_to_date': True}}),
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
@@ -144,7 +145,7 @@ def test_e2e_smoke_script_returns_step_context_for_http_failure(monkeypatch):
     module = load_e2e_smoke_module()
     transport = SequencedTransport(
         [
-            json_response({'status': 'ok', 'migration': {'up_to_date': True}}),
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             httpx.Response(502, text='MODEL_REQUEST_FAILED'),
@@ -181,6 +182,55 @@ def test_e2e_smoke_script_returns_step_context_for_request_error(monkeypatch):
     assert [request.url.path for request in transport.requests] == ['/health']
 
 
+def test_e2e_smoke_script_stops_when_mock_smoke_targets_real_llm_backend(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    monkeypatch.delenv('E2E_REAL_LLM', raising=False)
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': False}}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'health'
+    assert summary['error'] == 'BACKEND_LLM_MOCK_DISABLED'
+    assert summary['checks']['health'] == {
+        'status': 'ok',
+        'migration_up_to_date': True,
+        'llm_mock': False,
+    }
+    assert [request.url.path for request in transport.requests] == ['/health']
+
+
+def test_e2e_smoke_script_stops_when_real_llm_smoke_targets_mock_backend(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    monkeypatch.setenv('E2E_REAL_LLM', '1')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['mode'] == 'real-llm'
+    assert summary['failed_step'] == 'health'
+    assert summary['error'] == 'BACKEND_LLM_MOCK_ENABLED'
+    assert summary['checks']['health'] == {
+        'status': 'ok',
+        'migration_up_to_date': True,
+        'llm_mock': True,
+    }
+    assert [request.url.path for request in transport.requests] == ['/health']
+
+
 def test_e2e_smoke_script_stops_when_migration_is_not_up_to_date(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()
@@ -195,6 +245,7 @@ def test_e2e_smoke_script_stops_when_migration_is_not_up_to_date(monkeypatch):
                         'up_to_date': False,
                         'status': 'pending',
                     },
+                    'llm': {'mock': True},
                 }
             ),
         ]
@@ -209,5 +260,6 @@ def test_e2e_smoke_script_stops_when_migration_is_not_up_to_date(monkeypatch):
     assert summary['checks']['health'] == {
         'status': 'ok',
         'migration_up_to_date': False,
+        'llm_mock': True,
     }
     assert [request.url.path for request in transport.requests] == ['/health']

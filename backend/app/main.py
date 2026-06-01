@@ -25,4 +25,5 @@ app = create_app()
 
 @app.get('/health')
 def health_check() -> dict:
-    return {'status': 'ok', 'migration': get_migration_status()}
+    settings = get_settings()
+    return {'status': 'ok', 'migration': get_migration_status(), 'llm': {'mock': settings.llm_mock}}

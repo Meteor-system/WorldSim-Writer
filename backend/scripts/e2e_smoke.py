@@ -96,13 +96,23 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         health = _step_json(summary, 'health', lambda: client.get('/health'))
         if _has_failed(summary):
             return summary
+        backend_llm_mock = (health.get('llm') or {}).get('mock')
         summary['checks']['health'] = {
             'status': health.get('status'),
             'migration_up_to_date': (health.get('migration') or {}).get('up_to_date'),
+            'llm_mock': backend_llm_mock,
         }
         if summary['checks']['health']['migration_up_to_date'] is False:
             summary['failed_step'] = 'health'
             summary['error'] = 'MIGRATION_NOT_UP_TO_DATE'
+            return summary
+        if mode == 'mock' and backend_llm_mock is False:
+            summary['failed_step'] = 'health'
+            summary['error'] = 'BACKEND_LLM_MOCK_DISABLED'
+            return summary
+        if mode == 'real-llm' and backend_llm_mock is True:
+            summary['failed_step'] = 'health'
+            summary['error'] = 'BACKEND_LLM_MOCK_ENABLED'
             return summary
 
         auth_payload = _register_or_login(client, email, password, summary)

@@ -52,6 +52,7 @@ Pass criteria:
 - The printed JSON has `ok: true`.
 - Checks include health, register/login, world creation, draft, approval preview/readiness/consistency, approve, events, and markdown export.
 - `checks.health.migration_up_to_date` is `true`; if the smoke JSON stops at `failed_step: "health"` with `error: "MIGRATION_NOT_UP_TO_DATE"`, run `alembic upgrade head` from `backend/`, restart the backend, and rerun smoke.
+- `checks.health.llm_mock` is `true`; if the smoke JSON stops at `failed_step: "health"` with `error: "BACKEND_LLM_MOCK_DISABLED"`, restart the backend with `LLM_MOCK=true` and rerun mock smoke.
 - `checks.approve.world_version_incremented` is `true`, proving approval advanced the world version from the draft baseline.
 - `checks.events.chapter_approved_seen` is `true`.
 - `checks.markdown_export.archive_format` is `zip` and `archive_encoding` is `base64`.
@@ -65,7 +66,7 @@ cd /opt/WorldSim-Writer/backend
 E2E_REAL_LLM=1 BASE_URL=http://localhost:8000 PYTHONIOENCODING=utf-8 .venv/bin/python scripts/e2e_smoke.py
 ```
 
-Pass criteria are the same as mock smoke. If the real-LLM smoke fails but mock smoke passes, include the model settings except secrets and the full smoke JSON in the bug report. When the smoke JSON has `ok: false`, capture the diagnostic fields as well: `failed_step` identifies the failing API step, `status_code` records the HTTP status when available, and `response_body` contains a short safe response snippet for triage.
+Pass criteria are the same as mock smoke except `checks.health.llm_mock` must be `false`, proving the backend is not in mock mode. If the smoke JSON stops at `failed_step: "health"` with `error: "BACKEND_LLM_MOCK_ENABLED"`, restart the backend with real `LLM_*` settings and `LLM_MOCK=false`, then rerun real-LLM smoke. If the real-LLM smoke fails but mock smoke passes, include the model settings except secrets and the full smoke JSON in the bug report. When the smoke JSON has `ok: false`, capture the diagnostic fields as well: `failed_step` identifies the failing API step, `status_code` records the HTTP status when available, and `response_body` contains a short safe response snippet for triage.
 
 ## 5. Manual main-flow QA
 
