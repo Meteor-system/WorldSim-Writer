@@ -52,6 +52,12 @@ def _ensure_world_is_active(world: World) -> None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_ARCHIVED')
 
 
+def _world_for_chapter(db: Session, chapter: Chapter) -> World:
+    world = db.get(World, chapter.world_id)
+    assert world is not None
+    return world
+
+
 def _latest_draft(db: Session, chapter: Chapter) -> ChapterDraft | None:
     return db.scalar(
         select(ChapterDraft)
@@ -534,8 +540,8 @@ def generate_chapter_outline(
     chapter = _require_owned_chapter(db, user, chapter_id)
     if chapter.status == 'approved':
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
-    world = db.get(World, chapter.world_id)
-    assert world is not None
+    world = _world_for_chapter(db, chapter)
+    _ensure_world_is_active(world)
     characters, foreshadows = _load_world_context(db, world)
     client = _model_client(llm_client)
     try:
@@ -632,12 +638,12 @@ def write_chapter_from_outline(
     chapter = _require_owned_chapter(db, user, chapter_id)
     if chapter.status == 'approved':
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
+    world = _world_for_chapter(db, chapter)
+    _ensure_world_is_active(world)
     if outline_beats is not None:
         chapter.outline_beats = [beat.model_dump() for beat in outline_beats]
     if not chapter.outline_beats:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='OUTLINE_REQUIRED')
-    world = db.get(World, chapter.world_id)
-    assert world is not None
     characters, foreshadows = _load_world_context(db, world)
     client = _model_client(llm_client)
     try:
@@ -688,11 +694,11 @@ def write_chapter_from_outline(
 
 def critique_chapter(db: Session, user: User, chapter_id: int, llm_client: LLMClient | None = None) -> dict:
     chapter = _require_owned_chapter(db, user, chapter_id)
+    world = _world_for_chapter(db, chapter)
+    _ensure_world_is_active(world)
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_REQUIRED')
-    world = db.get(World, chapter.world_id)
-    assert world is not None
     characters, foreshadows = _load_world_context(db, world)
     client = _model_client(llm_client)
     try:
@@ -707,11 +713,11 @@ def critique_chapter(db: Session, user: User, chapter_id: int, llm_client: LLMCl
 
 def generate_critic_report(db: Session, user: User, chapter_id: int, llm_client: LLMClient | None = None) -> dict:
     chapter = _require_owned_chapter(db, user, chapter_id)
+    world = _world_for_chapter(db, chapter)
+    _ensure_world_is_active(world)
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_REQUIRED')
-    world = db.get(World, chapter.world_id)
-    assert world is not None
     characters, foreshadows = _load_world_context(db, world)
     client = _model_client(llm_client)
     try:
@@ -742,11 +748,11 @@ def get_critic_report(db: Session, user: User, chapter_id: int) -> dict:
 
 def generate_character_arc_report(db: Session, user: User, chapter_id: int, llm_client: LLMClient | None = None) -> dict:
     chapter = _require_owned_chapter(db, user, chapter_id)
+    world = _world_for_chapter(db, chapter)
+    _ensure_world_is_active(world)
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_REQUIRED')
-    world = db.get(World, chapter.world_id)
-    assert world is not None
     characters, foreshadows = _load_world_context(db, world)
     relations = list(db.scalars(select(CharacterRelation).where(CharacterRelation.world_id == world.id).order_by(CharacterRelation.id)))
     recent_events = list(
@@ -781,8 +787,7 @@ def get_character_arc_report(db: Session, user: User, chapter_id: int) -> dict:
 
 def reject_chapter(db: Session, user: User, chapter_id: int, feedback: str) -> dict:
     chapter = _require_owned_chapter(db, user, chapter_id)
-    world = db.get(World, chapter.world_id)
-    assert world is not None
+    world = _world_for_chapter(db, chapter)
     _ensure_world_is_active(world)
     draft = _latest_draft(db, chapter)
     if draft is None:
@@ -805,6 +810,8 @@ def edit_chapter_draft(
     chapter = _require_owned_chapter(db, user, chapter_id)
     if chapter.status == 'approved':
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
+    world = _world_for_chapter(db, chapter)
+    _ensure_world_is_active(world)
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
@@ -826,6 +833,8 @@ def stash_chapter_draft(db: Session, user: User, chapter_id: int, note: str | No
     chapter = _require_owned_chapter(db, user, chapter_id)
     if chapter.status == 'approved':
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
+    world = _world_for_chapter(db, chapter)
+    _ensure_world_is_active(world)
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
@@ -1423,11 +1432,11 @@ def revise_chapter_draft(
     chapter = _require_owned_chapter(db, user, chapter_id)
     if chapter.status == 'approved':
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
+    world = _world_for_chapter(db, chapter)
+    _ensure_world_is_active(world)
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
-    world = db.get(World, chapter.world_id)
-    assert world is not None
     characters, foreshadows = _load_world_context(db, world)
     readiness = _approval_readiness_for_revision(db, user, chapter.id)
     client = _model_client(llm_client)
@@ -1479,6 +1488,8 @@ def revise_chapter_paragraph(
     chapter = _require_owned_chapter(db, user, chapter_id)
     if chapter.status == 'approved':
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
+    world = _world_for_chapter(db, chapter)
+    _ensure_world_is_active(world)
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
@@ -1486,8 +1497,6 @@ def revise_chapter_paragraph(
     if paragraph_index >= len(paragraphs):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='INVALID_PARAGRAPH_INDEX')
 
-    world = db.get(World, chapter.world_id)
-    assert world is not None
     selected = paragraphs[paragraph_index]
     messages = [
         {
