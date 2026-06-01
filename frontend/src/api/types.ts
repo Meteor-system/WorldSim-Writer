@@ -816,7 +816,10 @@ export type WorldMarkdownExportResponse = {
   world_version: number;
   generated_at: string;
   archive_filename: string;
+  archive_format: string;
+  archive_encoding: string;
   archive_base64: string;
+  files_are_inline: boolean;
   files: MarkdownExportFile[];
 };
 

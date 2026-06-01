@@ -334,7 +334,17 @@ beforeEach(() => {
     summary: { total: 1, event_type_counts: { WORLD_CREATED: 1 }, latest_world_version: 2 },
   });
   vi.mocked(createWorldSnapshot).mockResolvedValue({ id: 12, world_id: 7, world_version: 2, label: null, note: null, created_at: '2026-05-31T00:00:00Z' });
-  vi.mocked(exportWorldArchiveMarkdown).mockResolvedValue({ world_id: 7, world_version: 2, generated_at: '2026-05-31T00:00:00Z', archive_filename: 'WorldSim-test.zip', archive_base64: 'emlw', files: [] });
+  vi.mocked(exportWorldArchiveMarkdown).mockResolvedValue({
+    world_id: 7,
+    world_version: 2,
+    generated_at: '2026-05-31T00:00:00Z',
+    archive_filename: 'WorldSim-test.zip',
+    archive_format: 'zip',
+    archive_encoding: 'base64',
+    archive_base64: 'emlw',
+    files_are_inline: true,
+    files: [],
+  });
   vi.mocked(listWorldSnapshots).mockResolvedValue({
     world_id: 7,
     snapshots: [

@@ -24,6 +24,7 @@ export function WorldArchivePanel({ onCreateSnapshot, onExportMarkdown, onListSn
   const [exportLoading, setExportLoading] = useState(false);
   const [markdownExport, setMarkdownExport] = useState<WorldMarkdownExportResponse | null>(null);
   const [downloadUrl, setDownloadUrl] = useState('');
+  const [selectedExportPath, setSelectedExportPath] = useState('');
   const [exportError, setExportError] = useState('');
   const [snapshotList, setSnapshotList] = useState<WorldSnapshotSummary[]>([]);
   const [snapshotListLoading, setSnapshotListLoading] = useState(false);
@@ -58,9 +59,11 @@ export function WorldArchivePanel({ onCreateSnapshot, onExportMarkdown, onListSn
       const nextUrl = archiveUrlFromBase64(exported.archive_base64);
       setMarkdownExport(exported);
       setDownloadUrl(nextUrl);
+      setSelectedExportPath(exported.files[0]?.path ?? '');
     } catch {
       setMarkdownExport(null);
       setDownloadUrl('');
+      setSelectedExportPath('');
       setExportError('导出世界档案失败');
     } finally {
       setExportLoading(false);
@@ -98,6 +101,7 @@ export function WorldArchivePanel({ onCreateSnapshot, onExportMarkdown, onListSn
   }
 
   const canCompare = Boolean(baseSnapshotId && targetSnapshotId && baseSnapshotId !== targetSnapshotId);
+  const selectedExportFile = markdownExport?.files.find((file) => file.path === selectedExportPath) ?? markdownExport?.files[0] ?? null;
 
   return (
     <article className="book-card p-5">
@@ -136,8 +140,12 @@ export function WorldArchivePanel({ onCreateSnapshot, onExportMarkdown, onListSn
           {exportError && <p className="paper-error mt-2" role="alert">{exportError}</p>}
           {markdownExport && (
             <div className="mt-2 text-sm">
-              <p className="manuscript">导出成功：{markdownExport.files.length} 个 Markdown 文件已生成</p>
+              <p className="font-black text-[#3b2511]">下载包已就绪</p>
+              <p className="manuscript mt-1">导出成功：{markdownExport.files.length} 个 Markdown 文件已生成</p>
               <p className="mt-1 font-bold text-[#5e3b1c]">Archive：{markdownExport.archive_filename}</p>
+              <p className="manuscript mt-1 text-sm">格式：{markdownExport.archive_format} · 编码：{markdownExport.archive_encoding} · 内联预览：{markdownExport.files_are_inline ? '是' : '否'}</p>
+              <p className="manuscript mt-1 text-sm">世界版本：v{markdownExport.world_version} · 文件数：{markdownExport.files.length}</p>
+              <p className="manuscript mt-1 text-sm">生成时间：{markdownExport.generated_at}</p>
               {downloadUrl && (
                 <a className="secondary-button mt-3 inline-flex" href={downloadUrl} download={markdownExport.archive_filename}>
                   下载 Markdown ZIP
@@ -148,9 +156,30 @@ export function WorldArchivePanel({ onCreateSnapshot, onExportMarkdown, onListSn
                   <li key={file.path}>{file.path}</li>
                 ))}
               </ul>
+              {markdownExport.files_are_inline && markdownExport.files.length > 0 && selectedExportFile && (
+                <div className="mt-4 rounded-2xl bg-white/50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h4 className="font-black text-[#3b2511]">Markdown 预览</h4>
+                    <label className="text-sm font-bold text-[#5e3b1c]">
+                      选择预览文件
+                      <select
+                        className="paper-input mt-1"
+                        aria-label="选择预览文件"
+                        value={selectedExportFile.path}
+                        onChange={(event) => setSelectedExportPath(event.target.value)}
+                      >
+                        {markdownExport.files.map((file) => (
+                          <option key={file.path} value={file.path}>{file.path}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <pre className="manuscript mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-xl bg-amber-50/70 p-3 text-sm">{selectedExportFile.content}</pre>
+                </div>
+              )}
             </div>
           )}
-          {!markdownExport && !exportError && <p className="ink-muted mt-2 text-sm">导出只返回文本，不写入服务器文件系统。</p>}
+          {!markdownExport && !exportError && <p className="ink-muted mt-2 text-sm">点击导出后会生成可下载 ZIP，并在下方显示内联 Markdown 预览；不会写入服务器文件系统。</p>}
         </div>
       </div>
 
