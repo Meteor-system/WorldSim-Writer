@@ -26,6 +26,16 @@ class SequencedTransport(httpx.BaseTransport):
         return self.responses.pop(0)
 
 
+class FailingTransport(httpx.BaseTransport):
+    def __init__(self, message):
+        self.message = message
+        self.requests = []
+
+    def handle_request(self, request):
+        self.requests.append(request)
+        raise httpx.ConnectError(self.message, request=request)
+
+
 def json_response(payload, status_code=200):
     return httpx.Response(status_code, json=payload)
 
@@ -123,3 +133,20 @@ def test_e2e_smoke_script_returns_step_context_for_http_failure(monkeypatch):
     assert summary['checks']['health']['status'] == 'ok'
     assert summary['checks']['register']['user_id'] == 1
     assert summary['checks']['create_world']['world_version'] == 1
+
+
+def test_e2e_smoke_script_returns_step_context_for_request_error(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = FailingTransport('backend unavailable')
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'health'
+    assert 'backend unavailable' in summary['error']
+    assert 'status_code' not in summary
+    assert 'response_body' not in summary
+    assert summary['checks'] == {}
+    assert [request.url.path for request in transport.requests] == ['/health']

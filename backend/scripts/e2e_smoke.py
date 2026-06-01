@@ -36,14 +36,18 @@ def _json_response(response: httpx.Response) -> dict:
     return payload
 
 
-def _step_json(summary: dict, step: str, response: httpx.Response) -> dict:
+def _step_json(summary: dict, step: str, request_call) -> dict:
     try:
-        return _json_response(response)
+        return _json_response(request_call())
     except httpx.HTTPStatusError as exc:
         summary['failed_step'] = step
         summary['error'] = str(exc)
         summary['status_code'] = exc.response.status_code
         summary['response_body'] = _response_body_snippet(exc.response)
+        return {}
+    except httpx.RequestError as exc:
+        summary['failed_step'] = step
+        summary['error'] = str(exc)
         return {}
     except Exception as exc:
         summary['failed_step'] = step
@@ -56,11 +60,15 @@ def _has_failed(summary: dict) -> bool:
 
 
 def _register_or_login(client: httpx.Client, email: str, password: str, summary: dict) -> dict:
-    response = client.post('/auth/register', json={'email': email, 'password': password})
+    try:
+        response = client.post('/auth/register', json={'email': email, 'password': password})
+    except httpx.RequestError as exc:
+        summary['failed_step'] = 'register'
+        summary['error'] = str(exc)
+        return {}
     if response.status_code == 400:
-        response = client.post('/auth/login', json={'email': email, 'password': password})
-        return _step_json(summary, 'login', response)
-    return _step_json(summary, 'register', response)
+        return _step_json(summary, 'login', lambda: client.post('/auth/login', json={'email': email, 'password': password}))
+    return _step_json(summary, 'register', lambda: response)
 
 
 def run_smoke(client: httpx.Client | None = None, email: str | None = None, password: str | None = None) -> dict:
@@ -85,7 +93,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
     }
 
     try:
-        health = _step_json(summary, 'health', client.get('/health'))
+        health = _step_json(summary, 'health', lambda: client.get('/health'))
         if _has_failed(summary):
             return summary
         summary['checks']['health'] = {
@@ -100,7 +108,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         headers = {'Authorization': f'Bearer {token}'}
         summary['checks']['register'] = {'user_id': (auth_payload.get('user') or {}).get('id')}
 
-        world = _step_json(summary, 'create_world', client.post('/worlds/from-template', headers=headers))
+        world = _step_json(summary, 'create_world', lambda: client.post('/worlds/from-template', headers=headers))
         if _has_failed(summary):
             return summary
         world_id = world['id']
@@ -110,7 +118,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         draft = _step_json(
             summary,
             'draft',
-            client.post(
+            lambda: client.post(
                 f'/worlds/{world_id}/chapters/draft',
                 json={'chapter_goal': 'E2E smoke: advance the sample world by one coherent chapter.'},
                 headers=headers,
@@ -124,7 +132,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         summary['draft_id'] = draft.get('draft_id')
         summary['checks']['draft'] = {'draft_version': draft_version}
 
-        preview = _step_json(summary, 'approval_preview', client.get(f'/chapters/{chapter_id}/approval-preview', headers=headers))
+        preview = _step_json(summary, 'approval_preview', lambda: client.get(f'/chapters/{chapter_id}/approval-preview', headers=headers))
         if _has_failed(summary):
             return summary
         summary['checks']['approval_preview'] = {
@@ -133,7 +141,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             'foreshadow_changes': len(preview.get('foreshadow_changes') or []),
         }
 
-        readiness = _step_json(summary, 'approval_readiness', client.get(f'/chapters/{chapter_id}/approval-readiness', headers=headers))
+        readiness = _step_json(summary, 'approval_readiness', lambda: client.get(f'/chapters/{chapter_id}/approval-readiness', headers=headers))
         if _has_failed(summary):
             return summary
         summary['checks']['approval_readiness'] = {
@@ -146,18 +154,18 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         consistency = _step_json(
             summary,
             'approval_consistency',
-            client.post(f'/chapters/{chapter_id}/approval-consistency', json={'draft_version': draft_version}, headers=headers),
+            lambda: client.post(f'/chapters/{chapter_id}/approval-consistency', json={'draft_version': draft_version}, headers=headers),
         )
         if _has_failed(summary):
             return summary
         summary['checks']['approval_consistency'] = consistency.get('consistency_summary') or {}
 
-        approved = _step_json(summary, 'approve', client.post(f'/chapters/{chapter_id}/approve', json={'draft_version': draft_version}, headers=headers))
+        approved = _step_json(summary, 'approve', lambda: client.post(f'/chapters/{chapter_id}/approve', json={'draft_version': draft_version}, headers=headers))
         if _has_failed(summary):
             return summary
         summary['checks']['approve'] = {'status': approved.get('status'), 'approved_version': approved.get('approved_version')}
 
-        events = _step_json(summary, 'events', client.get(f'/worlds/{world_id}/events', params={'limit': 100}, headers=headers))
+        events = _step_json(summary, 'events', lambda: client.get(f'/worlds/{world_id}/events', params={'limit': 100}, headers=headers))
         if _has_failed(summary):
             return summary
         event_types = [event.get('event_type') for event in events.get('items', [])]
@@ -167,7 +175,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             'chapter_approved_seen': chapter_approved_seen,
         }
 
-        export = _step_json(summary, 'markdown_export', client.post(f'/worlds/{world_id}/export/markdown', headers=headers))
+        export = _step_json(summary, 'markdown_export', lambda: client.post(f'/worlds/{world_id}/export/markdown', headers=headers))
         if _has_failed(summary):
             return summary
         files = export.get('files') or []
