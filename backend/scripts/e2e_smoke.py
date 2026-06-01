@@ -86,6 +86,16 @@ def _require_paths(summary: dict, step: str, payload: dict, paths: list[str]) ->
     return False
 
 
+def _require_list_of_dicts(summary: dict, step: str, payload: dict, field: str) -> bool:
+    value = payload.get(field)
+    if isinstance(value, list) and all(isinstance(item, dict) for item in value):
+        return True
+    summary['failed_step'] = step
+    summary['error'] = 'INVALID_FIELD_TYPES'
+    summary['invalid_fields'] = [field]
+    return False
+
+
 def _register_or_login(client: httpx.Client, email: str, password: str, summary: dict) -> tuple[dict, str]:
     try:
         response = client.post('/auth/register', json={'email': email, 'password': password})
@@ -276,6 +286,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             return summary
         if not _require_fields(summary, 'events', events, ['items']):
             return summary
+        if not _require_list_of_dicts(summary, 'events', events, 'items'):
+            return summary
         event_types = [event.get('event_type') for event in events.get('items', [])]
         chapter_approved_seen = 'chapter_approved' in event_types or 'chapter_approved' in (events.get('summary') or {}).get('event_type_counts', {})
         summary['checks']['events'] = {
@@ -287,6 +299,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if _has_failed(summary):
             return summary
         if not _require_fields(summary, 'markdown_export', export, ['archive_format', 'archive_encoding', 'archive_base64', 'files_are_inline', 'files']):
+            return summary
+        if not _require_list_of_dicts(summary, 'markdown_export', export, 'files'):
             return summary
         files = export.get('files') or []
         summary['checks']['markdown_export'] = {

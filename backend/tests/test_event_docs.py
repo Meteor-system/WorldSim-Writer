@@ -62,6 +62,8 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'APPROVAL_CONSISTENCY_BLOCKED',
         'APPROVAL_STATUS_NOT_APPROVED',
         'WORLD_VERSION_NOT_INCREMENTED',
+        'INVALID_FIELD_TYPES',
+        'invalid_fields',
     ]
     for term in required_terms:
         assert term in playbook
