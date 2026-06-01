@@ -41,6 +41,7 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'BACKEND_LLM_MOCK_DISABLED',
         'BACKEND_LLM_MOCK_ENABLED',
         'checks.approval_readiness.blocked',
+        'checks.approval_consistency.blocked',
     ]
     for term in required_terms:
         assert term in playbook

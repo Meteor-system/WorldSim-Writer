@@ -176,7 +176,12 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         )
         if _has_failed(summary):
             return summary
-        summary['checks']['approval_consistency'] = consistency.get('consistency_summary') or {}
+        consistency_summary = consistency.get('consistency_summary') or {}
+        consistency_blocked = consistency_summary.get('status') == 'blocked' or (consistency_summary.get('blocking_count') or 0) > 0
+        summary['checks']['approval_consistency'] = {
+            **consistency_summary,
+            'blocked': consistency_blocked,
+        }
 
         approved = _step_json(summary, 'approve', lambda: client.post(f'/chapters/{chapter_id}/approve', json={'draft_version': draft_version}, headers=headers))
         if _has_failed(summary):
@@ -219,6 +224,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 health.get('status') == 'ok',
                 preview.get('version_conflict') is False,
                 not readiness_blocked,
+                not consistency_blocked,
                 approved.get('status') == 'approved',
                 world_version_incremented,
                 chapter_approved_seen,
