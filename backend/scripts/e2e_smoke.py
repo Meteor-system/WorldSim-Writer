@@ -123,6 +123,16 @@ def _require_paths(summary: dict, step: str, payload: dict, paths: list[str]) ->
     return False
 
 
+def _require_list(summary: dict, step: str, payload: dict, field: str) -> bool:
+    value = payload.get(field)
+    if isinstance(value, list):
+        return True
+    summary['failed_step'] = step
+    summary['error'] = 'INVALID_FIELD_TYPES'
+    summary['invalid_fields'] = [field]
+    return False
+
+
 def _require_list_of_dicts(summary: dict, step: str, payload: dict, field: str) -> bool:
     value = payload.get(field)
     if isinstance(value, list) and all(isinstance(item, dict) for item in value):
@@ -264,6 +274,12 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
 
         readiness = _step_json(summary, 'approval_readiness', lambda: client.get(f'/chapters/{chapter_id}/approval-readiness', headers=headers))
         if _has_failed(summary):
+            return summary
+        if not _require_fields(summary, 'approval_readiness', readiness, ['status']):
+            return summary
+        if not _require_list(summary, 'approval_readiness', readiness, 'blocking_reasons'):
+            return summary
+        if not _require_list(summary, 'approval_readiness', readiness, 'warnings'):
             return summary
         readiness_blocking_reasons = readiness.get('blocking_reasons') or []
         readiness_blocked = readiness.get('status') == 'blocked' or bool(readiness_blocking_reasons)
