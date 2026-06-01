@@ -157,6 +157,68 @@ function StoryArcCard({ chapter, expanded, onToggle }: { chapter: StoryArcChapte
   );
 }
 
+function buildStoryArcGoal(chapter: StoryArcChapter) {
+  return `${chapter.title}：${chapter.summary}`;
+}
+
+function buildStoryArcExecutionContext(world: WorldOverview, chapter: StoryArcChapter): ChapterExecutionContext {
+  return {
+    source: 'manual',
+    source_world_version: world.world_version,
+    next_chapter_number: chapter.chapter_number,
+    goal: buildStoryArcGoal(chapter),
+    recommended_pov: { character_id: null, name: chapter.pov_suggestion || null },
+    source_signals: ['story_arc_planner'],
+    priority_characters: [],
+    priority_foreshadows: [],
+    progression_hints: [],
+    continuity_warnings: [],
+    recent_events: [],
+  };
+}
+
+type FirstChapterLaunchpadProps = {
+  world: WorldOverview;
+  nextChapter: StoryArcChapter | null;
+  arcLoading: boolean;
+  onGenerateArc: () => void;
+  onLaunchChapter: (chapter: StoryArcChapter) => void;
+};
+
+function FirstChapterLaunchpad({ world, nextChapter, arcLoading, onGenerateArc, onLaunchChapter }: FirstChapterLaunchpadProps) {
+  return (
+    <article className="mt-8 rounded-2xl border border-amber-900/15 bg-amber-100/60 p-4 shadow-sm">
+      <p className="chapter-kicker">First Chapter Launchpad</p>
+      {world.story_arc.length === 0 ? (
+        <div className="mt-3">
+          <p className="manuscript text-sm text-[#5e3b1c]">先生成前 10 章故事弧线，再把下一章目标带入创作台。</p>
+          <button className="primary-button mt-4" type="button" disabled={arcLoading} onClick={onGenerateArc}>
+            {arcLoading ? '规划中...' : '生成第一轮故事弧线'}
+          </button>
+        </div>
+      ) : nextChapter ? (
+        <div className="mt-3 space-y-3">
+          <p className="text-sm font-black text-[#5e3b1c]">下一章 · 第 {nextChapter.chapter_number} 章</p>
+          <h2 className="text-2xl font-black text-[#34210f]">{nextChapter.title}</h2>
+          <p className="manuscript text-sm">{nextChapter.summary}</p>
+          <div className="grid gap-2 text-sm md:grid-cols-2">
+            <p className="rounded-xl bg-white/45 p-3"><span className="font-bold text-[#5e3b1c]">POV：</span>{nextChapter.pov_suggestion}</p>
+            <p className="rounded-xl bg-white/45 p-3"><span className="font-bold text-[#5e3b1c]">冲突：</span>{nextChapter.core_conflict}</p>
+          </div>
+          <button className="primary-button" type="button" onClick={() => onLaunchChapter(nextChapter)}>用此目标进入创作台</button>
+        </div>
+      ) : (
+        <div className="mt-3">
+          <p className="manuscript text-sm text-[#5e3b1c]">当前故事弧线已写完。可重新生成故事大纲，或在 Narrative Control Center 继续准备下一章。</p>
+          <button className="secondary-button mt-4" type="button" disabled={arcLoading} onClick={onGenerateArc}>
+            {arcLoading ? '规划中...' : '重新生成故事大纲'}
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
 export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [world, setWorld] = useState<WorldOverview | null>(null);
   const [worlds, setWorlds] = useState<WorldSummary[]>([]);
@@ -404,6 +466,15 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     }
   }
 
+  function launchStoryArcChapter(chapter: StoryArcChapter) {
+    if (!world) return;
+    const executionContext = buildStoryArcExecutionContext(world, chapter);
+    onEnterStudio(world, {
+      initialChapterGoal: executionContext.goal,
+      executionContext,
+    });
+  }
+
   useEffect(() => {
     void loadWorld();
   }, []);
@@ -414,6 +485,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
 
   const activeWorlds = worlds.filter((item) => item.status !== 'archived');
   const archivedWorlds = worlds.filter((item) => item.status === 'archived');
+  const nextStoryArcChapter = world
+    ? (world.story_arc.find((chapter) => chapter.chapter_number === world.approved_chapter_count + 1) ?? world.story_arc[0] ?? null)
+    : null;
 
   if (loading)
     return (
@@ -534,6 +608,13 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 第 {world.world_version} 版 · {world.genre_template} · {world.status}
               </p>
               <p className="manuscript mt-8 text-lg">{world.truth_canon}</p>
+              <FirstChapterLaunchpad
+                world={world}
+                nextChapter={nextStoryArcChapter}
+                arcLoading={arcLoading}
+                onGenerateArc={runStoryArcPlanner}
+                onLaunchChapter={launchStoryArcChapter}
+              />
               {error && (
                 <p className="paper-error mt-5" role="alert">
                   {error}

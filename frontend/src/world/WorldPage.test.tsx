@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
+import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, generateStoryArc, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
 import type { WorldOverview, WorldSearchResponse } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -127,6 +127,7 @@ beforeEach(() => {
   vi.mocked(createWorldTag).mockReset();
   vi.mocked(deleteWorldTag).mockReset();
   vi.mocked(exportWorldArchiveMarkdown).mockReset();
+  vi.mocked(generateStoryArc).mockReset();
   vi.mocked(getChapterHistory).mockReset();
   vi.mocked(getChapterHistoryDetail).mockReset();
   vi.mocked(getNextChapterPrep).mockReset();
@@ -524,6 +525,62 @@ describe('WorldPage bookshelf', () => {
 });
 
 describe('WorldPage Story Arc Planner', () => {
+  it('shows a first chapter launchpad that can generate an arc when no story arc exists', async () => {
+    const user = userEvent.setup();
+    vi.mocked(generateStoryArc).mockResolvedValueOnce({
+      world_id: 7,
+      story_arc: storyArcWorld.story_arc,
+    });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('First Chapter Launchpad')).toBeInTheDocument();
+    expect(screen.getByText('先生成前 10 章故事弧线，再把下一章目标带入创作台。')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '生成第一轮故事弧线' }));
+
+    expect(generateStoryArc).toHaveBeenCalledWith(7);
+    expect(await screen.findByText('第 2 章标题')).toBeInTheDocument();
+  });
+
+  it('shows the next unapproved story arc chapter in the launchpad', async () => {
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('First Chapter Launchpad')).toBeInTheDocument();
+    expect(screen.getByText('下一章 · 第 2 章')).toBeInTheDocument();
+    expect(screen.getByText('第 2 章标题')).toBeInTheDocument();
+    expect(screen.queryByText('下一章 · 第 1 章')).not.toBeInTheDocument();
+  });
+
+  it('launches Studio with the selected story arc chapter goal', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
+
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '用此目标进入创作台' }));
+
+    expect(onEnterStudio).toHaveBeenCalledWith(storyArcWorld, {
+      initialChapterGoal: '第 2 章标题：第 2 章摘要：林砚推进裂纹玉佩线索。',
+      executionContext: expect.objectContaining({
+        source: 'manual',
+        source_world_version: 2,
+        next_chapter_number: 2,
+        goal: '第 2 章标题：第 2 章摘要：林砚推进裂纹玉佩线索。',
+        recommended_pov: { character_id: null, name: '第 2 章 POV 建议' },
+      }),
+    });
+  });
+
   it('renders ten story arc chapters as a dense collapsed index by default', async () => {
     vi.mocked(apiRequest).mockReset();
     vi.mocked(apiRequest)
@@ -583,8 +640,8 @@ describe('WorldPage Story Arc Planner', () => {
     expect(screen.getByRole('button', { name: '第 2 章 · 第 2 章标题' })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('第 1 章摘要：林砚推进裂纹玉佩线索。')).toBeInTheDocument();
     expect(screen.getByText('第 1 章核心冲突详情')).toBeInTheDocument();
-    expect(screen.getByText('第 2 章摘要：林砚推进裂纹玉佩线索。')).toBeInTheDocument();
-    expect(screen.getByText('第 2 章核心冲突详情')).toBeInTheDocument();
+    expect(screen.getAllByText('第 2 章摘要：林砚推进裂纹玉佩线索。').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('第 2 章核心冲突详情').length).toBeGreaterThan(0);
   });
 
   it('renders quick navigation anchors to major narrative modules', async () => {
