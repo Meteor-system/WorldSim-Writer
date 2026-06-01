@@ -820,14 +820,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
           </div>
         )}
 
-        {tab === 'characters' && <CharacterManager worldId={world.id} onChanged={loadWorld} />}
+        {tab === 'characters' && <CharacterManager worldId={world.id} onChanged={loadWorld} readOnly={isArchivedWorld} />}
 
         {tab === 'relations' && (
-          <RelationManager worldId={world.id} characters={world.characters} onChanged={loadWorld} />
+          <RelationManager worldId={world.id} characters={world.characters} onChanged={loadWorld} readOnly={isArchivedWorld} />
         )}
 
         {tab === 'foreshadows' && (
-          <ForeshadowManager worldId={world.id} characters={world.characters} onChanged={loadWorld} />
+          <ForeshadowManager worldId={world.id} characters={world.characters} onChanged={loadWorld} readOnly={isArchivedWorld} />
         )}
       </div>
     </section>

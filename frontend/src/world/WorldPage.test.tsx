@@ -845,6 +845,35 @@ describe('WorldPage Narrative Control Center', () => {
     expect(await screen.findByText('下一章准备台暂不可用')).toBeInTheDocument();
   });
 
+  it('keeps World Bible manager tabs read-only for archived worlds', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'archived', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(archivedWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
+    await user.click(screen.getByRole('button', { name: '角色管理' }));
+
+    expect(await screen.findByText('已归档小说为只读模式；恢复写作后才能编辑世界资料。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '关系管理' }));
+    expect(await screen.findByText('已归档小说为只读模式；恢复写作后才能编辑世界资料。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ 新增关系' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '伏笔账本' }));
+    expect(await screen.findByText('已归档小说为只读模式；恢复写作后才能编辑世界资料。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ 新增伏笔' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '放弃伏笔' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '展开时间线' })).toBeInTheDocument();
+  });
+
   it('renders World Bible Editor manager tabs with governance warning', async () => {
     const user = userEvent.setup();
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);

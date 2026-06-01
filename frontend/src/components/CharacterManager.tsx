@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { getCharacters, updateCharacter } from '../api/client';
 import type { Character, CharacterUpdate } from '../api/types';
 
-type Props = { worldId: number; onChanged?: () => Promise<void> | void };
+type Props = { worldId: number; onChanged?: () => Promise<void> | void; readOnly?: boolean };
 
 const ROLE_LABELS: Record<string, string> = {
   protagonist: '主角',
@@ -56,7 +56,7 @@ function formToUpdatePayload(f: FormData): CharacterUpdate {
   };
 }
 
-export function CharacterManager({ worldId, onChanged }: Props) {
+export function CharacterManager({ worldId, onChanged, readOnly = false }: Props) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -114,7 +114,7 @@ export function CharacterManager({ worldId, onChanged }: Props) {
         <p className="chapter-kicker">角色管理</p>
       </div>
       <p className="mt-3 rounded-2xl border border-amber-700/25 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-        这些编辑会正式写入世界状态，并使 world_version 增长。
+        {readOnly ? '已归档小说为只读模式；恢复写作后才能编辑世界资料。' : '这些编辑会正式写入世界状态，并使 world_version 增长。'}
       </p>
 
       {error && (
@@ -154,11 +154,13 @@ export function CharacterManager({ worldId, onChanged }: Props) {
                 </p>
               )}
 
-              <div className="mt-auto flex gap-2 pt-2">
-                <button className="secondary-button text-sm" onClick={() => openEdit(c)}>
-                  编辑
-                </button>
-              </div>
+              {!readOnly && (
+                <div className="mt-auto flex gap-2 pt-2">
+                  <button className="secondary-button text-sm" onClick={() => openEdit(c)}>
+                    编辑
+                  </button>
+                </div>
+              )}
             </article>
           ))}
         </div>
