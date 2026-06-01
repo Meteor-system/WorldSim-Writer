@@ -51,6 +51,7 @@ Pass criteria:
 - The script exits 0.
 - The printed JSON has `ok: true`.
 - Checks include health, register/login, world creation, draft, approval preview/readiness/consistency, approve, events, and markdown export.
+- Auth evidence appears as either `checks.register` for a newly created smoke user or `checks.login` when `E2E_EMAIL` reuses an existing smoke account, such as after a previous run created the email before cleanup.
 - `checks.health.migration_up_to_date` is `true`; if the smoke JSON stops at `failed_step: "health"` with `error: "MIGRATION_NOT_UP_TO_DATE"`, run `alembic upgrade head` from `backend/`, restart the backend, and rerun smoke.
 - `checks.health.llm_mock` is `true`; if the smoke JSON stops at `failed_step: "health"` with `error: "BACKEND_LLM_MOCK_DISABLED"`, restart the backend with `LLM_MOCK=true` and rerun mock smoke.
 - `checks.approval_preview.blocked` is `false`; if it is `true`, the draft has a world-version conflict, so regenerate the draft against the current world version and rerun smoke.
@@ -69,7 +70,7 @@ cd /opt/WorldSim-Writer/backend
 E2E_REAL_LLM=1 BASE_URL=http://localhost:8000 PYTHONIOENCODING=utf-8 .venv/bin/python scripts/e2e_smoke.py
 ```
 
-Pass criteria are the same as mock smoke except `checks.health.llm_mock` must be `false`, proving the backend is not in mock mode. If the smoke JSON stops at `failed_step: "health"` with `error: "BACKEND_LLM_MOCK_ENABLED"`, restart the backend with real `LLM_*` settings and `LLM_MOCK=false`, then rerun real-LLM smoke. If the real-LLM smoke fails but mock smoke passes, include the model settings except secrets and the full smoke JSON in the bug report. When the smoke JSON has `ok: false`, capture the diagnostic fields as well: `failed_step` identifies the failing API step, `status_code` records the HTTP status when available, and `response_body` contains a short safe response snippet for triage. If `error` is `MISSING_REQUIRED_FIELDS`, `missing_fields` lists the fields absent from a successful API response.
+Pass criteria are the same as mock smoke except `checks.health.llm_mock` must be `false`, proving the backend is not in mock mode. If the smoke JSON stops at `failed_step: "health"` with `error: "BACKEND_LLM_MOCK_ENABLED"`, restart the backend with real `LLM_*` settings and `LLM_MOCK=false`, then rerun real-LLM smoke. If the real-LLM smoke fails but mock smoke passes, include the model settings except secrets and the full smoke JSON in the bug report. When the smoke JSON has `ok: false`, capture the diagnostic fields as well: `failed_step` identifies the failing API step, `status_code` records the HTTP status when available, and `response_body` contains a short safe response snippet for triage. If `error` is `MISSING_REQUIRED_FIELDS`, `missing_fields` lists the fields absent from a successful API response; `failed_step: "login"` means the fallback login response for an existing smoke email was malformed.
 
 ## 5. Manual main-flow QA
 
