@@ -221,6 +221,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         events = _step_json(summary, 'events', lambda: client.get(f'/worlds/{world_id}/events', params={'limit': 100}, headers=headers))
         if _has_failed(summary):
             return summary
+        if not _require_fields(summary, 'events', events, ['items']):
+            return summary
         event_types = [event.get('event_type') for event in events.get('items', [])]
         chapter_approved_seen = 'chapter_approved' in event_types or 'chapter_approved' in (events.get('summary') or {}).get('event_type_counts', {})
         summary['checks']['events'] = {
