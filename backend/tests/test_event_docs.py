@@ -75,6 +75,8 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'non-object JSON',
         'redacted',
         'REDACTED_SECRET',
+        'Authorization',
+        'bearer',
         'E2E_TIMEOUT_SECONDS',
         'JSON-shaped',
     ]

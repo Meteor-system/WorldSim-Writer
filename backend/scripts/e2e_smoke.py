@@ -14,6 +14,7 @@ MAX_RESPONSE_BODY_CHARS = 1000
 
 _REDACTION_PATTERNS = [
     (re.compile(r'Authorization\s*:\s*Bearer\s+[^\s,;]+', re.IGNORECASE), 'Authorization: Bearer [REDACTED_SECRET]'),
+    (re.compile(r'("authorization"\s*:\s*"Bearer\s+)[^"]+(")', re.IGNORECASE), r'\1[REDACTED_SECRET]\2'),
     (re.compile(r'("(?:api[_-]?key|llm_api_key|openai_api_key)"\s*:\s*")[^"]+(")', re.IGNORECASE), r'\1[REDACTED_SECRET]\2'),
     (re.compile(r'("password"\s*:\s*")[^"]+(")', re.IGNORECASE), r'\1[REDACTED_SECRET]\2'),
     (re.compile(r'("(?:llm_base_url|base_url)"\s*:\s*")https?://[^"]+(")', re.IGNORECASE), r'\1[REDACTED_URL]\2'),

@@ -1243,6 +1243,35 @@ def test_e2e_smoke_script_redacts_json_shaped_response_body_details(monkeypatch)
     assert '[REDACTED_MESSAGES]' in response_body
 
 
+def test_e2e_smoke_script_redacts_json_authorization_response_body_details(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    sensitive_body = (
+        '{"error":"MODEL_REQUEST_FAILED",'
+        '"authorization":"Bearer json-secret-token",'
+        '"Authorization":"Bearer second-json-secret"}'
+    )
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            httpx.Response(502, text=sensitive_body),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    response_body = summary['response_body']
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'draft'
+    assert summary['status_code'] == 502
+    assert 'json-secret-token' not in response_body
+    assert 'second-json-secret' not in response_body
+    assert response_body.count('[REDACTED_SECRET]') == 2
+
+
 def test_e2e_smoke_script_returns_step_context_for_request_error(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()
