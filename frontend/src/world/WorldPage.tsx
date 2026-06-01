@@ -337,6 +337,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     setArchiveError('');
     const overview = await apiRequest<WorldOverview>(`/worlds/${worldId}/overview`);
     setWorld(overview);
+    setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
     setShowCreationForm(false);
     setSelectedExecutionContext(null);
     setTab('overview');
@@ -625,7 +626,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 <p className="manuscript mt-1 text-sm">归档前建议先创建世界快照并导出 Markdown ZIP。</p>
                 {archiveError && <p className="paper-error mt-2" role="alert">{archiveError}</p>}
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {worlds.length > 1 && <button className="secondary-button" type="button" onClick={returnToBookshelf}>返回作品书架</button>}
+                  {worlds.length > 0 && <button className="secondary-button" type="button" onClick={returnToBookshelf}>返回作品书架</button>}
                   <button className="secondary-button" type="button" disabled={archiveLoading} onClick={toggleWorldArchiveStatus}>
                     {archiveLoading ? '更新中...' : world.status === 'archived' ? '取消归档当前小说' : '归档当前小说'}
                   </button>

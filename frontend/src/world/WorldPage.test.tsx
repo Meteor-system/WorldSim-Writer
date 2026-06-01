@@ -516,6 +516,34 @@ describe('WorldPage bookshelf', () => {
     expect(await screen.findByRole('button', { name: '归档当前小说' })).toBeInTheDocument();
   });
 
+  it('returns from a single auto-opened world to the bookshelf', async () => {
+    const user = userEvent.setup();
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('World Canon')).toBeInTheDocument();
+    expect(screen.queryByText('作品书架')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '返回作品书架' }));
+
+    expect(screen.getByText('作品书架')).toBeInTheDocument();
+    expect(screen.getByText('青岚城')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '创建新小说' })).toBeInTheDocument();
+  });
+
+  it('opens the creation form from a single-world bookshelf', async () => {
+    const user = userEvent.setup();
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '返回作品书架' }));
+    await user.click(screen.getByRole('button', { name: '创建新小说' }));
+
+    expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '返回作品书架' })).toBeInTheDocument();
+    expect(listWorldSeeds).toHaveBeenCalled();
+  });
+
   it('still auto-opens a single existing world', async () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
