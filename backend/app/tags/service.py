@@ -45,6 +45,11 @@ def _require_tag(db: Session, world_id: int, tag_id: int) -> Tag:
     return tag
 
 
+def _ensure_world_is_active(world) -> None:
+    if world.status == 'archived':
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_ARCHIVED')
+
+
 def _validate_object_type(object_type: str) -> str:
     normalized = object_type.strip().lower()
     if normalized not in SUPPORTED_OBJECT_TYPES:
@@ -133,6 +138,7 @@ def list_tags(db: Session, user: User, world_id: int) -> dict:
 
 def create_tag(db: Session, user: User, world_id: int, data: TagCreateRequest) -> Tag:
     world = require_owned_world(db, user, world_id)
+    _ensure_world_is_active(world)
     name = data.name.strip()
     tag = Tag(world_id=world.id, name=name, slug=_slugify(name), color=data.color)
     db.add(tag)
@@ -147,6 +153,7 @@ def create_tag(db: Session, user: User, world_id: int, data: TagCreateRequest) -
 
 def update_tag(db: Session, user: User, world_id: int, tag_id: int, data: TagUpdateRequest) -> Tag:
     world = require_owned_world(db, user, world_id)
+    _ensure_world_is_active(world)
     tag = _require_tag(db, world.id, tag_id)
     if data.name is not None:
         name = data.name.strip()
@@ -165,6 +172,7 @@ def update_tag(db: Session, user: User, world_id: int, tag_id: int, data: TagUpd
 
 def merge_tag(db: Session, user: User, world_id: int, source_tag_id: int, data: TagMergeRequest) -> dict:
     world = require_owned_world(db, user, world_id)
+    _ensure_world_is_active(world)
     source_tag = _require_tag(db, world.id, source_tag_id)
     target_tag = _require_tag(db, world.id, data.target_tag_id)
     if source_tag.id == target_tag.id:
@@ -202,6 +210,7 @@ def merge_tag(db: Session, user: User, world_id: int, source_tag_id: int, data: 
 
 def delete_tag(db: Session, user: User, world_id: int, tag_id: int) -> None:
     world = require_owned_world(db, user, world_id)
+    _ensure_world_is_active(world)
     tag = _require_tag(db, world.id, tag_id)
     db.delete(tag)
     db.commit()
@@ -209,6 +218,7 @@ def delete_tag(db: Session, user: User, world_id: int, tag_id: int) -> None:
 
 def assign_tag(db: Session, user: User, world_id: int, tag_id: int, data: ObjectTagAssignRequest) -> ObjectTag:
     world = require_owned_world(db, user, world_id)
+    _ensure_world_is_active(world)
     tag = _require_tag(db, world.id, tag_id)
     object_type = _validate_object_type(data.object_type)
     _target_object(db, world.id, object_type, data.object_id)
@@ -240,6 +250,7 @@ def _unique_ids(ids: list[int]) -> list[int]:
 
 def bulk_assign_tag(db: Session, user: User, world_id: int, tag_id: int, data: ObjectTagBulkAssignRequest) -> dict:
     world = require_owned_world(db, user, world_id)
+    _ensure_world_is_active(world)
     tag = _require_tag(db, world.id, tag_id)
     object_type = _validate_object_type(data.object_type)
     object_ids = _unique_ids(data.object_ids)
@@ -275,6 +286,7 @@ def bulk_assign_tag(db: Session, user: User, world_id: int, tag_id: int, data: O
 
 def unassign_tag(db: Session, user: User, world_id: int, tag_id: int, object_type: str, object_id: int) -> None:
     world = require_owned_world(db, user, world_id)
+    _ensure_world_is_active(world)
     tag = _require_tag(db, world.id, tag_id)
     normalized_type = _validate_object_type(object_type)
     assignment = db.scalar(
