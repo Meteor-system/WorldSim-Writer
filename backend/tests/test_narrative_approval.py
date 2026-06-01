@@ -12,6 +12,16 @@ class FailingLLMClient:
         raise RuntimeError('MODEL_REQUEST_FAILED')
 
 
+class AuthFailingLLMClient:
+    def generate_chapter(self, messages):
+        raise RuntimeError('MODEL_AUTH_FAILED')
+
+
+class UnknownFailingLLMClient:
+    def generate_chapter(self, messages):
+        raise RuntimeError('provider secret text')
+
+
 class FakeLLMClient:
     def generate_chapter(self, messages):
         return ChapterGeneration(
@@ -465,6 +475,34 @@ def test_reject_chapter_does_not_approve_or_update_world(client, monkeypatch):
 def test_create_draft_maps_model_request_failure(client, monkeypatch):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FailingLLMClient())
+
+    response = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 502
+    assert response.json()['detail'] == 'MODEL_REQUEST_FAILED'
+
+
+def test_create_draft_preserves_safe_model_runtime_error_detail(client, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: AuthFailingLLMClient())
+
+    response = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 502
+    assert response.json()['detail'] == 'MODEL_AUTH_FAILED'
+
+
+def test_create_draft_masks_unknown_model_runtime_error_detail(client, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: UnknownFailingLLMClient())
 
     response = client.post(
         f'/worlds/{world_id}/chapters/draft',

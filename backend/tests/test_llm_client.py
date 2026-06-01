@@ -83,3 +83,39 @@ def test_llm_client_rejects_invalid_json_response(monkeypatch):
 
     with pytest.raises(ValueError, match='MODEL_RESPONSE_INVALID'):
         LLMClient(settings).generate_chapter([{'role': 'user', 'content': '写第一章'}])
+
+
+def test_llm_client_reports_auth_failure_for_unauthorized_provider_response(monkeypatch):
+    monkeypatch.setattr(
+        httpx,
+        'post',
+        lambda url, **kwargs: httpx.Response(401, request=httpx.Request('POST', url), text='unauthorized'),
+    )
+    settings = Settings(
+        DATABASE_URL='postgresql+psycopg://test:test@localhost:5432/test',
+        SECRET_KEY='test-secret',
+        LLM_BASE_URL='https://llm.example/v1',
+        LLM_API_KEY='test-key',
+        LLM_MODEL='test-model',
+    )
+
+    with pytest.raises(RuntimeError, match='MODEL_AUTH_FAILED'):
+        LLMClient(settings).generate_chapter([{'role': 'user', 'content': '写第一章'}])
+
+
+def test_llm_client_reports_rate_limit_for_provider_429_response(monkeypatch):
+    monkeypatch.setattr(
+        httpx,
+        'post',
+        lambda url, **kwargs: httpx.Response(429, request=httpx.Request('POST', url), text='rate limited'),
+    )
+    settings = Settings(
+        DATABASE_URL='postgresql+psycopg://test:test@localhost:5432/test',
+        SECRET_KEY='test-secret',
+        LLM_BASE_URL='https://llm.example/v1',
+        LLM_API_KEY='test-key',
+        LLM_MODEL='test-model',
+    )
+
+    with pytest.raises(RuntimeError, match='MODEL_RATE_LIMITED'):
+        LLMClient(settings).generate_chapter([{'role': 'user', 'content': '写第一章'}])

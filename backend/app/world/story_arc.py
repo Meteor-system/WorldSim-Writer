@@ -21,11 +21,16 @@ def _model_client(llm_client: LLMClient | None = None) -> LLMClient:
     return client
 
 
+SAFE_MODEL_RUNTIME_ERRORS = {'MODEL_REQUEST_FAILED', 'MODEL_AUTH_FAILED', 'MODEL_RATE_LIMITED'}
+
+
 def _map_model_error(exc: Exception) -> HTTPException:
     if isinstance(exc, TimeoutError):
         return HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail='MODEL_TIMEOUT')
     if isinstance(exc, ValueError):
         return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+    if isinstance(exc, RuntimeError) and str(exc) in SAFE_MODEL_RUNTIME_ERRORS:
+        return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
     return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_REQUEST_FAILED')
 
 

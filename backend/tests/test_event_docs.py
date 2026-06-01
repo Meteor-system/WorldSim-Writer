@@ -68,6 +68,8 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'CHAPTER_APPROVED_EVENT_MISSING',
         'MARKDOWN_EXPORT_INVALID_ARCHIVE',
         'files.World.md',
+        'MODEL_AUTH_FAILED',
+        'MODEL_RATE_LIMITED',
         'INVALID_FIELD_TYPES',
         'invalid_fields',
         'INVALID_JSON_RESPONSE',
