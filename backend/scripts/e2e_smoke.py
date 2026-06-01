@@ -137,7 +137,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         world = _step_json(summary, 'create_world', lambda: client.post('/worlds/from-template', headers=headers))
         if _has_failed(summary):
             return summary
-        if not _require_fields(summary, 'create_world', world, ['id']):
+        if not _require_fields(summary, 'create_world', world, ['id', 'world_version']):
             return summary
         world_id = world['id']
         initial_world_version = world.get('world_version')

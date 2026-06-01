@@ -234,6 +234,33 @@ def test_e2e_smoke_script_fails_when_approval_consistency_is_blocked(monkeypatch
     assert summary['checks']['approve']['status'] == 'approved'
 
 
+def test_e2e_smoke_script_requires_world_version_baseline_for_create_world(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'create_world'
+    assert summary['error'] == 'MISSING_REQUIRED_FIELDS'
+    assert summary['missing_fields'] == ['world_version']
+    assert summary['checks']['health']['status'] == 'ok'
+    assert summary['checks']['register']['user_id'] == 1
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+    ]
+
+
 def test_e2e_smoke_script_reports_missing_required_fields_for_success_response(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()
