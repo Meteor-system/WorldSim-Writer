@@ -69,6 +69,23 @@ def _require_fields(summary: dict, step: str, payload: dict, fields: list[str]) 
     return False
 
 
+def _require_paths(summary: dict, step: str, payload: dict, paths: list[str]) -> bool:
+    missing = []
+    for path in paths:
+        current = payload
+        for part in path.split('.'):
+            if not isinstance(current, dict) or part not in current:
+                missing.append(path)
+                break
+            current = current[part]
+    if not missing:
+        return True
+    summary['failed_step'] = step
+    summary['error'] = 'MISSING_REQUIRED_FIELDS'
+    summary['missing_fields'] = missing
+    return False
+
+
 def _register_or_login(client: httpx.Client, email: str, password: str, summary: dict) -> dict:
     try:
         response = client.post('/auth/register', json={'email': email, 'password': password})
@@ -105,6 +122,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
     try:
         health = _step_json(summary, 'health', lambda: client.get('/health'))
         if _has_failed(summary):
+            return summary
+        if not _require_paths(summary, 'health', health, ['migration.up_to_date', 'llm.mock']):
             return summary
         backend_llm_mock = (health.get('llm') or {}).get('mock')
         summary['checks']['health'] = {
