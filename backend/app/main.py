@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
+from app.core.migrations import get_migration_status
 
 
 def create_app() -> FastAPI:
@@ -23,5 +24,5 @@ app = create_app()
 
 
 @app.get('/health')
-def health_check() -> dict[str, str]:
-    return {'status': 'ok'}
+def health_check() -> dict:
+    return {'status': 'ok', 'migration': get_migration_status()}

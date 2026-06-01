@@ -1,0 +1,168 @@
+#!/usr/bin/env python
+import json
+import os
+from datetime import datetime, timezone
+from uuid import uuid4
+
+import httpx
+
+DEFAULT_BASE_URL = 'http://localhost:8000'
+DEFAULT_PASSWORD = 'strongpass123'
+
+
+def _env_bool(name: str) -> bool:
+    return os.getenv(name, '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
+def _base_url() -> str:
+    return os.getenv('BASE_URL', DEFAULT_BASE_URL).rstrip('/')
+
+
+def _default_email() -> str:
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+    return f'e2e-smoke-{stamp}-{uuid4().hex[:8]}@example.com'
+
+
+def _json_response(response: httpx.Response) -> dict:
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise RuntimeError('Expected JSON object response')
+    return payload
+
+
+def _register_or_login(client: httpx.Client, email: str, password: str) -> dict:
+    response = client.post('/auth/register', json={'email': email, 'password': password})
+    if response.status_code == 400:
+        response = client.post('/auth/login', json={'email': email, 'password': password})
+    return _json_response(response)
+
+
+def run_smoke(client: httpx.Client | None = None, email: str | None = None, password: str | None = None) -> dict:
+    owns_client = client is None
+    base_url = _base_url()
+    if client is None:
+        client = httpx.Client(base_url=base_url, timeout=60.0)
+    else:
+        base_url = str(client.base_url).rstrip('/')
+
+    mode = 'real-llm' if _env_bool('E2E_REAL_LLM') else 'mock'
+    email = email or os.getenv('E2E_EMAIL') or _default_email()
+    password = password or os.getenv('E2E_PASSWORD') or DEFAULT_PASSWORD
+    summary = {
+        'ok': False,
+        'mode': mode,
+        'base_url': base_url,
+        'email': email,
+        'requires_backend_llm_mock': mode == 'mock',
+        'cleanup_command': "cd /opt/WorldSim-Writer/backend && PYTHONIOENCODING=utf-8 .venv/bin/python scripts/cleanup_e2e_data.py --confirm",
+        'checks': {},
+    }
+
+    try:
+        health = _json_response(client.get('/health'))
+        summary['checks']['health'] = {
+            'status': health.get('status'),
+            'migration_up_to_date': (health.get('migration') or {}).get('up_to_date'),
+        }
+
+        auth_payload = _register_or_login(client, email, password)
+        token = auth_payload['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+        summary['checks']['register'] = {'user_id': (auth_payload.get('user') or {}).get('id')}
+
+        world = _json_response(client.post('/worlds/from-template', headers=headers))
+        world_id = world['id']
+        summary['world_id'] = world_id
+        summary['checks']['create_world'] = {'world_version': world.get('world_version')}
+
+        draft = _json_response(
+            client.post(
+                f'/worlds/{world_id}/chapters/draft',
+                json={'chapter_goal': 'E2E smoke: advance the sample world by one coherent chapter.'},
+                headers=headers,
+            )
+        )
+        chapter_id = draft['chapter_id']
+        draft_version = draft['draft_version']
+        summary['chapter_id'] = chapter_id
+        summary['draft_id'] = draft.get('draft_id')
+        summary['checks']['draft'] = {'draft_version': draft_version}
+
+        preview = _json_response(client.get(f'/chapters/{chapter_id}/approval-preview', headers=headers))
+        summary['checks']['approval_preview'] = {
+            'version_conflict': preview.get('version_conflict'),
+            'character_changes': len(preview.get('character_changes') or []),
+            'foreshadow_changes': len(preview.get('foreshadow_changes') or []),
+        }
+
+        readiness = _json_response(client.get(f'/chapters/{chapter_id}/approval-readiness', headers=headers))
+        summary['checks']['approval_readiness'] = {
+            'ready': readiness.get('ready'),
+            'status': readiness.get('status'),
+            'blocking_reasons': readiness.get('blocking_reasons') or [],
+            'warnings': readiness.get('warnings') or [],
+        }
+
+        consistency = _json_response(
+            client.post(f'/chapters/{chapter_id}/approval-consistency', json={'draft_version': draft_version}, headers=headers)
+        )
+        summary['checks']['approval_consistency'] = consistency.get('consistency_summary') or {}
+
+        approved = _json_response(client.post(f'/chapters/{chapter_id}/approve', json={'draft_version': draft_version}, headers=headers))
+        summary['checks']['approve'] = {'status': approved.get('status'), 'approved_version': approved.get('approved_version')}
+
+        events = _json_response(client.get(f'/worlds/{world_id}/events', params={'limit': 100}, headers=headers))
+        event_types = [event.get('event_type') for event in events.get('items', [])]
+        chapter_approved_seen = 'chapter_approved' in event_types or 'chapter_approved' in (events.get('summary') or {}).get('event_type_counts', {})
+        summary['checks']['events'] = {
+            'event_types': event_types,
+            'chapter_approved_seen': chapter_approved_seen,
+        }
+
+        export = _json_response(client.post(f'/worlds/{world_id}/export/markdown', headers=headers))
+        files = export.get('files') or []
+        summary['checks']['markdown_export'] = {
+            'archive_format': export.get('archive_format'),
+            'archive_encoding': export.get('archive_encoding'),
+            'archive_base64_present': bool(export.get('archive_base64')),
+            'files_are_inline': export.get('files_are_inline'),
+            'file_count': len(files),
+            'has_world_md': any(file.get('path') == 'World.md' for file in files),
+        }
+
+        summary['ok'] = all(
+            [
+                health.get('status') == 'ok',
+                preview.get('version_conflict') is False,
+                approved.get('status') == 'approved',
+                chapter_approved_seen,
+                export.get('archive_format') == 'zip',
+                export.get('archive_encoding') == 'base64',
+                export.get('files_are_inline') is True,
+                bool(export.get('archive_base64')),
+                any(file.get('path') == 'World.md' for file in files),
+            ]
+        )
+        return summary
+    finally:
+        if owns_client:
+            client.close()
+
+
+def main() -> int:
+    try:
+        summary = run_smoke()
+    except Exception as exc:
+        summary = {
+            'ok': False,
+            'mode': 'real-llm' if _env_bool('E2E_REAL_LLM') else 'mock',
+            'base_url': _base_url(),
+            'error': str(exc),
+        }
+    print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+    return 0 if summary.get('ok') else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

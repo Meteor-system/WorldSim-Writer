@@ -24,7 +24,7 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-`backend/.env.example` documents required settings. Change `SECRET_KEY` from the example value before starting the app; `Settings` rejects the placeholder. Set `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` before generating drafts.
+`backend/.env.example` documents required settings. Change `SECRET_KEY` from the example value before starting the app; `Settings` rejects the placeholder. Set `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` before generating drafts. Use `LLM_MOCK=true` for fast local smoke E2E without a real model call.
 
 Useful backend verification commands:
 
@@ -33,7 +33,11 @@ pytest
 pytest tests/test_narrative_approval.py -v
 pytest tests/test_narrative_approval.py::test_approve_chapter_updates_world_character_foreshadow_and_events -v
 pytest --cov=app
+BASE_URL=http://localhost:8000 PYTHONIOENCODING=utf-8 python scripts/e2e_smoke.py
+PYTHONIOENCODING=utf-8 python scripts/cleanup_e2e_data.py --confirm
 ```
+
+The smoke E2E script prints a JSON summary and covers register, world creation, draft, approval preview/readiness/consistency, approve, events, and markdown export. Default smoke mode expects the running backend to use `LLM_MOCK=true`; optional real-LLM mode uses `E2E_REAL_LLM=1` with real `LLM_*` backend settings. Cleanup dry-runs unless `--confirm` is passed; confirmed cleanup only deletes users whose emails start with `e2e-` and their associated data.
 
 In this shell, `conda run` can be more reliable than `conda activate`:
 
@@ -66,7 +70,7 @@ Run the backend at `http://localhost:8000` and frontend at `http://localhost:517
 3. Enter the studio.
 4. Generate a chapter draft.
 5. Approve the draft.
-6. Confirm `world_version` increments, a `CHAPTER_APPROVED` event appears, and at least one proposed projection change is visible.
+6. Confirm `world_version` increments, a `chapter_approved` event appears, and at least one proposed projection change is visible.
 
 ## Backend architecture
 
@@ -89,7 +93,7 @@ World state is split between current projection tables and append-only history:
 Narrative generation and approval are intentionally transactional:
 
 - `create_chapter_draft()` reads the current world projection, builds model messages, calls the OpenAI-compatible `LLMClient`, validates structured model output, and stores `Chapter`/`ChapterDraft` records without changing formal world state.
-- `approve_chapter()` locks the world row, checks the draft `source_world_version`, applies proposed character/foreshadow projection changes, increments `world_version`, and writes a `CHAPTER_APPROVED` event in one commit.
+- `approve_chapter()` locks the world row, checks the draft `source_world_version`, applies proposed character/foreshadow projection changes, increments `world_version`, and writes a `chapter_approved` event in one commit.
 - Rejecting a chapter only marks the chapter rejected and must not update world projection state.
 
 The LLM boundary is in `app.llm`: the client speaks Chat Completions-style HTTP and parses responses into Pydantic schemas before narrative services persist proposed changes. Model-proposed character and foreshadow IDs must belong to the current world.
@@ -106,6 +110,7 @@ The frontend is a Vite React app with a small stateful flow rather than a router
 - `src/auth/AuthPage.tsx` handles login/register.
 - `src/world/WorldPage.tsx` lists/creates the sample world and renders the current projection.
 - `src/studio/StudioPage.tsx` drafts chapters, displays review context/proposed changes, and approves chapters.
+- `POST /worlds/{world_id}/export/markdown` returns JSON containing `archive_format: "zip"`, `archive_encoding: "base64"`, `archive_base64`, `files_are_inline: true`, and inline `files`; it is not a raw markdown file response.
 
 ## Product and implementation boundaries
 

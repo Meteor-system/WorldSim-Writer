@@ -268,9 +268,27 @@ def test_story_bible_edit_does_not_mutate_reviewing_draft_and_readiness_reports_
     assert readiness_payload['world_version']['current_world_version'] == 2
     assert readiness_payload['world_version']['matches'] is False
     assert readiness_payload['status'] == 'blocked'
+    assert readiness_payload['ready'] is False
+    assert readiness_payload['blocking_reasons'] == ['世界版本已变化，请重新生成草稿后再批准。']
+    assert isinstance(readiness_payload['warnings'], list)
 
     assert preview.status_code == 200
     preview_payload = preview.json()
     assert preview_payload['source_world_version'] == 1
     assert preview_payload['current_world_version'] == 2
     assert preview_payload['version_conflict'] is True
+
+
+def test_approval_readiness_exposes_direct_ready_status(client, monkeypatch):
+    token = register_user(client, 'readiness-direct@example.com')
+    world_payload = create_world(client, token)
+    draft = create_reviewing_draft(client, token, world_payload['id'], monkeypatch)
+
+    response = client.get(f"/chapters/{draft['chapter_id']}/approval-readiness", headers=auth(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['ready'] is False
+    assert payload['status'] in {'needs_review', 'blocked'}
+    assert isinstance(payload['blocking_reasons'], list)
+    assert isinstance(payload['warnings'], list)

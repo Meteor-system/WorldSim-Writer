@@ -289,7 +289,10 @@ def test_export_markdown_returns_downloadable_obsidian_zip_bundle(client, monkey
     assert response.status_code == 200
     payload = response.json()
     assert payload['archive_filename'].endswith('-v2-markdown.zip')
+    assert payload['archive_format'] == 'zip'
+    assert payload['archive_encoding'] == 'base64'
     assert payload['archive_base64']
+    assert payload['files_are_inline'] is True
 
     files_by_path = {file['path']: file['content'] for file in payload['files']}
     assert 'World.md' in files_by_path

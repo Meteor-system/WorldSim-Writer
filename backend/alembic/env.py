@@ -5,6 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
 from app.core.database import Base, import_models
+from app.core.migrations import ensure_alembic_version_table_capacity
 
 config = context.config
 
@@ -37,6 +38,7 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        ensure_alembic_version_table_capacity(connection)
         context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():

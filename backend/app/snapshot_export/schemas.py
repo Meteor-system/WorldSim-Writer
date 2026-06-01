@@ -62,5 +62,8 @@ class WorldMarkdownExportResponse(BaseModel):
     world_version: int
     generated_at: datetime
     archive_filename: str
+    archive_format: str
+    archive_encoding: str
     archive_base64: str
+    files_are_inline: bool
     files: list[MarkdownExportFile]

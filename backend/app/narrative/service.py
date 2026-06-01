@@ -1321,9 +1321,12 @@ def get_approval_readiness(db: Session, user: User, chapter_id: int) -> dict:
     )
 
     readiness_status, summary = _approval_readiness_summary(checks)
+    blocking_reasons = [check['message'] for check in checks if check['status'] == 'fail']
+    warning_messages = [check['message'] for check in checks if check['status'] == 'warning']
     return {
         'chapter_id': chapter.id,
         'draft_version': draft.draft_version,
+        'ready': readiness_status == 'ready',
         'status': readiness_status,
         'summary': summary,
         'world_version': {
@@ -1332,6 +1335,8 @@ def get_approval_readiness(db: Session, user: User, chapter_id: int) -> dict:
             'matches': world_version_matches,
         },
         'checks': checks,
+        'blocking_reasons': blocking_reasons,
+        'warnings': warning_messages,
         'high_risk_items': high_risk_items,
     }
 

@@ -939,7 +939,7 @@
 - **章节类事件**
     - `CHAPTER_DRAFT_CREATED`
     - `CHAPTER_REWRITTEN`
-    - `CHAPTER_APPROVED`
+    - `chapter_approved`
     - `CHAPTER_REJECTED`
 - **伏笔类事件**
     - `FORESHADOW_PLANTED`
@@ -1768,7 +1768,7 @@
 {
   "event_id": "evt_chapter_012_approve",
   "world_id": "world_xianxia_001",
-  "event_type": "CHAPTER_APPROVED",
+  "event_type": "chapter_approved",
   "source_type": "chapter_approval",
   "commit_id": "commit_20260526_0012",
   "world_version_before": 27,

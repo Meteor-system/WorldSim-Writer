@@ -236,10 +236,13 @@ class ApprovalReadinessCheck(BaseModel):
 class ApprovalReadinessResponse(BaseModel):
     chapter_id: int
     draft_version: int
+    ready: bool
     status: Literal['ready', 'needs_review', 'blocked']
     summary: str
     world_version: ApprovalReadinessWorldVersion
     checks: list[ApprovalReadinessCheck]
+    blocking_reasons: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
     high_risk_items: list[dict] = Field(default_factory=list)
 
 

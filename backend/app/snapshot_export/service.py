@@ -504,6 +504,9 @@ def export_world_markdown(db: Session, user: User, world_id: int) -> dict[str, A
         'world_version': world.world_version,
         'generated_at': datetime.now(timezone.utc),
         'archive_filename': _archive_filename(world),
+        'archive_format': 'zip',
+        'archive_encoding': 'base64',
         'archive_base64': _zip_markdown_files(files),
+        'files_are_inline': True,
         'files': files,
     }
