@@ -123,7 +123,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         health = _step_json(summary, 'health', lambda: client.get('/health'))
         if _has_failed(summary):
             return summary
-        if not _require_paths(summary, 'health', health, ['migration.up_to_date', 'llm.mock']):
+        if not _require_paths(summary, 'health', health, ['status', 'migration.up_to_date', 'llm.mock']):
             return summary
         backend_llm_mock = (health.get('llm') or {}).get('mock')
         summary['checks']['health'] = {
