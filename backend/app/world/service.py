@@ -230,7 +230,21 @@ def list_user_worlds(db: Session, user: User) -> list[World]:
 
 def update_world_status(db: Session, user: User, world_id: int, next_status: str) -> World:
     world = require_owned_world(db, user, world_id)
+    previous_status = world.status
     world.status = next_status
+    if previous_status != next_status:
+        db.add(
+            EventLog(
+                world_id=world.id,
+                chapter_id=None,
+                event_type='world_status_changed',
+                source_type='world_status',
+                commit_id=f'world-status-{world.id}-{uuid4().hex}',
+                payload={'previous_status': previous_status, 'next_status': next_status},
+                world_version_before=world.world_version,
+                world_version_after=world.world_version,
+            )
+        )
     db.commit()
     db.refresh(world)
     return world

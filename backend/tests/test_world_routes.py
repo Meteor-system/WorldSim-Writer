@@ -1,3 +1,6 @@
+from sqlalchemy import select
+
+from app.event.models import EventLog
 from app.world.models import World
 
 
@@ -38,6 +41,65 @@ def test_world_owner_can_archive_and_restore_world(client, db_session):
     assert restored.status_code == 200
     assert restored.json()['status'] == 'active'
     assert db_session.get(World, world['id']) is not None
+
+
+def test_world_status_update_records_archive_and_restore_events_without_incrementing_world_version(client, db_session):
+    token = register(client, 'archive-events@example.com')
+    world = create_sample_world(client, token)
+
+    archived = client.patch(
+        f"/worlds/{world['id']}/status",
+        json={'status': 'archived'},
+        headers=auth_headers(token),
+    )
+    restored = client.patch(
+        f"/worlds/{world['id']}/status",
+        json={'status': 'active'},
+        headers=auth_headers(token),
+    )
+
+    assert archived.status_code == 200
+    assert restored.status_code == 200
+    assert archived.json()['world_version'] == world['world_version']
+    assert restored.json()['world_version'] == world['world_version']
+
+    events = list(
+        db_session.scalars(
+            select(EventLog)
+            .where(EventLog.world_id == world['id'])
+            .where(EventLog.event_type == 'world_status_changed')
+            .order_by(EventLog.id)
+        )
+    )
+    assert len(events) == 2
+    assert [event.source_type for event in events] == ['world_status', 'world_status']
+    assert [event.payload for event in events] == [
+        {'previous_status': 'active', 'next_status': 'archived'},
+        {'previous_status': 'archived', 'next_status': 'active'},
+    ]
+    assert [event.world_version_before for event in events] == [world['world_version'], world['world_version']]
+    assert [event.world_version_after for event in events] == [world['world_version'], world['world_version']]
+
+
+def test_world_status_update_does_not_record_event_for_unchanged_status(client, db_session):
+    token = register(client, 'archive-unchanged@example.com')
+    world = create_sample_world(client, token)
+
+    response = client.patch(
+        f"/worlds/{world['id']}/status",
+        json={'status': 'active'},
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 200
+    events = list(
+        db_session.scalars(
+            select(EventLog)
+            .where(EventLog.world_id == world['id'])
+            .where(EventLog.event_type == 'world_status_changed')
+        )
+    )
+    assert events == []
 
 
 def test_world_status_update_rejects_invalid_status(client):
