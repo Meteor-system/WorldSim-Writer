@@ -304,13 +304,17 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             return summary
         if not _require_paths(summary, 'approval_consistency', consistency, ['consistency_summary.status']):
             return summary
+        if not _require_fields(summary, 'approval_consistency', consistency, ['consistency_warnings']):
+            return summary
+        if not _require_list_of_dicts(summary, 'approval_consistency', consistency, 'consistency_warnings'):
+            return summary
         consistency_summary = consistency.get('consistency_summary') or {}
-        consistency_warnings = consistency.get('consistency_warnings')
+        consistency_warnings = consistency.get('consistency_warnings') or []
         consistency_blocked = consistency_summary.get('status') == 'blocked' or (consistency_summary.get('blocking_count') or 0) > 0
         summary['checks']['approval_consistency'] = {
             **consistency_summary,
             'blocked': consistency_blocked,
-            'warnings': consistency_warnings if isinstance(consistency_warnings, list) else [],
+            'warnings': consistency_warnings,
         }
         if consistency_blocked:
             summary['failed_step'] = 'approval_consistency'

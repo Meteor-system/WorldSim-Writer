@@ -805,6 +805,78 @@ def test_e2e_smoke_script_fails_when_approval_consistency_is_blocked(monkeypatch
     ]
 
 
+def test_e2e_smoke_script_requires_consistency_warnings_before_approval(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
+            json_response({'consistency_summary': {'status': 'clear'}}),
+            json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
+            json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'approval_consistency'
+    assert summary['error'] == 'MISSING_REQUIRED_FIELDS'
+    assert summary['missing_fields'] == ['consistency_warnings']
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+        '/worlds/10/chapters/draft',
+        '/chapters/20/approval-preview',
+        '/chapters/20/approval-readiness',
+        '/chapters/20/approval-consistency',
+    ]
+
+
+def test_e2e_smoke_script_requires_consistency_warnings_to_be_list_of_objects(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
+            json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': 'warning text'}),
+            json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
+            json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'approval_consistency'
+    assert summary['error'] == 'INVALID_FIELD_TYPES'
+    assert summary['invalid_fields'] == ['consistency_warnings']
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+        '/worlds/10/chapters/draft',
+        '/chapters/20/approval-preview',
+        '/chapters/20/approval-readiness',
+        '/chapters/20/approval-consistency',
+    ]
+
+
 def test_e2e_smoke_script_requires_world_version_baseline_for_create_world(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()
