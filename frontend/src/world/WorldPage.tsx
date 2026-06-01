@@ -353,7 +353,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
         setWorld(null);
         setShowCreationForm(true);
         void loadSeedLibrary();
-      } else if (loadedWorlds.length === 1) {
+      } else if (loadedWorlds.length === 1 && loadedWorlds[0].status !== 'archived') {
         await openWorld(loadedWorlds[0].id);
       } else {
         setWorld(null);

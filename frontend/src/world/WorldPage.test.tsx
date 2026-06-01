@@ -516,6 +516,28 @@ describe('WorldPage bookshelf', () => {
     expect(await screen.findByRole('button', { name: '归档当前小说' })).toBeInTheDocument();
   });
 
+  it('shows the bookshelf instead of auto-opening a single archived world', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'archived', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(archivedWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('作品书架')).toBeInTheDocument();
+    expect(screen.queryByText('World Canon')).not.toBeInTheDocument();
+    expect(screen.getByText('已归档')).toBeInTheDocument();
+    expect(screen.getByText('青岚城')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '打开 青岚城' }));
+
+    expect(await screen.findByText('World Canon')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '取消归档当前小说' })).toBeInTheDocument();
+  });
+
   it('returns from a single auto-opened world to the bookshelf', async () => {
     const user = userEvent.setup();
 
