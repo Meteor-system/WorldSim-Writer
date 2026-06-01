@@ -86,16 +86,16 @@ def _require_paths(summary: dict, step: str, payload: dict, paths: list[str]) ->
     return False
 
 
-def _register_or_login(client: httpx.Client, email: str, password: str, summary: dict) -> dict:
+def _register_or_login(client: httpx.Client, email: str, password: str, summary: dict) -> tuple[dict, str]:
     try:
         response = client.post('/auth/register', json={'email': email, 'password': password})
     except httpx.RequestError as exc:
         summary['failed_step'] = 'register'
         summary['error'] = str(exc)
-        return {}
+        return {}, 'register'
     if response.status_code == 400:
-        return _step_json(summary, 'login', lambda: client.post('/auth/login', json={'email': email, 'password': password}))
-    return _step_json(summary, 'register', lambda: response)
+        return _step_json(summary, 'login', lambda: client.post('/auth/login', json={'email': email, 'password': password})), 'login'
+    return _step_json(summary, 'register', lambda: response), 'register'
 
 
 def run_smoke(client: httpx.Client | None = None, email: str | None = None, password: str | None = None) -> dict:
@@ -144,14 +144,14 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             summary['error'] = 'BACKEND_LLM_MOCK_ENABLED'
             return summary
 
-        auth_payload = _register_or_login(client, email, password, summary)
+        auth_payload, auth_step = _register_or_login(client, email, password, summary)
         if _has_failed(summary):
             return summary
-        if not _require_fields(summary, 'register', auth_payload, ['access_token']):
+        if not _require_fields(summary, auth_step, auth_payload, ['access_token']):
             return summary
         token = auth_payload['access_token']
         headers = {'Authorization': f'Bearer {token}'}
-        summary['checks']['register'] = {'user_id': (auth_payload.get('user') or {}).get('id')}
+        summary['checks'][auth_step] = {'user_id': (auth_payload.get('user') or {}).get('id')}
 
         world = _step_json(summary, 'create_world', lambda: client.post('/worlds/from-template', headers=headers))
         if _has_failed(summary):
