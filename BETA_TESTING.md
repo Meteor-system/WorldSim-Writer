@@ -59,8 +59,8 @@ Pass criteria:
 - `checks.approval_preview.proposed_change_count` is greater than `0`, proving at least one proposed character or foreshadow projection change is visible before approval; if it is `0`, the smoke stops before formal approval with `error: "NO_PROPOSED_PROJECTION_CHANGES"`.
 - `checks.approval_readiness.blocked` is `false`; if it is `true`, the smoke stops before formal approval with `error: "APPROVAL_READINESS_BLOCKED"`, so review `checks.approval_readiness.blocking_reasons`, regenerate or repair the draft as instructed, and rerun smoke.
 - `checks.approval_consistency.status` from `consistency_summary.status` is present, and `checks.approval_consistency.blocked` is `false`; if it is `true`, the smoke stops before formal approval with `error: "APPROVAL_CONSISTENCY_BLOCKED"`, so inspect `checks.approval_consistency.warnings` for severity/category/message/object details, adjust the proposed changes or regenerate the draft, and rerun smoke.
-- `checks.approve.status` is `approved` and `checks.approve.approved_version` is present.
-- `checks.approve.world_version_incremented` is `true`, proving approval advanced the world version from the draft baseline.
+- `checks.approve.status` is `approved` and `checks.approve.approved_version` is present; if the smoke JSON stops at `failed_step: "approve"` with `error: "APPROVAL_STATUS_NOT_APPROVED"`, approval did not complete and later event/export checks are intentionally skipped.
+- `checks.approve.world_version_incremented` is `true`, proving approval advanced the world version from the draft baseline; if the smoke JSON stops at `failed_step: "approve"` with `error: "WORLD_VERSION_NOT_INCREMENTED"`, inspect `checks.approve.approved_version` and `checks.approve.expected_world_version_after` before rerunning smoke.
 - `checks.events.chapter_approved_seen` is `true`.
 - `checks.markdown_export.archive_format` is `zip` and `archive_encoding` is `base64`.
 

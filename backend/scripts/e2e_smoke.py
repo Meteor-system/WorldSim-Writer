@@ -262,6 +262,14 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             'expected_world_version_after': expected_world_version_after,
             'world_version_incremented': world_version_incremented,
         }
+        if approved.get('status') != 'approved':
+            summary['failed_step'] = 'approve'
+            summary['error'] = 'APPROVAL_STATUS_NOT_APPROVED'
+            return summary
+        if not world_version_incremented:
+            summary['failed_step'] = 'approve'
+            summary['error'] = 'WORLD_VERSION_NOT_INCREMENTED'
+            return summary
 
         events = _step_json(summary, 'events', lambda: client.get(f'/worlds/{world_id}/events', params={'limit': 100}, headers=headers))
         if _has_failed(summary):
