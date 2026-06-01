@@ -167,6 +167,41 @@ def test_e2e_smoke_script_fails_when_approval_does_not_increment_world_version(m
     assert summary['checks']['approve']['world_version_incremented'] is False
 
 
+def test_e2e_smoke_script_requires_approved_version_after_approval(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
+            json_response({'version_conflict': False}),
+            json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
+            json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
+            json_response({'id': 20, 'status': 'approved'}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'approve'
+    assert summary['error'] == 'MISSING_REQUIRED_FIELDS'
+    assert summary['missing_fields'] == ['approved_version']
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+        '/worlds/10/chapters/draft',
+        '/chapters/20/approval-preview',
+        '/chapters/20/approval-readiness',
+        '/chapters/20/approval-consistency',
+        '/chapters/20/approve',
+    ]
+
+
 def test_e2e_smoke_script_fails_when_approval_readiness_is_blocked(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()

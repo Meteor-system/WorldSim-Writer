@@ -206,6 +206,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         approved = _step_json(summary, 'approve', lambda: client.post(f'/chapters/{chapter_id}/approve', json={'draft_version': draft_version}, headers=headers))
         if _has_failed(summary):
             return summary
+        if not _require_fields(summary, 'approve', approved, ['approved_version']):
+            return summary
         approved_version = approved.get('approved_version')
         expected_world_version_after = initial_world_version + 1 if isinstance(initial_world_version, int) else None
         world_version_incremented = approved_version == expected_world_version_after
