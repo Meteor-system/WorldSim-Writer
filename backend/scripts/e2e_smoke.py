@@ -177,10 +177,12 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if _has_failed(summary):
             return summary
         consistency_summary = consistency.get('consistency_summary') or {}
+        consistency_warnings = consistency.get('consistency_warnings')
         consistency_blocked = consistency_summary.get('status') == 'blocked' or (consistency_summary.get('blocking_count') or 0) > 0
         summary['checks']['approval_consistency'] = {
             **consistency_summary,
             'blocked': consistency_blocked,
+            'warnings': consistency_warnings if isinstance(consistency_warnings, list) else [],
         }
 
         approved = _step_json(summary, 'approve', lambda: client.post(f'/chapters/{chapter_id}/approve', json={'draft_version': draft_version}, headers=headers))
