@@ -342,7 +342,7 @@ export type StoryArcResponse = {
   story_arc: StoryArcChapter[];
 };
 
-export type WorldOverview = {
+export type WorldSummary = {
   id: number;
   title: string;
   genre_template: string;
@@ -354,6 +354,13 @@ export type WorldOverview = {
   current_characters: Character[];
   current_foreshadows: Foreshadow[];
   current_relations: CharacterRelation[];
+};
+
+export type WorldStatusUpdateRequest = {
+  status: 'active' | 'archived';
+};
+
+export type WorldOverview = WorldSummary & {
   characters: Character[];
   relations: CharacterRelation[];
   foreshadows: Foreshadow[];

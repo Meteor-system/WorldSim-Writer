@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, searchWorld, unassignWorldTag, updateWorldTag } from '../api/client';
+import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
 import type { WorldOverview, WorldSearchResponse } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -34,6 +34,7 @@ vi.mock('../api/client', () => ({
   mergeWorldTag: vi.fn(),
   searchWorld: vi.fn(),
   unassignWorldTag: vi.fn(),
+  updateWorldStatus: vi.fn(),
   updateWorldTag: vi.fn(),
   getCharacters: vi.fn(),
   getForeshadowLedger: vi.fn(),
@@ -97,6 +98,21 @@ const storyArcWorld: WorldOverview = {
   }),
 };
 
+const secondWorld: WorldOverview = {
+  ...world,
+  id: 8,
+  title: '星舰余烬',
+  genre_template: 'sci_fi',
+  truth_canon: '星舰仍在航行。',
+  world_version: 1,
+  status: 'active',
+};
+
+const archivedWorld: WorldOverview = {
+  ...world,
+  status: 'archived',
+};
+
 afterEach(() => cleanup());
 
 beforeEach(() => {
@@ -127,6 +143,7 @@ beforeEach(() => {
   vi.mocked(searchWorld).mockReset();
   vi.mocked(searchWorld).mockResolvedValue(worldSearchResponse);
   vi.mocked(unassignWorldTag).mockReset();
+  vi.mocked(updateWorldStatus).mockReset();
   vi.mocked(updateWorldTag).mockReset();
   vi.mocked(listWorldSnapshots).mockReset();
   vi.mocked(getCharacters).mockReset();
@@ -428,6 +445,81 @@ describe('WorldPage world creation', () => {
     expect(createWorldFromSeed).toHaveBeenCalledWith('forgotten-sun-city');
     expect(apiRequest).toHaveBeenNthCalledWith(2, '/worlds/7/overview');
     expect(await screen.findByText('青岚城')).toBeInTheDocument();
+  });
+});
+
+describe('WorldPage bookshelf', () => {
+  it('shows a bookshelf for multiple worlds and opens the selected second world', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'active', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+        { id: 8, title: '星舰余烬', genre_template: 'sci_fi', truth_canon: '星舰仍在航行。', truth_canon_version: 1, world_version: 1, status: 'active', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(secondWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('作品书架')).toBeInTheDocument();
+    expect(screen.queryByText('World Canon')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '打开 星舰余烬' }));
+
+    expect(await screen.findByText('星舰余烬')).toBeInTheDocument();
+    expect(apiRequest).toHaveBeenNthCalledWith(2, '/worlds/8/overview');
+  });
+
+  it('returns from an open world to the bookshelf', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'active', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+        { id: 8, title: '星舰余烬', genre_template: 'sci_fi', truth_canon: '星舰仍在航行。', truth_canon_version: 1, world_version: 1, status: 'active', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(world);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
+    expect(await screen.findByText('World Canon')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '返回作品书架' }));
+
+    expect(screen.getByText('作品书架')).toBeInTheDocument();
+  });
+
+  it('shows archive entry copy on the current world page', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('归档前建议先创建世界快照并导出 Markdown ZIP。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '归档当前小说' })).toBeInTheDocument();
+  });
+
+  it('can archive and restore the current world without leaving the page', async () => {
+    const user = userEvent.setup();
+    vi.mocked(updateWorldStatus)
+      .mockResolvedValueOnce({ ...world, status: 'archived' })
+      .mockResolvedValueOnce({ ...world, status: 'active' });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '归档当前小说' }));
+
+    expect(updateWorldStatus).toHaveBeenCalledWith(7, { status: 'archived' });
+    expect(await screen.findByRole('button', { name: '取消归档当前小说' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '取消归档当前小说' }));
+
+    expect(updateWorldStatus).toHaveBeenCalledWith(7, { status: 'active' });
+    expect(await screen.findByRole('button', { name: '归档当前小说' })).toBeInTheDocument();
+  });
+
+  it('still auto-opens a single existing world', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('World Canon')).toBeInTheDocument();
+    expect(screen.queryByText('作品书架')).not.toBeInTheDocument();
   });
 });
 

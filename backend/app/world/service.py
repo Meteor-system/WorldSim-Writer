@@ -228,6 +228,14 @@ def list_user_worlds(db: Session, user: User) -> list[World]:
     return list(db.scalars(select(World).where(World.owner_id == user.id).order_by(World.id)))
 
 
+def update_world_status(db: Session, user: User, world_id: int, next_status: str) -> World:
+    world = require_owned_world(db, user, world_id)
+    world.status = next_status
+    db.commit()
+    db.refresh(world)
+    return world
+
+
 def require_owned_world(db: Session, user: User, world_id: int) -> World:
     world = db.get(World, world_id)
     if world is None:

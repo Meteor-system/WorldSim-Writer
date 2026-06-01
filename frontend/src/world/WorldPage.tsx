@@ -28,9 +28,10 @@ import {
   mergeWorldTag,
   searchWorld,
   unassignWorldTag,
+  updateWorldStatus,
   updateWorldTag,
 } from '../api/client';
-import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary } from '../api/types';
+import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
@@ -158,9 +159,13 @@ function StoryArcCard({ chapter, expanded, onToggle }: { chapter: StoryArcChapte
 
 export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [world, setWorld] = useState<WorldOverview | null>(null);
+  const [worlds, setWorlds] = useState<WorldSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [showCreationForm, setShowCreationForm] = useState(false);
   const [error, setError] = useState('');
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const [archiveError, setArchiveError] = useState('');
   const [seedLibrary, setSeedLibrary] = useState<WorldSeedSummary[]>([]);
   const [seedLibraryLoading, setSeedLibraryLoading] = useState(false);
   const [seedLibraryError, setSeedLibraryError] = useState('');
@@ -265,17 +270,31 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     }
   }
 
+  async function openWorld(worldId: number) {
+    setError('');
+    setArchiveError('');
+    const overview = await apiRequest<WorldOverview>(`/worlds/${worldId}/overview`);
+    setWorld(overview);
+    setShowCreationForm(false);
+    setSelectedExecutionContext(null);
+    setTab('overview');
+    void loadNarrativeControlCenter(overview.id);
+  }
+
   async function loadWorld() {
     setError('');
     try {
-      const worlds = await apiRequest<Array<{ id: number }>>('/worlds');
-      if (worlds.length === 0) {
+      const loadedWorlds = await apiRequest<WorldSummary[]>('/worlds');
+      setWorlds(loadedWorlds);
+      if (loadedWorlds.length === 0) {
         setWorld(null);
+        setShowCreationForm(true);
         void loadSeedLibrary();
+      } else if (loadedWorlds.length === 1) {
+        await openWorld(loadedWorlds[0].id);
       } else {
-        const overview = await apiRequest<WorldOverview>(`/worlds/${worlds[0].id}/overview`);
-        setWorld(overview);
-        void loadNarrativeControlCenter(overview.id);
+        setWorld(null);
+        setShowCreationForm(false);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载世界失败');
@@ -291,6 +310,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       const created = await createWorld(payload);
       const overview = await apiRequest<WorldOverview>(`/worlds/${created.id}/overview`);
       setWorld(overview);
+      setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
+      setShowCreationForm(false);
       void loadNarrativeControlCenter(overview.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建世界失败');
@@ -306,6 +327,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       const created = await createSampleWorld();
       const overview = await apiRequest<WorldOverview>(`/worlds/${created.id}/overview`);
       setWorld(overview);
+      setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
+      setShowCreationForm(false);
       void loadNarrativeControlCenter(overview.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建世界失败');
@@ -321,6 +344,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       const created = await createWorldFromSeed(seedKey);
       const overview = await apiRequest<WorldOverview>(`/worlds/${created.id}/overview`);
       setWorld(overview);
+      setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
+      setShowCreationForm(false);
       void loadNarrativeControlCenter(overview.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建世界胚胎失败');
@@ -343,6 +368,42 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     }
   }
 
+  async function openWorldFromShelf(worldId: number) {
+    try {
+      await openWorld(worldId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '打开小说失败');
+    }
+  }
+
+  function returnToBookshelf() {
+    setWorld(null);
+    setShowCreationForm(false);
+    setArchiveError('');
+  }
+
+  function startNewWorld() {
+    setWorld(null);
+    setShowCreationForm(true);
+    void loadSeedLibrary();
+  }
+
+  async function toggleWorldArchiveStatus() {
+    if (!world) return;
+    const nextStatus = world.status === 'archived' ? 'active' : 'archived';
+    setArchiveLoading(true);
+    setArchiveError('');
+    try {
+      const updated = await updateWorldStatus(world.id, { status: nextStatus });
+      setWorld({ ...world, status: updated.status });
+      setWorlds((current) => current.map((item) => (item.id === updated.id ? { ...item, status: updated.status } : item)));
+    } catch {
+      setArchiveError('更新归档状态失败');
+    } finally {
+      setArchiveLoading(false);
+    }
+  }
+
   useEffect(() => {
     void loadWorld();
   }, []);
@@ -351,6 +412,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     if (!loading && autoFocusTitle) titleRef.current?.focus();
   }, [autoFocusTitle, loading, world?.id]);
 
+  const activeWorlds = worlds.filter((item) => item.status !== 'archived');
+  const archivedWorlds = worlds.filter((item) => item.status === 'archived');
+
   if (loading)
     return (
       <p className="p-8 ink-muted" role="status" aria-live="polite">
@@ -358,9 +422,61 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       </p>
     );
 
+  if (!world && !showCreationForm) {
+    return (
+      <section className="px-6 py-8 md:px-10">
+        <div className="book-spread p-8 md:p-10">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="chapter-kicker">Bookshelf</p>
+              <h1 className="mt-3 text-4xl font-black text-[#34210f]">作品书架</h1>
+              <p className="manuscript mt-3 text-sm text-[#5e3b1c]">先给暂缓的小说做快照和 Markdown ZIP，再归档并切换到其他小说继续写。</p>
+            </div>
+            <button className="primary-button" type="button" onClick={startNewWorld}>创建新小说</button>
+          </div>
+          {error && <p className="paper-error mt-5" role="alert">{error}</p>}
+          <div className="mt-8 grid gap-5 md:grid-cols-2">
+            <section className="book-card p-5">
+              <h2 className="text-xl font-black text-[#3b2511]">正在创作</h2>
+              <div className="mt-4 space-y-3">
+                {activeWorlds.length === 0 && <p className="ink-muted text-sm">暂无活跃小说，可创建新小说或恢复已归档作品。</p>}
+                {activeWorlds.map((item) => (
+                  <article key={item.id} className="rounded-2xl bg-amber-50/60 p-3">
+                    <p className="font-black text-[#34210f]">{item.title}</p>
+                    <p className="ink-muted mt-1 text-sm">v{item.world_version} · {item.genre_template} · {item.status}</p>
+                    <button className="secondary-button mt-3" type="button" onClick={() => void openWorldFromShelf(item.id)}>打开 {item.title}</button>
+                  </article>
+                ))}
+              </div>
+            </section>
+            <section className="book-card p-5">
+              <h2 className="text-xl font-black text-[#3b2511]">已归档</h2>
+              <p className="ink-muted mt-2 text-sm">归档只改变书架分组，不会删除世界、章节、快照或导出。</p>
+              <div className="mt-4 space-y-3">
+                {archivedWorlds.length === 0 && <p className="ink-muted text-sm">暂无归档小说。</p>}
+                {archivedWorlds.map((item) => (
+                  <article key={item.id} className="rounded-2xl bg-white/40 p-3">
+                    <p className="font-black text-[#34210f]">{item.title}</p>
+                    <p className="ink-muted mt-1 text-sm">v{item.world_version} · {item.genre_template} · archived</p>
+                    <button className="secondary-button mt-3" type="button" onClick={() => void openWorldFromShelf(item.id)}>打开 {item.title}</button>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   if (!world) {
     return (
       <section>
+        {worlds.length > 0 && (
+          <div className="mx-auto mt-8 max-w-5xl px-6">
+            <button className="secondary-button" type="button" onClick={returnToBookshelf}>返回作品书架</button>
+          </div>
+        )}
         {error && (
           <div className="mx-auto mt-8 max-w-5xl px-6">
             <p className="paper-error text-left" role="alert">
@@ -423,6 +539,17 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   {error}
                 </p>
               )}
+              <div className="mt-8 rounded-2xl bg-amber-50/70 p-4">
+                <p className="text-sm font-bold text-[#5e3b1c]">书架归档</p>
+                <p className="manuscript mt-1 text-sm">归档前建议先创建世界快照并导出 Markdown ZIP。</p>
+                {archiveError && <p className="paper-error mt-2" role="alert">{archiveError}</p>}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {worlds.length > 1 && <button className="secondary-button" type="button" onClick={returnToBookshelf}>返回作品书架</button>}
+                  <button className="secondary-button" type="button" disabled={archiveLoading} onClick={toggleWorldArchiveStatus}>
+                    {archiveLoading ? '更新中...' : world.status === 'archived' ? '取消归档当前小说' : '归档当前小说'}
+                  </button>
+                </div>
+              </div>
               <div className="mt-8 flex flex-wrap gap-3">
                 <button className="primary-button" onClick={() => onEnterStudio(world, {
                   initialChapterGoal: selectedExecutionContext?.goal,
