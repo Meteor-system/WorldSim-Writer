@@ -392,6 +392,10 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             'event_types': event_types,
             'chapter_approved_seen': chapter_approved_seen,
         }
+        if not chapter_approved_seen:
+            summary['failed_step'] = 'events'
+            summary['error'] = 'CHAPTER_APPROVED_EVENT_MISSING'
+            return summary
 
         export = _step_json(summary, 'markdown_export', lambda: client.post(f'/worlds/{world_id}/export/markdown', headers=headers))
         if _has_failed(summary):

@@ -303,6 +303,19 @@ def test_e2e_smoke_script_fails_when_expected_event_is_missing(monkeypatch):
 
     assert summary['ok'] is False
     assert summary['checks']['events']['chapter_approved_seen'] is False
+    assert summary['failed_step'] == 'events'
+    assert summary['error'] == 'CHAPTER_APPROVED_EVENT_MISSING'
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+        '/worlds/10/chapters/draft',
+        '/chapters/20/approval-preview',
+        '/chapters/20/approval-readiness',
+        '/chapters/20/approval-consistency',
+        '/chapters/20/approve',
+        '/worlds/10/events',
+    ]
 
 
 def test_e2e_smoke_script_requires_event_items_for_event_check(monkeypatch):

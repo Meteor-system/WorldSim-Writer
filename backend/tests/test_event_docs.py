@@ -64,6 +64,8 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'APPROVAL_CONSISTENCY_BLOCKED',
         'APPROVAL_STATUS_NOT_APPROVED',
         'WORLD_VERSION_NOT_INCREMENTED',
+        'checks.events.chapter_approved_seen',
+        'CHAPTER_APPROVED_EVENT_MISSING',
         'INVALID_FIELD_TYPES',
         'invalid_fields',
         'INVALID_JSON_RESPONSE',
