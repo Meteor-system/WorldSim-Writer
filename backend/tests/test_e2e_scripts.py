@@ -150,3 +150,35 @@ def test_e2e_smoke_script_returns_step_context_for_request_error(monkeypatch):
     assert 'response_body' not in summary
     assert summary['checks'] == {}
     assert [request.url.path for request in transport.requests] == ['/health']
+
+
+def test_e2e_smoke_script_stops_when_migration_is_not_up_to_date(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response(
+                {
+                    'status': 'ok',
+                    'migration': {
+                        'current': '0011_previous',
+                        'head': '0012_add_tags',
+                        'up_to_date': False,
+                        'status': 'pending',
+                    },
+                }
+            ),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'health'
+    assert summary['error'] == 'MIGRATION_NOT_UP_TO_DATE'
+    assert summary['checks']['health'] == {
+        'status': 'ok',
+        'migration_up_to_date': False,
+    }
+    assert [request.url.path for request in transport.requests] == ['/health']

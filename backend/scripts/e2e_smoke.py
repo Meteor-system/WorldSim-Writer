@@ -100,6 +100,10 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             'status': health.get('status'),
             'migration_up_to_date': (health.get('migration') or {}).get('up_to_date'),
         }
+        if summary['checks']['health']['migration_up_to_date'] is False:
+            summary['failed_step'] = 'health'
+            summary['error'] = 'MIGRATION_NOT_UP_TO_DATE'
+            return summary
 
         auth_payload = _register_or_login(client, email, password, summary)
         if _has_failed(summary):

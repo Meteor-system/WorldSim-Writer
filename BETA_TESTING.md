@@ -51,6 +51,7 @@ Pass criteria:
 - The script exits 0.
 - The printed JSON has `ok: true`.
 - Checks include health, register/login, world creation, draft, approval preview/readiness/consistency, approve, events, and markdown export.
+- `checks.health.migration_up_to_date` is `true`; if the smoke JSON stops at `failed_step: "health"` with `error: "MIGRATION_NOT_UP_TO_DATE"`, run `alembic upgrade head` from `backend/`, restart the backend, and rerun smoke.
 - `checks.events.chapter_approved_seen` is `true`.
 - `checks.markdown_export.archive_format` is `zip` and `archive_encoding` is `base64`.
 
