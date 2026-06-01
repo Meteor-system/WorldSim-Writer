@@ -196,6 +196,14 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             'proposed_change_count': proposed_change_count,
             'blocked': preview_blocked,
         }
+        if preview_blocked:
+            summary['failed_step'] = 'approval_preview'
+            summary['error'] = 'APPROVAL_PREVIEW_BLOCKED'
+            return summary
+        if proposed_change_count == 0:
+            summary['failed_step'] = 'approval_preview'
+            summary['error'] = 'NO_PROPOSED_PROJECTION_CHANGES'
+            return summary
 
         readiness = _step_json(summary, 'approval_readiness', lambda: client.get(f'/chapters/{chapter_id}/approval-readiness', headers=headers))
         if _has_failed(summary):
@@ -209,6 +217,10 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             'warnings': readiness.get('warnings') or [],
             'blocked': readiness_blocked,
         }
+        if readiness_blocked:
+            summary['failed_step'] = 'approval_readiness'
+            summary['error'] = 'APPROVAL_READINESS_BLOCKED'
+            return summary
 
         consistency = _step_json(
             summary,
@@ -225,6 +237,10 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             'blocked': consistency_blocked,
             'warnings': consistency_warnings if isinstance(consistency_warnings, list) else [],
         }
+        if consistency_blocked:
+            summary['failed_step'] = 'approval_consistency'
+            summary['error'] = 'APPROVAL_CONSISTENCY_BLOCKED'
+            return summary
 
         approved = _step_json(summary, 'approve', lambda: client.post(f'/chapters/{chapter_id}/approve', json={'draft_version': draft_version}, headers=headers))
         if _has_failed(summary):

@@ -113,7 +113,15 @@ def test_e2e_smoke_script_fails_when_approval_preview_has_version_conflict(monke
     assert summary['ok'] is False
     assert summary['checks']['approval_preview']['version_conflict'] is True
     assert summary['checks']['approval_preview']['blocked'] is True
-    assert summary['checks']['approve']['status'] == 'approved'
+    assert summary['failed_step'] == 'approval_preview'
+    assert summary['error'] == 'APPROVAL_PREVIEW_BLOCKED'
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+        '/worlds/10/chapters/draft',
+        '/chapters/20/approval-preview',
+    ]
 
 
 def test_e2e_smoke_script_fails_when_approval_preview_has_no_proposed_changes(monkeypatch):
@@ -140,6 +148,15 @@ def test_e2e_smoke_script_fails_when_approval_preview_has_no_proposed_changes(mo
     assert summary['ok'] is False
     assert summary['checks']['approval_preview']['version_conflict'] is False
     assert summary['checks']['approval_preview']['proposed_change_count'] == 0
+    assert summary['failed_step'] == 'approval_preview'
+    assert summary['error'] == 'NO_PROPOSED_PROJECTION_CHANGES'
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+        '/worlds/10/chapters/draft',
+        '/chapters/20/approval-preview',
+    ]
 
 
 def test_e2e_smoke_script_fails_when_expected_event_is_missing(monkeypatch):
@@ -151,7 +168,7 @@ def test_e2e_smoke_script_fails_when_expected_event_is_missing(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -176,7 +193,7 @@ def test_e2e_smoke_script_requires_event_items_for_event_check(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -213,7 +230,7 @@ def test_e2e_smoke_script_requires_markdown_export_archive_fields(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -240,7 +257,7 @@ def test_e2e_smoke_script_fails_when_approval_does_not_increment_world_version(m
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 1}),
@@ -267,7 +284,7 @@ def test_e2e_smoke_script_requires_approved_version_after_approval(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved'}),
@@ -302,7 +319,7 @@ def test_e2e_smoke_script_fails_when_approval_readiness_is_blocked(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': False, 'status': 'blocked', 'blocking_reasons': ['世界版本已变化，请重新生成草稿后再批准。'], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -318,7 +335,16 @@ def test_e2e_smoke_script_fails_when_approval_readiness_is_blocked(monkeypatch):
     assert summary['checks']['approval_readiness']['status'] == 'blocked'
     assert summary['checks']['approval_readiness']['blocking_reasons'] == ['世界版本已变化，请重新生成草稿后再批准。']
     assert summary['checks']['approval_readiness']['blocked'] is True
-    assert summary['checks']['approve']['status'] == 'approved'
+    assert summary['failed_step'] == 'approval_readiness'
+    assert summary['error'] == 'APPROVAL_READINESS_BLOCKED'
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+        '/worlds/10/chapters/draft',
+        '/chapters/20/approval-preview',
+        '/chapters/20/approval-readiness',
+    ]
 
 
 def test_e2e_smoke_script_fails_when_approval_consistency_is_blocked(monkeypatch):
@@ -340,7 +366,7 @@ def test_e2e_smoke_script_fails_when_approval_consistency_is_blocked(monkeypatch
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'blocked', 'blocking_count': 1}, 'consistency_warnings': consistency_warnings}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -357,7 +383,17 @@ def test_e2e_smoke_script_fails_when_approval_consistency_is_blocked(monkeypatch
     assert summary['checks']['approval_consistency']['blocking_count'] == 1
     assert summary['checks']['approval_consistency']['blocked'] is True
     assert summary['checks']['approval_consistency']['warnings'] == consistency_warnings
-    assert summary['checks']['approve']['status'] == 'approved'
+    assert summary['failed_step'] == 'approval_consistency'
+    assert summary['error'] == 'APPROVAL_CONSISTENCY_BLOCKED'
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+        '/worlds/10/chapters/draft',
+        '/chapters/20/approval-preview',
+        '/chapters/20/approval-readiness',
+        '/chapters/20/approval-consistency',
+    ]
 
 
 def test_e2e_smoke_script_requires_world_version_baseline_for_create_world(monkeypatch):

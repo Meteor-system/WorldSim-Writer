@@ -50,6 +50,10 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'checks.approval_readiness.blocked',
         'checks.approval_consistency.blocked',
         'checks.approval_consistency.warnings',
+        'APPROVAL_PREVIEW_BLOCKED',
+        'NO_PROPOSED_PROJECTION_CHANGES',
+        'APPROVAL_READINESS_BLOCKED',
+        'APPROVAL_CONSISTENCY_BLOCKED',
     ]
     for term in required_terms:
         assert term in playbook

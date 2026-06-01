@@ -54,10 +54,10 @@ Pass criteria:
 - Auth evidence appears as either `checks.register` for a newly created smoke user or `checks.login` when `E2E_EMAIL` reuses an existing smoke account, such as after a previous run created the email before cleanup.
 - `checks.health.migration_up_to_date` is `true`; if the smoke JSON stops at `failed_step: "health"` with `error: "MIGRATION_NOT_UP_TO_DATE"`, run `alembic upgrade head` from `backend/`, restart the backend, and rerun smoke.
 - `checks.health.llm_mock` is `true`; if the smoke JSON stops at `failed_step: "health"` with `error: "BACKEND_LLM_MOCK_DISABLED"`, restart the backend with `LLM_MOCK=true` and rerun mock smoke.
-- `checks.approval_preview.blocked` is `false`; if it is `true`, the draft has a world-version conflict, so regenerate the draft against the current world version and rerun smoke.
-- `checks.approval_preview.proposed_change_count` is greater than `0`, proving at least one proposed character or foreshadow projection change is visible before approval.
-- `checks.approval_readiness.blocked` is `false`; if it is `true`, review `checks.approval_readiness.blocking_reasons`, regenerate or repair the draft as instructed, and rerun smoke.
-- `checks.approval_consistency.blocked` is `false`; if it is `true`, inspect `checks.approval_consistency.warnings` for severity/category/message/object details, adjust the proposed changes or regenerate the draft, and rerun smoke.
+- `checks.approval_preview.blocked` is `false`; if it is `true`, the smoke stops before formal approval with `failed_step: "approval_preview"` and `error: "APPROVAL_PREVIEW_BLOCKED"`, so regenerate the draft against the current world version and rerun smoke.
+- `checks.approval_preview.proposed_change_count` is greater than `0`, proving at least one proposed character or foreshadow projection change is visible before approval; if it is `0`, the smoke stops before formal approval with `error: "NO_PROPOSED_PROJECTION_CHANGES"`.
+- `checks.approval_readiness.blocked` is `false`; if it is `true`, the smoke stops before formal approval with `error: "APPROVAL_READINESS_BLOCKED"`, so review `checks.approval_readiness.blocking_reasons`, regenerate or repair the draft as instructed, and rerun smoke.
+- `checks.approval_consistency.blocked` is `false`; if it is `true`, the smoke stops before formal approval with `error: "APPROVAL_CONSISTENCY_BLOCKED"`, so inspect `checks.approval_consistency.warnings` for severity/category/message/object details, adjust the proposed changes or regenerate the draft, and rerun smoke.
 - `checks.approve.world_version_incremented` is `true`, proving approval advanced the world version from the draft baseline.
 - `checks.events.chapter_approved_seen` is `true`.
 - `checks.markdown_export.archive_format` is `zip` and `archive_encoding` is `base64`.
