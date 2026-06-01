@@ -775,6 +775,28 @@ describe('WorldPage Story Arc Planner', () => {
 });
 
 describe('WorldPage Narrative Control Center', () => {
+  it('keeps Narrative Control Center read-only for archived worlds', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'archived', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(archivedWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
+
+    expect(await screen.findByText('已归档：写作已暂停')).toBeInTheDocument();
+    expect(await screen.findByText('Narrative Control Center')).toBeInTheDocument();
+    expect(screen.getByText('已归档小说为只读模式；恢复写作后才能把建议带入创作台。')).toBeInTheDocument();
+    expect(screen.getByText('下一章准备台')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '用作下一章目标' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '进入创作台并使用此目标' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '恢复写作' })).toBeInTheDocument();
+  });
+
   it('loads and displays Chapter History and Next Chapter Prep panels', async () => {
     const user = userEvent.setup();
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);

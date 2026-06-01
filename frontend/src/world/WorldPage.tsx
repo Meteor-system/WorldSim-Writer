@@ -524,6 +524,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const nextStoryArcChapter = world
     ? (world.story_arc.find((chapter) => chapter.chapter_number === world.approved_chapter_count + 1) ?? world.story_arc[0] ?? null)
     : null;
+  const isArchivedWorld = world?.status === 'archived';
 
   if (loading)
     return (
@@ -647,7 +648,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 第 {world.world_version} 版 · {world.genre_template} · {world.status}
               </p>
               <p className="manuscript mt-8 text-lg">{world.truth_canon}</p>
-              {world.status === 'archived' ? (
+              {isArchivedWorld ? (
                 <ArchivedWorldPauseCard
                   archiveLoading={archiveLoading}
                   onReturnToBookshelf={returnToBookshelf}
@@ -678,7 +679,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   </button>
                 </div>
               </div>
-              {world.status !== 'archived' && (
+              {!isArchivedWorld && (
                 <div className="mt-8 flex flex-wrap gap-3">
                   <button className="primary-button" onClick={() => onEnterStudio(world, {
                     initialChapterGoal: selectedExecutionContext?.goal,
@@ -764,6 +765,11 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 <p className="chapter-kicker">Narrative Console</p>
                 <h2 className="mt-2 text-3xl font-black text-[#34210f]">Narrative Control Center</h2>
                 <p className="manuscript mt-2 text-sm text-[#5e3b1c]">查看已批准章节历史，并准备下一章目标。</p>
+                {isArchivedWorld && (
+                  <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">
+                    已归档小说为只读模式；恢复写作后才能把建议带入创作台。
+                  </p>
+                )}
                 {selectedExecutionContext && <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已设为下一章目标：{selectedExecutionContext.goal}</p>}
               </div>
               <WorldPulsePanel pulse={worldPulse} loading={worldPulseLoading} error={worldPulseError} />
@@ -774,8 +780,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 prep={nextPrep}
                 loading={nextPrepLoading}
                 error={nextPrepError}
-                onUseContext={setSelectedExecutionContext}
-                onEnterStudioWithContext={(context) => onEnterStudio(world, {
+                onUseContext={isArchivedWorld ? undefined : setSelectedExecutionContext}
+                onEnterStudioWithContext={isArchivedWorld ? undefined : (context) => onEnterStudio(world, {
                   initialChapterGoal: context.goal,
                   executionContext: context,
                 })}
