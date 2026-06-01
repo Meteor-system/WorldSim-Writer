@@ -133,6 +133,23 @@ def _require_list(summary: dict, step: str, payload: dict, field: str) -> bool:
     return False
 
 
+def _require_int_path(summary: dict, step: str, payload: dict, path: str) -> bool:
+    current = payload
+    for part in path.split('.'):
+        if not isinstance(current, dict) or part not in current:
+            summary['failed_step'] = step
+            summary['error'] = 'MISSING_REQUIRED_FIELDS'
+            summary['missing_fields'] = [path]
+            return False
+        current = current[part]
+    if isinstance(current, int) and not isinstance(current, bool):
+        return True
+    summary['failed_step'] = step
+    summary['error'] = 'INVALID_FIELD_TYPES'
+    summary['invalid_fields'] = [path]
+    return False
+
+
 def _require_list_of_dicts(summary: dict, step: str, payload: dict, field: str) -> bool:
     value = payload.get(field)
     if isinstance(value, list) and all(isinstance(item, dict) for item in value):
@@ -303,6 +320,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if _has_failed(summary):
             return summary
         if not _require_paths(summary, 'approval_consistency', consistency, ['consistency_summary.status']):
+            return summary
+        if not _require_int_path(summary, 'approval_consistency', consistency, 'consistency_summary.blocking_count'):
             return summary
         if not _require_fields(summary, 'approval_consistency', consistency, ['consistency_warnings']):
             return summary

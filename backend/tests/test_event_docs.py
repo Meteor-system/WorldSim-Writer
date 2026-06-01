@@ -57,6 +57,7 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'consistency_summary.status',
         'checks.approval_consistency.warnings',
         'approval consistency warning lists',
+        'approval consistency blocker counts',
         'APPROVAL_PREVIEW_BLOCKED',
         'NO_PROPOSED_PROJECTION_CHANGES',
         'APPROVAL_READINESS_BLOCKED',
