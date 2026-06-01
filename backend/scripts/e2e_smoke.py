@@ -405,14 +405,31 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if not _require_list_of_dicts(summary, 'markdown_export', export, 'files'):
             return summary
         files = export.get('files') or []
+        has_world_md = any(file.get('path') == 'World.md' for file in files)
         summary['checks']['markdown_export'] = {
             'archive_format': export.get('archive_format'),
             'archive_encoding': export.get('archive_encoding'),
             'archive_base64_present': bool(export.get('archive_base64')),
             'files_are_inline': export.get('files_are_inline'),
             'file_count': len(files),
-            'has_world_md': any(file.get('path') == 'World.md' for file in files),
+            'has_world_md': has_world_md,
         }
+        invalid_export_fields = []
+        if export.get('archive_format') != 'zip':
+            invalid_export_fields.append('archive_format')
+        if export.get('archive_encoding') != 'base64':
+            invalid_export_fields.append('archive_encoding')
+        if export.get('files_are_inline') is not True:
+            invalid_export_fields.append('files_are_inline')
+        if not export.get('archive_base64'):
+            invalid_export_fields.append('archive_base64')
+        if not has_world_md:
+            invalid_export_fields.append('files.World.md')
+        if invalid_export_fields:
+            summary['failed_step'] = 'markdown_export'
+            summary['error'] = 'MARKDOWN_EXPORT_INVALID_ARCHIVE'
+            summary['invalid_fields'] = invalid_export_fields
+            return summary
 
         summary['ok'] = all(
             [
@@ -428,7 +445,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 export.get('archive_encoding') == 'base64',
                 export.get('files_are_inline') is True,
                 bool(export.get('archive_base64')),
-                any(file.get('path') == 'World.md' for file in files),
+                has_world_md,
             ]
         )
         return summary

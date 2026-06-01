@@ -66,6 +66,8 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'WORLD_VERSION_NOT_INCREMENTED',
         'checks.events.chapter_approved_seen',
         'CHAPTER_APPROVED_EVENT_MISSING',
+        'MARKDOWN_EXPORT_INVALID_ARCHIVE',
+        'files.World.md',
         'INVALID_FIELD_TYPES',
         'invalid_fields',
         'INVALID_JSON_RESPONSE',

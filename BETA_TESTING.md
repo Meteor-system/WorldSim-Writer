@@ -62,7 +62,7 @@ Pass criteria:
 - `checks.approve.status` is `approved` and `checks.approve.approved_version` is present; if the smoke JSON stops at `failed_step: "approve"` with `error: "APPROVAL_STATUS_NOT_APPROVED"`, approval did not complete and later event/export checks are intentionally skipped.
 - `checks.approve.world_version_incremented` is `true`, proving approval advanced the world version from the draft baseline; if the smoke JSON stops at `failed_step: "approve"` with `error: "WORLD_VERSION_NOT_INCREMENTED"`, inspect `checks.approve.approved_version` and `checks.approve.expected_world_version_after` before rerunning smoke.
 - `checks.events.chapter_approved_seen` is `true`; if it is `false`, the smoke stops at `failed_step: "events"` with `error: "CHAPTER_APPROVED_EVENT_MISSING"`, so inspect event logging before trusting approval/export evidence.
-- `checks.markdown_export.archive_format` is `zip` and `archive_encoding` is `base64`.
+- `checks.markdown_export.archive_format` is `zip`, `archive_encoding` is `base64`, inline archive content is present, and `files.World.md` appears in the inline preview; if not, the smoke stops at `failed_step: "markdown_export"` with `error: "MARKDOWN_EXPORT_INVALID_ARCHIVE"` and `invalid_fields` names the invalid archive evidence.
 
 ## 4. Real-LLM smoke
 
