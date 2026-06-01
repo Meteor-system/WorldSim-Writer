@@ -231,6 +231,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         export = _step_json(summary, 'markdown_export', lambda: client.post(f'/worlds/{world_id}/export/markdown', headers=headers))
         if _has_failed(summary):
             return summary
+        if not _require_fields(summary, 'markdown_export', export, ['archive_format', 'archive_encoding', 'archive_base64', 'files_are_inline', 'files']):
+            return summary
         files = export.get('files') or []
         summary['checks']['markdown_export'] = {
             'archive_format': export.get('archive_format'),
