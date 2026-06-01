@@ -432,7 +432,7 @@ describe('WorldPage world creation', () => {
 });
 
 describe('WorldPage Story Arc Planner', () => {
-  it('renders ten story arc chapters as compact expandable controls by default', async () => {
+  it('renders ten story arc chapters as a dense collapsed index by default', async () => {
     vi.mocked(apiRequest).mockReset();
     vi.mocked(apiRequest)
       .mockResolvedValueOnce([{ id: 7 }])
@@ -441,16 +441,16 @@ describe('WorldPage Story Arc Planner', () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
     expect(await screen.findByText('前 10 章故事弧线')).toBeInTheDocument();
-    const chapterButtons = screen.getAllByRole('button', { name: /展开第 \d+ 章详情/ });
+    const chapterButtons = screen.getAllByRole('button', { name: /第 \d+ 章 · 第 \d+ 章标题/ });
     expect(chapterButtons).toHaveLength(10);
     expect(chapterButtons[0]).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByText('第 1 章摘要：林砚推进裂纹玉佩线索。')).toBeInTheDocument();
-    expect(screen.getAllByText('裂纹玉佩').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: '第 1 章 · 第 1 章标题 · 2 条伏笔' })).toBeInTheDocument();
+    expect(screen.queryByText('第 1 章摘要：林砚推进裂纹玉佩线索。')).not.toBeInTheDocument();
     expect(screen.queryByText('第 1 章核心冲突详情')).not.toBeInTheDocument();
     expect(screen.queryByText('第 1 章 POV 建议')).not.toBeInTheDocument();
   });
 
-  it('expands and collapses an individual story arc chapter detail panel', async () => {
+  it('expands an individual story arc chapter to reveal full content', async () => {
     const user = userEvent.setup();
     vi.mocked(apiRequest).mockReset();
     vi.mocked(apiRequest)
@@ -459,21 +459,39 @@ describe('WorldPage Story Arc Planner', () => {
 
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
-    const expandButton = await screen.findByRole('button', { name: '展开第 1 章详情' });
+    const expandButton = await screen.findByRole('button', { name: '第 1 章 · 第 1 章标题 · 2 条伏笔' });
     expect(expandButton).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('核心冲突')).not.toBeInTheDocument();
 
     await user.click(expandButton);
 
-    expect(screen.getByRole('button', { name: '收起第 1 章详情' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: '第 1 章 · 第 1 章标题 · 2 条伏笔' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('第 1 章摘要：林砚推进裂纹玉佩线索。')).toBeInTheDocument();
     expect(screen.getByText('核心冲突')).toBeInTheDocument();
     expect(screen.getByText('第 1 章核心冲突详情')).toBeInTheDocument();
     expect(screen.getByText('第 1 章 POV 建议')).toBeInTheDocument();
+    expect(screen.getByText('裂纹玉佩、雨巷铜铃')).toBeInTheDocument();
+  });
 
-    await user.click(screen.getByRole('button', { name: '收起第 1 章详情' }));
+  it('keeps only one story arc chapter expanded at a time', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
 
-    expect(screen.getByRole('button', { name: '展开第 1 章详情' })).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText('第 1 章核心冲突详情')).not.toBeInTheDocument();
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '第 1 章 · 第 1 章标题 · 2 条伏笔' }));
+    expect(screen.getByText('第 1 章摘要：林砚推进裂纹玉佩线索。')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '第 2 章 · 第 2 章标题' }));
+
+    expect(screen.getByRole('button', { name: '第 1 章 · 第 1 章标题 · 2 条伏笔' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: '第 2 章 · 第 2 章标题' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByText('第 1 章摘要：林砚推进裂纹玉佩线索。')).not.toBeInTheDocument();
+    expect(screen.getByText('第 2 章摘要：林砚推进裂纹玉佩线索。')).toBeInTheDocument();
+    expect(screen.getByText('第 2 章核心冲突详情')).toBeInTheDocument();
   });
 
   it('renders quick navigation anchors to major narrative modules', async () => {

@@ -108,38 +108,36 @@ function describeEvent(event: { event_type: string; payload: Record<string, unkn
   }
 }
 
-function StoryArcCard({ chapter }: { chapter: StoryArcChapter }) {
-  const [expanded, setExpanded] = useState(false);
+function StoryArcCard({ chapter, expanded, onToggle }: { chapter: StoryArcChapter; expanded: boolean; onToggle: () => void }) {
   const detailId = `story-arc-chapter-${chapter.chapter_number}-detail`;
+  const buttonLabel = `第 ${chapter.chapter_number} 章 · ${chapter.title}${chapter.foreshadow_hints.length ? ` · ${chapter.foreshadow_hints.length} 条伏笔` : ''}`;
 
   return (
-    <article className="rounded-2xl border border-amber-900/15 bg-white/35 p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="chapter-kicker">第 {chapter.chapter_number} 章</p>
-          <h3 className="mt-2 text-xl font-black text-[#34210f]">{chapter.title}</h3>
-          <p className="manuscript mt-2 line-clamp-2 text-sm">{chapter.summary}</p>
-        </div>
-        <button
-          type="button"
-          className="secondary-button shrink-0"
-          aria-expanded={expanded}
-          aria-controls={detailId}
-          onClick={() => setExpanded((value) => !value)}
-        >
-          {expanded ? `收起第 ${chapter.chapter_number} 章详情` : `展开第 ${chapter.chapter_number} 章详情`}
-        </button>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {chapter.foreshadow_hints.length === 0 && <span className="ink-muted text-sm">无指定伏笔</span>}
-        {chapter.foreshadow_hints.map((hint) => (
-          <span key={hint} className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c]">
-            {hint}
-          </span>
-        ))}
-      </div>
+    <article className="rounded-2xl border border-amber-900/15 bg-white/35 p-2">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left transition-colors hover:bg-amber-50/70"
+        aria-expanded={expanded}
+        aria-controls={detailId}
+        aria-label={buttonLabel}
+        onClick={onToggle}
+      >
+        <span className="min-w-0 flex-1 truncate text-sm font-black text-[#34210f]">
+          第 {chapter.chapter_number} 章 · {chapter.title}
+        </span>
+        <span className="flex shrink-0 items-center gap-2 text-xs font-bold text-[#5e3b1c]">
+          {chapter.foreshadow_hints.length > 0 && (
+            <span className="rounded-full border border-amber-900/15 bg-amber-100/70 px-2 py-0.5">{chapter.foreshadow_hints.length} 条伏笔</span>
+          )}
+          <span aria-hidden="true">{expanded ? '收起' : '展开'}</span>
+        </span>
+      </button>
       {expanded && (
-        <div id={detailId} className="mt-4 grid gap-3 md:grid-cols-2">
+        <div id={detailId} className="mt-3 grid gap-3 px-2 pb-2 md:grid-cols-2">
+          <div className="rounded-2xl bg-amber-50/60 p-3 md:col-span-2">
+            <p className="text-sm font-bold text-[#5e3b1c]">章节摘要</p>
+            <p className="manuscript mt-1">{chapter.summary}</p>
+          </div>
           <div className="rounded-2xl bg-amber-50/60 p-3">
             <p className="text-sm font-bold text-[#5e3b1c]">核心冲突</p>
             <p className="manuscript mt-1">{chapter.core_conflict}</p>
@@ -186,6 +184,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [arcPlanLoading, setArcPlanLoading] = useState(false);
   const [arcPlanError, setArcPlanError] = useState('');
   const [selectedExecutionContext, setSelectedExecutionContext] = useState<ChapterExecutionContext | null>(null);
+  const [expandedStoryArcChapter, setExpandedStoryArcChapter] = useState<number | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -486,9 +485,16 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               {world.story_arc.length === 0 ? (
                 <p className="manuscript mt-4">还没有故事弧线。生成后会自动为创作台填入下一章目标。</p>
               ) : (
-                <div className="mt-5 grid gap-4">
+                <div className="mt-5 grid gap-2 md:grid-cols-2">
                   {world.story_arc.map((chapter) => (
-                    <StoryArcCard key={chapter.chapter_number} chapter={chapter} />
+                    <StoryArcCard
+                      key={chapter.chapter_number}
+                      chapter={chapter}
+                      expanded={expandedStoryArcChapter === chapter.chapter_number}
+                      onToggle={() => setExpandedStoryArcChapter((current) => (
+                        current === chapter.chapter_number ? null : chapter.chapter_number
+                      ))}
+                    />
                   ))}
                 </div>
               )}
