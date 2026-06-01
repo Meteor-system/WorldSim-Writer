@@ -238,6 +238,10 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         preview = _step_json(summary, 'approval_preview', lambda: client.get(f'/chapters/{chapter_id}/approval-preview', headers=headers))
         if _has_failed(summary):
             return summary
+        if not _require_list_of_dicts(summary, 'approval_preview', preview, 'character_changes'):
+            return summary
+        if not _require_list_of_dicts(summary, 'approval_preview', preview, 'foreshadow_changes'):
+            return summary
         preview_blocked = preview.get('version_conflict') is True
         character_change_count = len(preview.get('character_changes') or [])
         foreshadow_change_count = len(preview.get('foreshadow_changes') or [])
