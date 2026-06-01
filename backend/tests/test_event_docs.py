@@ -66,6 +66,7 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'WORLD_VERSION_NOT_INCREMENTED',
         'INVALID_FIELD_TYPES',
         'invalid_fields',
+        'INVALID_JSON_RESPONSE',
         'redacted',
         'REDACTED_SECRET',
         'E2E_TIMEOUT_SECONDS',

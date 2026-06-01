@@ -1031,6 +1031,38 @@ def test_e2e_smoke_script_returns_step_context_for_http_failure(monkeypatch):
     assert summary['checks']['create_world']['world_version'] == 1
 
 
+def test_e2e_smoke_script_reports_invalid_json_response_body_for_success_response(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    invalid_body = (
+        'not json api_key=sk-invalid-json '
+        'LLM_BASE_URL=https://provider.example/v1 LLM_MODEL=secret-model'
+    )
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            httpx.Response(200, text=invalid_body),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    response_body = summary['response_body']
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'draft'
+    assert summary['error'] == 'INVALID_JSON_RESPONSE'
+    assert summary['status_code'] == 200
+    assert 'sk-invalid-json' not in response_body
+    assert 'https://provider.example/v1' not in response_body
+    assert 'secret-model' not in response_body
+    assert '[REDACTED_SECRET]' in response_body
+    assert '[REDACTED_URL]' in response_body
+    assert '[REDACTED_MODEL]' in response_body
+
+
 def test_e2e_smoke_script_redacts_sensitive_response_body_details(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()

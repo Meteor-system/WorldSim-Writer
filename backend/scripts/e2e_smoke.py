@@ -75,7 +75,19 @@ def _json_response(response: httpx.Response) -> dict:
 
 def _step_json(summary: dict, step: str, request_call) -> dict:
     try:
-        return _json_response(request_call())
+        response = request_call()
+        response.raise_for_status()
+        try:
+            payload = response.json()
+        except ValueError:
+            summary['failed_step'] = step
+            summary['error'] = 'INVALID_JSON_RESPONSE'
+            summary['status_code'] = response.status_code
+            summary['response_body'] = _response_body_snippet(response)
+            return {}
+        if not isinstance(payload, dict):
+            raise RuntimeError('Expected JSON object response')
+        return payload
     except httpx.HTTPStatusError as exc:
         summary['failed_step'] = step
         summary['error'] = str(exc)
