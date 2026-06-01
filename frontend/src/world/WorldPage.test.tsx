@@ -794,6 +794,10 @@ describe('WorldPage Narrative Control Center', () => {
     expect(screen.getByText('下一章准备台')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '用作下一章目标' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '进入创作台并使用此目标' })).not.toBeInTheDocument();
+    expect(screen.getByText('已归档小说为只读模式；可继续导出档案和查看历史快照，恢复写作后才能创建新快照。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建世界快照' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '导出世界档案' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '加载快照列表' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '恢复写作' })).toBeInTheDocument();
   });
 

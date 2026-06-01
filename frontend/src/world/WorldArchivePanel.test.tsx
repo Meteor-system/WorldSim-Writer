@@ -105,6 +105,18 @@ describe('WorldArchivePanel', () => {
     expect(screen.getByText('Snapshot #12')).toBeInTheDocument();
   });
 
+  it('keeps archived archive tools read-only while preserving export and snapshot history', () => {
+    const onCreateSnapshot = vi.fn(async () => snapshot);
+
+    renderArchivePanel({ readOnly: true, onCreateSnapshot });
+
+    expect(screen.getByText('已归档小说为只读模式；可继续导出档案和查看历史快照，恢复写作后才能创建新快照。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建世界快照' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '导出世界档案' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '加载快照列表' })).toBeInTheDocument();
+    expect(onCreateSnapshot).not.toHaveBeenCalled();
+  });
+
   it('shows snapshot error state', async () => {
     const user = userEvent.setup();
     const onCreateSnapshot = vi.fn(async () => {

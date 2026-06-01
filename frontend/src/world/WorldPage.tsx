@@ -811,6 +811,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               <WorldTimelinePanel worldId={world.id} onLoadEvents={getWorldEvents} />
               <div id="world-archive" className="scroll-mt-6">
                 <WorldArchivePanel
+                  readOnly={isArchivedWorld}
                   onCreateSnapshot={() => createWorldSnapshot(world.id)}
                   onExportMarkdown={() => exportWorldArchiveMarkdown(world.id)}
                   onListSnapshots={() => listWorldSnapshots(world.id)}
