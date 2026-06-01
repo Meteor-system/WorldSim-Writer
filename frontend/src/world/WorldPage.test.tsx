@@ -538,6 +538,26 @@ describe('WorldPage bookshelf', () => {
     expect(screen.getByRole('button', { name: '取消归档当前小说' })).toBeInTheDocument();
   });
 
+  it('restores an archived world directly from the bookshelf', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockResolvedValueOnce([
+      { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'archived', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      { id: 8, title: '星舰余烬', genre_template: 'sci_fi', truth_canon: '星舰仍在航行。', truth_canon_version: 1, world_version: 1, status: 'active', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+    ]);
+    vi.mocked(updateWorldStatus).mockResolvedValueOnce({ ...archivedWorld, status: 'active' });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('作品书架')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '恢复写作 青岚城' }));
+
+    expect(updateWorldStatus).toHaveBeenCalledWith(7, { status: 'active' });
+    expect(await screen.findByText('v2 · xianxia · active')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '打开 青岚城' })).toBeInTheDocument();
+    expect(screen.getByText('暂无归档小说。')).toBeInTheDocument();
+  });
+
   it('shows a paused state when opening an archived world', async () => {
     const user = userEvent.setup();
     vi.mocked(apiRequest).mockReset();

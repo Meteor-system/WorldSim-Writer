@@ -461,6 +461,19 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     }
   }
 
+  async function restoreArchivedWorldFromShelf(worldId: number) {
+    setArchiveLoading(true);
+    setError('');
+    try {
+      const updated = await updateWorldStatus(worldId, { status: 'active' });
+      setWorlds((current) => current.map((item) => (item.id === updated.id ? { ...item, status: updated.status } : item)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '恢复写作失败');
+    } finally {
+      setArchiveLoading(false);
+    }
+  }
+
   function returnToBookshelf() {
     setWorld(null);
     setShowCreationForm(false);
@@ -555,7 +568,10 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   <article key={item.id} className="rounded-2xl bg-white/40 p-3">
                     <p className="font-black text-[#34210f]">{item.title}</p>
                     <p className="ink-muted mt-1 text-sm">v{item.world_version} · {item.genre_template} · archived</p>
-                    <button className="secondary-button mt-3" type="button" onClick={() => void openWorldFromShelf(item.id)}>打开 {item.title}</button>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button className="secondary-button" type="button" onClick={() => void openWorldFromShelf(item.id)}>打开 {item.title}</button>
+                      <button className="primary-button" type="button" disabled={archiveLoading} onClick={() => void restoreArchivedWorldFromShelf(item.id)}>恢复写作 {item.title}</button>
+                    </div>
                   </article>
                 ))}
               </div>
