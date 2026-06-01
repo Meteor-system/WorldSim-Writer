@@ -184,7 +184,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [arcPlanLoading, setArcPlanLoading] = useState(false);
   const [arcPlanError, setArcPlanError] = useState('');
   const [selectedExecutionContext, setSelectedExecutionContext] = useState<ChapterExecutionContext | null>(null);
-  const [expandedStoryArcChapter, setExpandedStoryArcChapter] = useState<number | null>(null);
+  const [expandedStoryArcChapters, setExpandedStoryArcChapters] = useState<number[]>([]);
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -490,9 +490,11 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                     <StoryArcCard
                       key={chapter.chapter_number}
                       chapter={chapter}
-                      expanded={expandedStoryArcChapter === chapter.chapter_number}
-                      onToggle={() => setExpandedStoryArcChapter((current) => (
-                        current === chapter.chapter_number ? null : chapter.chapter_number
+                      expanded={expandedStoryArcChapters.includes(chapter.chapter_number)}
+                      onToggle={() => setExpandedStoryArcChapters((current) => (
+                        current.includes(chapter.chapter_number)
+                          ? current.filter((chapterNumber) => chapterNumber !== chapter.chapter_number)
+                          : [...current, chapter.chapter_number]
                       ))}
                     />
                   ))}

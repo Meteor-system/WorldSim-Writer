@@ -473,7 +473,7 @@ describe('WorldPage Story Arc Planner', () => {
     expect(screen.getByText('裂纹玉佩、雨巷铜铃')).toBeInTheDocument();
   });
 
-  it('keeps only one story arc chapter expanded at a time', async () => {
+  it('allows neighboring story arc chapters to stay readable when both sides are expanded', async () => {
     const user = userEvent.setup();
     vi.mocked(apiRequest).mockReset();
     vi.mocked(apiRequest)
@@ -487,9 +487,10 @@ describe('WorldPage Story Arc Planner', () => {
 
     await user.click(screen.getByRole('button', { name: '第 2 章 · 第 2 章标题' }));
 
-    expect(screen.getByRole('button', { name: '第 1 章 · 第 1 章标题 · 2 条伏笔' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: '第 1 章 · 第 1 章标题 · 2 条伏笔' })).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('button', { name: '第 2 章 · 第 2 章标题' })).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.queryByText('第 1 章摘要：林砚推进裂纹玉佩线索。')).not.toBeInTheDocument();
+    expect(screen.getByText('第 1 章摘要：林砚推进裂纹玉佩线索。')).toBeInTheDocument();
+    expect(screen.getByText('第 1 章核心冲突详情')).toBeInTheDocument();
     expect(screen.getByText('第 2 章摘要：林砚推进裂纹玉佩线索。')).toBeInTheDocument();
     expect(screen.getByText('第 2 章核心冲突详情')).toBeInTheDocument();
   });
