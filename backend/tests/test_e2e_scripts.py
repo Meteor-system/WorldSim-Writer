@@ -50,7 +50,7 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': False, 'status': 'needs_review', 'blocking_reasons': [], 'warnings': ['mock warnings']}),
             json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -69,6 +69,7 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
     assert summary['chapter_id'] == 20
     assert summary['checks']['health']['migration_up_to_date'] is True
     assert summary['checks']['health']['llm_mock'] is True
+    assert summary['checks']['approval_preview']['proposed_change_count'] == 1
     assert summary['checks']['approve']['expected_world_version_after'] == 2
     assert summary['checks']['approve']['world_version_incremented'] is True
     assert summary['checks']['events']['chapter_approved_seen'] is True
@@ -113,6 +114,32 @@ def test_e2e_smoke_script_fails_when_approval_preview_has_version_conflict(monke
     assert summary['checks']['approval_preview']['version_conflict'] is True
     assert summary['checks']['approval_preview']['blocked'] is True
     assert summary['checks']['approve']['status'] == 'approved'
+
+
+def test_e2e_smoke_script_fails_when_approval_preview_has_no_proposed_changes(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
+            json_response({'version_conflict': False, 'character_changes': [], 'foreshadow_changes': []}),
+            json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
+            json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
+            json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
+            json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['checks']['approval_preview']['version_conflict'] is False
+    assert summary['checks']['approval_preview']['proposed_change_count'] == 0
 
 
 def test_e2e_smoke_script_fails_when_expected_event_is_missing(monkeypatch):

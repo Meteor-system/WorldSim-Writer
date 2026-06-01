@@ -186,10 +186,14 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if _has_failed(summary):
             return summary
         preview_blocked = preview.get('version_conflict') is True
+        character_change_count = len(preview.get('character_changes') or [])
+        foreshadow_change_count = len(preview.get('foreshadow_changes') or [])
+        proposed_change_count = character_change_count + foreshadow_change_count
         summary['checks']['approval_preview'] = {
             'version_conflict': preview.get('version_conflict'),
-            'character_changes': len(preview.get('character_changes') or []),
-            'foreshadow_changes': len(preview.get('foreshadow_changes') or []),
+            'character_changes': character_change_count,
+            'foreshadow_changes': foreshadow_change_count,
+            'proposed_change_count': proposed_change_count,
             'blocked': preview_blocked,
         }
 
@@ -268,6 +272,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             [
                 health.get('status') == 'ok',
                 not preview_blocked,
+                proposed_change_count > 0,
                 not readiness_blocked,
                 not consistency_blocked,
                 approved.get('status') == 'approved',

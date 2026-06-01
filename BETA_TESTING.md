@@ -55,6 +55,7 @@ Pass criteria:
 - `checks.health.migration_up_to_date` is `true`; if the smoke JSON stops at `failed_step: "health"` with `error: "MIGRATION_NOT_UP_TO_DATE"`, run `alembic upgrade head` from `backend/`, restart the backend, and rerun smoke.
 - `checks.health.llm_mock` is `true`; if the smoke JSON stops at `failed_step: "health"` with `error: "BACKEND_LLM_MOCK_DISABLED"`, restart the backend with `LLM_MOCK=true` and rerun mock smoke.
 - `checks.approval_preview.blocked` is `false`; if it is `true`, the draft has a world-version conflict, so regenerate the draft against the current world version and rerun smoke.
+- `checks.approval_preview.proposed_change_count` is greater than `0`, proving at least one proposed character or foreshadow projection change is visible before approval.
 - `checks.approval_readiness.blocked` is `false`; if it is `true`, review `checks.approval_readiness.blocking_reasons`, regenerate or repair the draft as instructed, and rerun smoke.
 - `checks.approval_consistency.blocked` is `false`; if it is `true`, inspect `checks.approval_consistency.warnings` for severity/category/message/object details, adjust the proposed changes or regenerate the draft, and rerun smoke.
 - `checks.approve.world_version_incremented` is `true`, proving approval advanced the world version from the draft baseline.
