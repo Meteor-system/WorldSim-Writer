@@ -177,6 +177,30 @@ def test_generate_story_arc_overwrites_existing_arc(client, monkeypatch):
     assert len(second['story_arc']) == 10
 
 
+def test_archived_world_rejects_story_arc_regeneration_without_overwriting_existing_arc(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(story_arc_service, 'LLMClient', lambda: FakeStoryArcLLMClient('旧'))
+    first = client.post(f'/worlds/{world_id}/story-arc', headers={'Authorization': f'Bearer {token}'})
+    assert first.status_code == 200
+    original_arc = first.json()['story_arc']
+
+    archive_response = client.patch(f'/worlds/{world_id}/status', headers={'Authorization': f'Bearer {token}'}, json={'status': 'archived'})
+    assert archive_response.status_code == 200
+
+    monkeypatch.setattr(story_arc_service, 'LLMClient', lambda: FakeStoryArcLLMClient('新'))
+    response = client.post(f'/worlds/{world_id}/story-arc', headers={'Authorization': f'Bearer {token}'})
+    overview = client.get(f'/worlds/{world_id}/overview', headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 409
+    assert response.json()['detail'] == 'WORLD_ARCHIVED'
+    assert overview.status_code == 200
+    assert overview.json()['story_arc'] == original_arc
+
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    assert world.story_arc == original_arc
+
+
 def test_generate_story_arc_maps_model_request_failure(client, monkeypatch):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(story_arc_service, 'LLMClient', lambda: FailingStoryArcLLMClient())
