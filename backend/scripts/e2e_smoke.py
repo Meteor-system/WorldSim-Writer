@@ -8,6 +8,7 @@ import httpx
 
 DEFAULT_BASE_URL = 'http://localhost:8000'
 DEFAULT_PASSWORD = 'strongpass123'
+MAX_RESPONSE_BODY_CHARS = 1000
 
 
 def _env_bool(name: str) -> bool:
@@ -23,6 +24,10 @@ def _default_email() -> str:
     return f'e2e-smoke-{stamp}-{uuid4().hex[:8]}@example.com'
 
 
+def _response_body_snippet(response: httpx.Response) -> str:
+    return response.text[:MAX_RESPONSE_BODY_CHARS]
+
+
 def _json_response(response: httpx.Response) -> dict:
     response.raise_for_status()
     payload = response.json()
@@ -31,11 +36,31 @@ def _json_response(response: httpx.Response) -> dict:
     return payload
 
 
-def _register_or_login(client: httpx.Client, email: str, password: str) -> dict:
+def _step_json(summary: dict, step: str, response: httpx.Response) -> dict:
+    try:
+        return _json_response(response)
+    except httpx.HTTPStatusError as exc:
+        summary['failed_step'] = step
+        summary['error'] = str(exc)
+        summary['status_code'] = exc.response.status_code
+        summary['response_body'] = _response_body_snippet(exc.response)
+        return {}
+    except Exception as exc:
+        summary['failed_step'] = step
+        summary['error'] = str(exc)
+        return {}
+
+
+def _has_failed(summary: dict) -> bool:
+    return 'failed_step' in summary
+
+
+def _register_or_login(client: httpx.Client, email: str, password: str, summary: dict) -> dict:
     response = client.post('/auth/register', json={'email': email, 'password': password})
     if response.status_code == 400:
         response = client.post('/auth/login', json={'email': email, 'password': password})
-    return _json_response(response)
+        return _step_json(summary, 'login', response)
+    return _step_json(summary, 'register', response)
 
 
 def run_smoke(client: httpx.Client | None = None, email: str | None = None, password: str | None = None) -> dict:
@@ -60,43 +85,57 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
     }
 
     try:
-        health = _json_response(client.get('/health'))
+        health = _step_json(summary, 'health', client.get('/health'))
+        if _has_failed(summary):
+            return summary
         summary['checks']['health'] = {
             'status': health.get('status'),
             'migration_up_to_date': (health.get('migration') or {}).get('up_to_date'),
         }
 
-        auth_payload = _register_or_login(client, email, password)
+        auth_payload = _register_or_login(client, email, password, summary)
+        if _has_failed(summary):
+            return summary
         token = auth_payload['access_token']
         headers = {'Authorization': f'Bearer {token}'}
         summary['checks']['register'] = {'user_id': (auth_payload.get('user') or {}).get('id')}
 
-        world = _json_response(client.post('/worlds/from-template', headers=headers))
+        world = _step_json(summary, 'create_world', client.post('/worlds/from-template', headers=headers))
+        if _has_failed(summary):
+            return summary
         world_id = world['id']
         summary['world_id'] = world_id
         summary['checks']['create_world'] = {'world_version': world.get('world_version')}
 
-        draft = _json_response(
+        draft = _step_json(
+            summary,
+            'draft',
             client.post(
                 f'/worlds/{world_id}/chapters/draft',
                 json={'chapter_goal': 'E2E smoke: advance the sample world by one coherent chapter.'},
                 headers=headers,
-            )
+            ),
         )
+        if _has_failed(summary):
+            return summary
         chapter_id = draft['chapter_id']
         draft_version = draft['draft_version']
         summary['chapter_id'] = chapter_id
         summary['draft_id'] = draft.get('draft_id')
         summary['checks']['draft'] = {'draft_version': draft_version}
 
-        preview = _json_response(client.get(f'/chapters/{chapter_id}/approval-preview', headers=headers))
+        preview = _step_json(summary, 'approval_preview', client.get(f'/chapters/{chapter_id}/approval-preview', headers=headers))
+        if _has_failed(summary):
+            return summary
         summary['checks']['approval_preview'] = {
             'version_conflict': preview.get('version_conflict'),
             'character_changes': len(preview.get('character_changes') or []),
             'foreshadow_changes': len(preview.get('foreshadow_changes') or []),
         }
 
-        readiness = _json_response(client.get(f'/chapters/{chapter_id}/approval-readiness', headers=headers))
+        readiness = _step_json(summary, 'approval_readiness', client.get(f'/chapters/{chapter_id}/approval-readiness', headers=headers))
+        if _has_failed(summary):
+            return summary
         summary['checks']['approval_readiness'] = {
             'ready': readiness.get('ready'),
             'status': readiness.get('status'),
@@ -104,15 +143,23 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             'warnings': readiness.get('warnings') or [],
         }
 
-        consistency = _json_response(
-            client.post(f'/chapters/{chapter_id}/approval-consistency', json={'draft_version': draft_version}, headers=headers)
+        consistency = _step_json(
+            summary,
+            'approval_consistency',
+            client.post(f'/chapters/{chapter_id}/approval-consistency', json={'draft_version': draft_version}, headers=headers),
         )
+        if _has_failed(summary):
+            return summary
         summary['checks']['approval_consistency'] = consistency.get('consistency_summary') or {}
 
-        approved = _json_response(client.post(f'/chapters/{chapter_id}/approve', json={'draft_version': draft_version}, headers=headers))
+        approved = _step_json(summary, 'approve', client.post(f'/chapters/{chapter_id}/approve', json={'draft_version': draft_version}, headers=headers))
+        if _has_failed(summary):
+            return summary
         summary['checks']['approve'] = {'status': approved.get('status'), 'approved_version': approved.get('approved_version')}
 
-        events = _json_response(client.get(f'/worlds/{world_id}/events', params={'limit': 100}, headers=headers))
+        events = _step_json(summary, 'events', client.get(f'/worlds/{world_id}/events', params={'limit': 100}, headers=headers))
+        if _has_failed(summary):
+            return summary
         event_types = [event.get('event_type') for event in events.get('items', [])]
         chapter_approved_seen = 'chapter_approved' in event_types or 'chapter_approved' in (events.get('summary') or {}).get('event_type_counts', {})
         summary['checks']['events'] = {
@@ -120,7 +167,9 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             'chapter_approved_seen': chapter_approved_seen,
         }
 
-        export = _json_response(client.post(f'/worlds/{world_id}/export/markdown', headers=headers))
+        export = _step_json(summary, 'markdown_export', client.post(f'/worlds/{world_id}/export/markdown', headers=headers))
+        if _has_failed(summary):
+            return summary
         files = export.get('files') or []
         summary['checks']['markdown_export'] = {
             'archive_format': export.get('archive_format'),

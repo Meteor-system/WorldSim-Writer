@@ -63,7 +63,7 @@ cd /opt/WorldSim-Writer/backend
 E2E_REAL_LLM=1 BASE_URL=http://localhost:8000 PYTHONIOENCODING=utf-8 .venv/bin/python scripts/e2e_smoke.py
 ```
 
-Pass criteria are the same as mock smoke. If the real-LLM smoke fails but mock smoke passes, include the model settings except secrets and the full smoke JSON in the bug report.
+Pass criteria are the same as mock smoke. If the real-LLM smoke fails but mock smoke passes, include the model settings except secrets and the full smoke JSON in the bug report. When the smoke JSON has `ok: false`, capture the diagnostic fields as well: `failed_step` identifies the failing API step, `status_code` records the HTTP status when available, and `response_body` contains a short safe response snippet for triage.
 
 ## 5. Manual main-flow QA
 

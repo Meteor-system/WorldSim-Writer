@@ -98,3 +98,28 @@ def test_e2e_smoke_script_fails_when_expected_event_is_missing(monkeypatch):
 
     assert summary['ok'] is False
     assert summary['checks']['events']['chapter_approved_seen'] is False
+
+
+def test_e2e_smoke_script_returns_step_context_for_http_failure(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            httpx.Response(502, text='MODEL_REQUEST_FAILED'),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'draft'
+    assert summary['status_code'] == 502
+    assert summary['response_body'] == 'MODEL_REQUEST_FAILED'
+    assert 'Authorization' not in summary['error']
+    assert summary['checks']['health']['status'] == 'ok'
+    assert summary['checks']['register']['user_id'] == 1
+    assert summary['checks']['create_world']['world_version'] == 1

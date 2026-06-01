@@ -31,6 +31,9 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'Archive/read-only spot checks',
         'Cleanup',
         'Bug report evidence',
+        'failed_step',
+        'status_code',
+        'response_body',
     ]
     for term in required_terms:
         assert term in playbook
