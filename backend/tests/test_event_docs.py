@@ -53,6 +53,8 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'checks.approval_preview.proposed_change_count',
         'checks.approval_readiness.blocked',
         'checks.approval_consistency.blocked',
+        'checks.approval_consistency.status',
+        'consistency_summary.status',
         'checks.approval_consistency.warnings',
         'APPROVAL_PREVIEW_BLOCKED',
         'NO_PROPOSED_PROJECTION_CHANGES',

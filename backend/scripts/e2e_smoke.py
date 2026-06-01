@@ -233,6 +233,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         )
         if _has_failed(summary):
             return summary
+        if not _require_paths(summary, 'approval_consistency', consistency, ['consistency_summary.status']):
+            return summary
         consistency_summary = consistency.get('consistency_summary') or {}
         consistency_warnings = consistency.get('consistency_warnings')
         consistency_blocked = consistency_summary.get('status') == 'blocked' or (consistency_summary.get('blocking_count') or 0) > 0
