@@ -47,6 +47,11 @@ def _require_owned_chapter(db: Session, user: User, chapter_id: int) -> Chapter:
     return chapter
 
 
+def _ensure_world_is_active(world: World) -> None:
+    if world.status == 'archived':
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_ARCHIVED')
+
+
 def _latest_draft(db: Session, chapter: Chapter) -> ChapterDraft | None:
     return db.scalar(
         select(ChapterDraft)
@@ -496,6 +501,7 @@ def create_chapter_session(
     execution_context=None,
 ) -> Chapter:
     world = require_owned_world(db, user, world_id)
+    _ensure_world_is_active(world)
     characters, _ = _load_world_context(db, world)
     context = normalize_execution_context(db, world, chapter_goal, execution_context)
     chapter = Chapter(
@@ -567,6 +573,7 @@ def create_chapter_draft(
     llm_client: LLMClient | None = None,
 ) -> dict:
     world = require_owned_world(db, user, world_id)
+    _ensure_world_is_active(world)
     characters, foreshadows = _load_world_context(db, world)
     context = normalize_execution_context(db, world, chapter_goal, execution_context)
     client = _model_client(llm_client)
@@ -774,6 +781,9 @@ def get_character_arc_report(db: Session, user: User, chapter_id: int) -> dict:
 
 def reject_chapter(db: Session, user: User, chapter_id: int, feedback: str) -> dict:
     chapter = _require_owned_chapter(db, user, chapter_id)
+    world = db.get(World, chapter.world_id)
+    assert world is not None
+    _ensure_world_is_active(world)
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
@@ -1525,6 +1535,7 @@ def approve_chapter(db: Session, user: User, chapter_id: int, selection=None) ->
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
         if world.owner_id != user.id:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='FORBIDDEN')
+        _ensure_world_is_active(world)
         draft = _latest_draft(db, chapter)
         if draft is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')

@@ -127,6 +127,56 @@ def test_create_draft_with_fake_llm(client, monkeypatch):
     assert response.json()['proposed_changes']['characters'][0]['current_goals'] == ['追查城主府叛乱']
 
 
+def test_archived_world_rejects_core_narrative_writes_but_allows_review_reads(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+
+    archive_response = client.patch(f'/worlds/{world_id}/status', headers={'Authorization': f'Bearer {token}'}, json={'status': 'archived'})
+    assert archive_response.status_code == 200
+
+    session_response = client.post(
+        f'/worlds/{world_id}/chapters',
+        json={'chapter_goal': '归档后开章'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    draft_response = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '归档后草稿'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    approve_response = client.post(f"/chapters/{draft['chapter_id']}/approve", headers={'Authorization': f'Bearer {token}'})
+    reject_response = client.post(
+        f"/chapters/{draft['chapter_id']}/reject",
+        json={'feedback': '归档后不应驳回'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert session_response.status_code == 409
+    assert session_response.json()['detail'] == 'WORLD_ARCHIVED'
+    assert draft_response.status_code == 409
+    assert draft_response.json()['detail'] == 'WORLD_ARCHIVED'
+    assert approve_response.status_code == 409
+    assert approve_response.json()['detail'] == 'WORLD_ARCHIVED'
+    assert reject_response.status_code == 409
+    assert reject_response.json()['detail'] == 'WORLD_ARCHIVED'
+
+    preview_response = client.get(f"/chapters/{draft['chapter_id']}/approval-preview", headers={'Authorization': f'Bearer {token}'})
+    readiness_response = client.get(f"/chapters/{draft['chapter_id']}/approval-readiness", headers={'Authorization': f'Bearer {token}'})
+    assert preview_response.status_code == 200
+    assert readiness_response.status_code == 200
+
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    assert world.world_version == 1
+    assert chapter.status == 'reviewing'
+
+
 def test_approve_chapter_updates_world_character_foreshadow_and_events(client, monkeypatch):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
