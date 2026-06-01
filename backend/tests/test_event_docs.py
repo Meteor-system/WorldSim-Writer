@@ -40,6 +40,7 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'llm_mock',
         'BACKEND_LLM_MOCK_DISABLED',
         'BACKEND_LLM_MOCK_ENABLED',
+        'checks.approval_preview.blocked',
         'checks.approval_readiness.blocked',
         'checks.approval_consistency.blocked',
         'checks.approval_consistency.warnings',
