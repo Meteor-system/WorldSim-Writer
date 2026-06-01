@@ -100,28 +100,33 @@ def test_approve_writes_granular_events_and_projection_snapshots(client, db_sess
     character = db_session.scalar(select(Character).where(Character.world_id == world_id).order_by(Character.id))
     foreshadow = db_session.scalar(select(Foreshadow).where(Foreshadow.world_id == world_id).order_by(Foreshadow.id))
     events = list(db_session.scalars(select(EventLog).where(EventLog.world_id == world_id).order_by(EventLog.id)))
+    approval_events = [event for event in events if event.event_type != 'WORLD_CREATED']
 
     assert world_after.world_version == 2
     assert character.current_goals == ['追查城主府叛乱']
     assert foreshadow.status == 'advanced'
     assert world_after.current_characters[0]['current_goals'] == ['追查城主府叛乱']
     assert world_after.current_foreshadows[0]['status'] == 'advanced'
-    assert [event.event_type for event in events] == [
+    assert events[0].event_type == 'WORLD_CREATED'
+    assert events[0].chapter_id is None
+    assert events[0].world_version_before == 0
+    assert events[0].world_version_after == 1
+    assert [event.event_type for event in approval_events] == [
         'character_change',
         'foreshadow_change',
         'world_version_increment',
         'chapter_approved',
     ]
-    assert all(event.chapter_id == draft['chapter_id'] for event in events)
-    assert all(event.world_version_before == 1 for event in events)
-    assert all(event.world_version_after == 2 for event in events)
-    character_event = events[0]
+    assert all(event.chapter_id == draft['chapter_id'] for event in approval_events)
+    assert all(event.world_version_before == 1 for event in approval_events)
+    assert all(event.world_version_after == 2 for event in approval_events)
+    character_event = approval_events[0]
     assert character_event.payload['before']['current_goals'] == ['调查青岚城灵脉衰退']
     assert character_event.payload['after']['current_goals'] == ['追查城主府叛乱']
-    foreshadow_event = events[1]
+    foreshadow_event = approval_events[1]
     assert foreshadow_event.payload['before']['status'] == 'planted'
     assert foreshadow_event.payload['after']['status'] == 'advanced'
-    assert events[-1].payload['chapter_id'] == draft['chapter_id']
+    assert approval_events[-1].payload['chapter_id'] == draft['chapter_id']
 
 
 def test_approve_rolls_back_when_any_projection_change_is_invalid(client, db_session, monkeypatch):
@@ -147,7 +152,8 @@ def test_approve_rolls_back_when_any_projection_change_is_invalid(client, db_ses
     assert world.current_characters[0]['current_goals'] == ['调查青岚城灵脉衰退']
     assert chapter.status == 'reviewing'
     assert character.current_goals == ['调查青岚城灵脉衰退']
-    assert events == []
+    assert [event.event_type for event in events] == ['WORLD_CREATED']
+    assert events[0].chapter_id is None
 
 
 def test_world_events_endpoint_filters_paginates_latest_first(client, monkeypatch):
@@ -161,7 +167,7 @@ def test_world_events_endpoint_filters_paginates_latest_first(client, monkeypatc
 
     assert paginated.status_code == 200
     payload = paginated.json()
-    assert payload['total'] == 4
+    assert payload['total'] == 5
     assert payload['limit'] == 2
     assert payload['offset'] == 0
     assert len(payload['items']) == 2
@@ -172,6 +178,7 @@ def test_world_events_endpoint_filters_paginates_latest_first(client, monkeypatc
     assert filtered.json()['items'][0]['event_type'] == 'character_change'
     assert offset.status_code == 200
     assert offset.json()['items'][0]['event_type'] == 'foreshadow_change'
+    assert offset.json()['items'][1]['event_type'] == 'character_change'
 
 
 def test_world_events_endpoint_requires_owner(client, monkeypatch):
