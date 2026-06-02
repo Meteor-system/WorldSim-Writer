@@ -573,6 +573,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             return summary
         if not _require_fields(summary, 'markdown_export', export, ['archive_format', 'archive_encoding', 'archive_base64', 'files_are_inline', 'files']):
             return summary
+        if not _require_string_fields(summary, 'markdown_export', export, ['archive_base64']):
+            return summary
         if not _require_list_of_dicts(summary, 'markdown_export', export, 'files'):
             return summary
         files = export.get('files') or []
