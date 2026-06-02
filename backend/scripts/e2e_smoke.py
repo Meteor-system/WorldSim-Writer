@@ -234,6 +234,20 @@ def _require_int_path(summary: dict, step: str, payload: dict, path: str) -> boo
     return False
 
 
+def _require_non_negative_int_path(summary: dict, step: str, payload: dict, path: str) -> bool:
+    if not _require_int_path(summary, step, payload, path):
+        return False
+    current = payload
+    for part in path.split('.'):
+        current = current[part]
+    if current >= 0:
+        return True
+    summary['failed_step'] = step
+    summary['error'] = 'INVALID_FIELD_VALUES'
+    summary['invalid_fields'] = [path]
+    return False
+
+
 def _require_string_path_in(summary: dict, step: str, payload: dict, path: str, allowed_values: set[str]) -> bool:
     current = payload
     for part in path.split('.'):
@@ -445,7 +459,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             return summary
         if not _require_string_path_in(summary, 'approval_consistency', consistency, 'consistency_summary.status', CONSISTENCY_STATUSES):
             return summary
-        if not _require_int_path(summary, 'approval_consistency', consistency, 'consistency_summary.blocking_count'):
+        if not _require_non_negative_int_path(summary, 'approval_consistency', consistency, 'consistency_summary.blocking_count'):
             return summary
         if not _require_fields(summary, 'approval_consistency', consistency, ['consistency_warnings']):
             return summary
