@@ -354,6 +354,10 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         preview = _step_json(summary, 'approval_preview', lambda: client.get(f'/chapters/{chapter_id}/approval-preview', headers=headers))
         if _has_failed(summary):
             return summary
+        if not _require_fields(summary, 'approval_preview', preview, ['version_conflict']):
+            return summary
+        if not _require_bool_fields(summary, 'approval_preview', preview, ['version_conflict']):
+            return summary
         if not _require_list_of_dicts(summary, 'approval_preview', preview, 'character_changes'):
             return summary
         if not _require_list_of_dicts(summary, 'approval_preview', preview, 'foreshadow_changes'):
