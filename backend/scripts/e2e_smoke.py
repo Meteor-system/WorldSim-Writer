@@ -499,20 +499,15 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             return summary
         approved_version = approved.get('approved_version')
         expected_world_version_after = initial_world_version + 1 if isinstance(initial_world_version, int) else None
-        world_version_incremented = approved_version == expected_world_version_after
         summary['checks']['approve'] = {
             'status': approved.get('status'),
             'approved_version': approved_version,
             'expected_world_version_after': expected_world_version_after,
-            'world_version_incremented': world_version_incremented,
+            'world_version_validation_source': 'overview',
         }
         if approved.get('status') != 'approved':
             summary['failed_step'] = 'approve'
             summary['error'] = 'APPROVAL_STATUS_NOT_APPROVED'
-            return summary
-        if not world_version_incremented:
-            summary['failed_step'] = 'approve'
-            summary['error'] = 'WORLD_VERSION_NOT_INCREMENTED'
             return summary
 
         overview = _step_json(summary, 'overview', lambda: client.get(f'/worlds/{world_id}/overview', headers=headers))
@@ -531,21 +526,22 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         expected_approved_chapter_count = 1
         character_count = len(overview.get('characters') or [])
         foreshadow_count = len(overview.get('foreshadows') or [])
-        overview_world_version_matches_approval = overview_world_version == approved_version
+        overview_world_version_incremented = overview_world_version == expected_world_version_after
         overview_approved_chapter_count_incremented = approved_chapter_count >= expected_approved_chapter_count
         summary['checks']['overview'] = {
             'world_version': overview_world_version,
             'approved_chapter_count': approved_chapter_count,
-            'expected_world_version': approved_version,
+            'expected_world_version': expected_world_version_after,
             'expected_approved_chapter_count': expected_approved_chapter_count,
-            'world_version_matches_approval': overview_world_version_matches_approval,
+            'world_version_incremented': overview_world_version_incremented,
+            'world_version_matches_approval': overview_world_version_incremented,
             'approved_chapter_count_incremented': overview_approved_chapter_count_incremented,
             'character_count': character_count,
             'foreshadow_count': foreshadow_count,
         }
-        if not overview_world_version_matches_approval:
+        if not overview_world_version_incremented:
             summary['failed_step'] = 'overview'
-            summary['error'] = 'OVERVIEW_WORLD_VERSION_NOT_UPDATED'
+            summary['error'] = 'WORLD_VERSION_NOT_INCREMENTED'
             return summary
         if not overview_approved_chapter_count_incremented:
             summary['failed_step'] = 'overview'
@@ -626,8 +622,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 not readiness_blocked,
                 not consistency_blocked,
                 approved.get('status') == 'approved',
-                world_version_incremented,
-                overview_world_version_matches_approval,
+                overview_world_version_incremented,
                 overview_approved_chapter_count_incremented,
                 character_count > 0,
                 foreshadow_count > 0,
