@@ -77,15 +77,16 @@ def _json_response(response: httpx.Response) -> dict:
 
 
 def _is_duplicate_email_register_response(response: httpx.Response) -> bool:
-    if response.status_code == 400:
-        return True
-    if response.status_code != 409:
+    if response.status_code not in {400, 409}:
         return False
     try:
         payload = response.json()
     except ValueError:
         return False
-    return isinstance(payload, dict) and payload.get('detail') == 'EMAIL_ALREADY_REGISTERED'
+    if not isinstance(payload, dict):
+        return False
+    detail = payload.get('detail')
+    return isinstance(detail, str) and (detail == 'EMAIL_ALREADY_REGISTERED' or 'already registered' in detail.lower())
 
 
 def _mark_request_error(summary: dict, step: str, exc: httpx.RequestError) -> None:

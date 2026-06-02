@@ -2005,6 +2005,29 @@ def test_e2e_smoke_script_does_not_login_for_unrelated_register_conflict(monkeyp
     ]
 
 
+def test_e2e_smoke_script_does_not_login_for_unrelated_register_bad_request(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'detail': 'PASSWORD_POLICY_FAILED'}, status_code=400),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'register'
+    assert summary['status_code'] == 400
+    assert summary['response_body'] == '{"detail":"PASSWORD_POLICY_FAILED"}'
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+    ]
+
+
 def test_e2e_smoke_script_requires_login_access_token_to_be_string(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()
