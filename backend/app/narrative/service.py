@@ -109,6 +109,7 @@ def build_manual_execution_context(db: Session, world: World, chapter_goal: str)
 
 
 def normalize_execution_context(db: Session, world: World, chapter_goal: str, execution_context) -> dict:
+    context_provided = execution_context is not None
     if execution_context is None:
         context = build_manual_execution_context(db, world, chapter_goal)
     elif hasattr(execution_context, 'model_dump'):
@@ -116,6 +117,8 @@ def normalize_execution_context(db: Session, world: World, chapter_goal: str, ex
     else:
         context = dict(execution_context)
     context['goal'] = chapter_goal
+    if context_provided and context.get('source_world_version') != world.world_version:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
     return context
 
 

@@ -8,10 +8,10 @@ from app.narrative.schemas import CreateChapterRequest, DraftRequest
 from app.world.models import World
 
 
-def sample_execution_context(goal='林砚带着湿信赴城主府外墙，并设置一次试探。'):
+def sample_execution_context(goal='林砚带着湿信赴城主府外墙，并设置一次试探。', source_world_version: int = 1):
     return {
         'source': 'next_chapter_prep',
-        'source_world_version': 2,
+        'source_world_version': source_world_version,
         'next_chapter_number': 2,
         'goal': goal,
         'recommended_pov': {'character_id': 1, 'name': '林砚'},
@@ -154,6 +154,21 @@ def test_create_chapter_without_context_creates_manual_context(client, db_sessio
     assert payload['execution_context']['source_world_version'] == 1
 
 
+def test_create_chapter_rejects_stale_execution_context(client, db_session):
+    token, world_id = register_and_create_world(client, 'stale-session-context@example.com')
+    context = sample_execution_context(source_world_version=0)
+
+    response = client.post(
+        f'/worlds/{world_id}/chapters',
+        json={'chapter_goal': context['goal'], 'title': '第二章 城主府外墙', 'execution_context': context},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 409
+    assert response.json()['detail'] == 'WORLD_VERSION_MISMATCH'
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == 0
+
+
 def test_outline_and_writer_prompts_use_frozen_execution_context(client, db_session):
     token, world_id = register_and_create_world(client, 'prompt-context@example.com')
     context = sample_execution_context()
@@ -248,6 +263,23 @@ def test_direct_draft_endpoint_accepts_execution_context(client, db_session, mon
     assert chapter.execution_context['goal'] == context['goal']
     assert draft.execution_context['priority_characters'][0]['name'] == '林砚'
     assert '本章执行上下文' in llm.messages[0][-1]['content']
+
+
+def test_direct_draft_rejects_stale_execution_context_before_model_call(client, monkeypatch):
+    token, world_id = register_and_create_world(client, 'stale-direct-context@example.com')
+    context = sample_execution_context(source_world_version=0)
+    llm = CapturingLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+
+    response = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': context['goal'], 'execution_context': context},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 409
+    assert response.json()['detail'] == 'WORLD_VERSION_MISMATCH'
+    assert llm.messages == []
 
 
 def test_chapter_history_detail_exposes_execution_context(client, monkeypatch):
