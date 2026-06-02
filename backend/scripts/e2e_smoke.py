@@ -156,6 +156,25 @@ def _require_paths(summary: dict, step: str, payload: dict, paths: list[str]) ->
     return False
 
 
+def _require_bool_paths(summary: dict, step: str, payload: dict, paths: list[str]) -> bool:
+    invalid = []
+    for path in paths:
+        current = payload
+        for part in path.split('.'):
+            if not isinstance(current, dict) or part not in current:
+                current = None
+                break
+            current = current[part]
+        if not isinstance(current, bool):
+            invalid.append(path)
+    if not invalid:
+        return True
+    summary['failed_step'] = step
+    summary['error'] = 'INVALID_FIELD_TYPES'
+    summary['invalid_fields'] = invalid
+    return False
+
+
 def _require_list(summary: dict, step: str, payload: dict, field: str) -> bool:
     value = payload.get(field)
     if isinstance(value, list):
@@ -252,6 +271,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if _has_failed(summary):
             return summary
         if not _require_paths(summary, 'health', health, ['status', 'migration.up_to_date', 'llm.mock']):
+            return summary
+        if not _require_bool_paths(summary, 'health', health, ['migration.up_to_date', 'llm.mock']):
             return summary
         backend_llm_mock = (health.get('llm') or {}).get('mock')
         summary['checks']['health'] = {

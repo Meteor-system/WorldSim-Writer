@@ -42,6 +42,8 @@ def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
         'checks.approve.status',
         'approved_version',
         'llm_mock',
+        'migration.up_to_date',
+        'llm.mock',
         'checks.health.status',
         'HEALTH_STATUS_NOT_OK',
         'checks.register',
