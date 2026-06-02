@@ -11,6 +11,7 @@ DEFAULT_BASE_URL = 'http://localhost:8000'
 DEFAULT_PASSWORD = 'strongpass123'
 DEFAULT_TIMEOUT_SECONDS = 60.0
 MAX_RESPONSE_BODY_CHARS = 1000
+CONSISTENCY_STATUSES = {'clear', 'needs_review', 'blocked'}
 
 _REDACTION_PATTERNS = [
     (re.compile(r'Authorization\s*:\s*Bearer\s+[^\s,;]+', re.IGNORECASE), 'Authorization: Bearer [REDACTED_SECRET]'),
@@ -232,6 +233,29 @@ def _require_int_path(summary: dict, step: str, payload: dict, path: str) -> boo
     return False
 
 
+def _require_string_path_in(summary: dict, step: str, payload: dict, path: str, allowed_values: set[str]) -> bool:
+    current = payload
+    for part in path.split('.'):
+        if not isinstance(current, dict) or part not in current:
+            summary['failed_step'] = step
+            summary['error'] = 'MISSING_REQUIRED_FIELDS'
+            summary['missing_fields'] = [path]
+            return False
+        current = current[part]
+    if not isinstance(current, str) or not current:
+        summary['failed_step'] = step
+        summary['error'] = 'INVALID_FIELD_TYPES'
+        summary['invalid_fields'] = [path]
+        return False
+    if current not in allowed_values:
+        summary['failed_step'] = step
+        summary['error'] = 'INVALID_FIELD_VALUES'
+        summary['invalid_fields'] = [path]
+        summary['allowed_values'] = {path: sorted(allowed_values)}
+        return False
+    return True
+
+
 def _require_list_of_dicts(summary: dict, step: str, payload: dict, field: str) -> bool:
     value = payload.get(field)
     if isinstance(value, list) and all(isinstance(item, dict) for item in value):
@@ -415,6 +439,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if _has_failed(summary):
             return summary
         if not _require_paths(summary, 'approval_consistency', consistency, ['consistency_summary.status']):
+            return summary
+        if not _require_string_path_in(summary, 'approval_consistency', consistency, 'consistency_summary.status', CONSISTENCY_STATUSES):
             return summary
         if not _require_int_path(summary, 'approval_consistency', consistency, 'consistency_summary.blocking_count'):
             return summary
