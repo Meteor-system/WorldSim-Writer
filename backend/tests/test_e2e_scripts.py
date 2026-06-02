@@ -1376,6 +1376,29 @@ def test_e2e_smoke_script_returns_step_context_for_request_error(monkeypatch):
     assert [request.url.path for request in transport.requests] == ['/health']
 
 
+def test_e2e_smoke_script_requires_register_access_token_to_be_string(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': True, 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'register'
+    assert summary['error'] == 'INVALID_FIELD_TYPES'
+    assert summary['invalid_fields'] == ['access_token']
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+    ]
+
+
 def test_e2e_smoke_script_reports_missing_access_token_for_login_fallback(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()
@@ -1394,6 +1417,31 @@ def test_e2e_smoke_script_reports_missing_access_token_for_login_fallback(monkey
     assert summary['failed_step'] == 'login'
     assert summary['error'] == 'MISSING_REQUIRED_FIELDS'
     assert summary['missing_fields'] == ['access_token']
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/auth/login',
+    ]
+
+
+def test_e2e_smoke_script_requires_login_access_token_to_be_string(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'detail': 'Email already registered'}, status_code=400),
+            json_response({'access_token': {'token': 'bad'}, 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'login'
+    assert summary['error'] == 'INVALID_FIELD_TYPES'
+    assert summary['invalid_fields'] == ['access_token']
     assert [request.url.path for request in transport.requests] == [
         '/health',
         '/auth/register',
