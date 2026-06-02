@@ -60,6 +60,17 @@ PYTHONIOENCODING=utf-8 python scripts/cleanup_e2e_data.py --confirm
 
 `POST /worlds/{world_id}/export/markdown` returns a JSON payload with `archive_format: "zip"`, `archive_encoding: "base64"`, `archive_base64`, `files_are_inline: true`, and inline `files` entries for preview or direct use.
 
+## Pausing one novel and switching to another
+
+Recommended flow when you are not ready to continue the current novel:
+
+1. Open the current novel from the bookshelf.
+2. In `World Archive`, click `创建世界快照` to freeze the current world version.
+3. Click `导出世界档案` and download the Markdown ZIP for an offline copy.
+4. Return to `作品书架`.
+5. Archive the paused novel. Archiving is a reversible status marker; it never deletes the world, chapters, snapshots, or exports.
+6. Create a new novel or open another active novel and continue writing.
+
 Manual MVP check:
 
 1. Open the frontend at `http://localhost:5173`.

@@ -426,6 +426,73 @@ def test_unassign_and_delete_tag_do_not_increment_world_version(client):
     assert events['summary']['event_type_counts'] == {'WORLD_CREATED': 1}
 
 
+def test_archived_world_rejects_tag_writes_but_allows_reads(client):
+    token = register(client, 'tags-archived@example.com')
+    world = create_world(client, token)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    character_id = overview['characters'][0]['id']
+    first = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '主线'}).json()
+    second = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '支线'}).json()
+    assign_before_archive = client.post(
+        f"/worlds/{world['id']}/tags/{first['id']}/objects",
+        headers=auth(token),
+        json={'object_type': 'character', 'object_id': character_id},
+    )
+    assert assign_before_archive.status_code == 200
+
+    archive_response = client.patch(f"/worlds/{world['id']}/status", headers=auth(token), json={'status': 'archived'})
+    assert archive_response.status_code == 200
+
+    create_response = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '归档后新标签'})
+    update_response = client.patch(
+        f"/worlds/{world['id']}/tags/{first['id']}",
+        headers=auth(token),
+        json={'name': '归档后改名'},
+    )
+    merge_response = client.post(
+        f"/worlds/{world['id']}/tags/{first['id']}/merge",
+        headers=auth(token),
+        json={'target_tag_id': second['id']},
+    )
+    assign_response = client.post(
+        f"/worlds/{world['id']}/tags/{second['id']}/objects",
+        headers=auth(token),
+        json={'object_type': 'character', 'object_id': character_id},
+    )
+    bulk_assign_response = client.post(
+        f"/worlds/{world['id']}/tags/{second['id']}/objects/bulk",
+        headers=auth(token),
+        json={'object_type': 'character', 'object_ids': [character_id]},
+    )
+    unassign_response = client.delete(
+        f"/worlds/{world['id']}/tags/{first['id']}/objects/character/{character_id}",
+        headers=auth(token),
+    )
+    delete_response = client.delete(f"/worlds/{world['id']}/tags/{first['id']}", headers=auth(token))
+
+    for response in (
+        create_response,
+        update_response,
+        merge_response,
+        assign_response,
+        bulk_assign_response,
+        unassign_response,
+        delete_response,
+    ):
+        assert response.status_code == 409
+        assert response.json()['detail'] == 'WORLD_ARCHIVED'
+
+    list_response = client.get(f"/worlds/{world['id']}/tags", headers=auth(token))
+    detail_response = client.get(f"/worlds/{world['id']}/tags/{first['id']}", headers=auth(token))
+
+    assert list_response.status_code == 200
+    assert detail_response.status_code == 200
+    tags = list_response.json()['tags']
+    assert {tag['name'] for tag in tags} == {'主线', '支线'}
+    assert detail_response.json()['tag']['name'] == '主线'
+    assert detail_response.json()['tag']['assignment_count'] == 1
+
+
 def test_tag_endpoints_require_login(client):
     list_response = client.get('/worlds/1/tags')
     create_response = client.post('/worlds/1/tags', json={'name': '主线'})

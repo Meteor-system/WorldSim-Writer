@@ -62,8 +62,8 @@ def test_relation_crud_lifecycle_uses_world_governance(client, db_session):
     assert world_after_create.world_version == 2
     assert world_after_create.current_relations[-1]['id'] == created['id']
     assert world_after_create.current_relations[-1]['relation_type'] == 'secret_ally'
-    assert [event.event_type for event in events_after_create] == ['relation_change', 'world_version_increment']
-    create_event = events_after_create[0]
+    assert [event.event_type for event in events_after_create] == ['WORLD_CREATED', 'relation_change', 'world_version_increment']
+    create_event = events_after_create[1]
     assert create_event.source_type == 'manual_edit'
     assert create_event.world_version_before == 1
     assert create_event.world_version_after == 2
@@ -218,3 +218,37 @@ def test_relation_create_rejects_blank_type_and_bad_intensity(client):
     assert blank_response.status_code == 422
     assert low_intensity_response.status_code == 422
     assert high_intensity_response.status_code == 422
+
+
+def test_archived_world_rejects_relation_writes_but_allows_reads(client, db_session):
+    token = register(client)
+    world_id = create_world(client, token)
+    source_id, target_id = character_ids(client, token, world_id)[:2]
+    existing_id = db_session.scalar(select(CharacterRelation.id).where(CharacterRelation.world_id == world_id))
+
+    archive_response = client.patch(f'/worlds/{world_id}/status', headers=auth(token), json={'status': 'archived'})
+    assert archive_response.status_code == 200
+
+    create_response = client.post(
+        f'/worlds/{world_id}/relations',
+        headers=auth(token),
+        json={'source_character_id': source_id, 'target_character_id': target_id, 'relation_type': 'archived_link'},
+    )
+    update_response = client.put(
+        f'/relations/{existing_id}',
+        headers=auth(token),
+        json={'relation_type': '不应修改'},
+    )
+    delete_response = client.delete(f'/relations/{existing_id}', headers=auth(token))
+
+    assert create_response.status_code == 409
+    assert create_response.json()['detail'] == 'WORLD_ARCHIVED'
+    assert update_response.status_code == 409
+    assert update_response.json()['detail'] == 'WORLD_ARCHIVED'
+    assert delete_response.status_code == 409
+    assert delete_response.json()['detail'] == 'WORLD_ARCHIVED'
+
+    list_response = client.get(f'/worlds/{world_id}/relations', headers=auth(token))
+    get_response = client.get(f'/relations/{existing_id}', headers=auth(token))
+    assert list_response.status_code == 200
+    assert get_response.status_code == 200

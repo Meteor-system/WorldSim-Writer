@@ -147,11 +147,32 @@ def test_post_critic_report_generates_structured_report_without_mutating_world(c
     db_session.expire_all()
     world = db_session.get(World, world_id)
     chapter = db_session.get(Chapter, draft['chapter_id'])
-    event_count = db_session.scalar(select(func.count()).select_from(EventLog))
+    event_types = list(db_session.scalars(select(EventLog.event_type).where(EventLog.world_id == world_id).order_by(EventLog.id)))
     assert world.world_version == 1
     assert chapter.critique_report['draft_version'] == 1
     assert chapter.critique_report['overall_score'] == 78
-    assert event_count == 0
+    assert event_types == ['WORLD_CREATED']
+
+
+def test_archived_world_rejects_critic_report_generation(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+
+    archive_response = client.patch(f'/worlds/{world_id}/status', headers={'Authorization': f'Bearer {token}'}, json={'status': 'archived'})
+    assert archive_response.status_code == 200
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/critic-report",
+        json={},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 409
+    assert response.json()['detail'] == 'WORLD_ARCHIVED'
+
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    assert chapter.critique_report == {}
 
 
 def test_get_critic_report_returns_saved_report_and_marks_stale_after_draft_version_changes(client, monkeypatch):

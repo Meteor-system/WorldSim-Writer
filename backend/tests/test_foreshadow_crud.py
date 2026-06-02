@@ -602,3 +602,36 @@ def test_foreshadow_ledger_marks_stale_overdue_and_does_not_mutate_world(client,
     db_session.expire_all()
     assert world_state(db_session, world_id).world_version == version_before
     assert len(world_events(db_session, world_id)) == event_count_before
+
+
+def test_archived_world_rejects_foreshadow_writes_but_allows_reads(client):
+    token = register(client)
+    world_id = create_world(client, token)
+    existing = create_foreshadow(client, token, world_id)
+
+    archive_response = client.patch(f'/worlds/{world_id}/status', headers=auth(token), json={'status': 'archived'})
+    assert archive_response.status_code == 200
+
+    create_response = client.post(
+        f'/worlds/{world_id}/foreshadows',
+        headers=auth(token),
+        json={'title': '归档后伏笔', 'description': '不应创建。', 'foreshadow_type': 'plot'},
+    )
+    update_response = client.put(
+        f"/foreshadows/{existing['id']}",
+        headers=auth(token),
+        json={'status': 'advanced'},
+    )
+    delete_response = client.delete(f"/foreshadows/{existing['id']}", headers=auth(token))
+
+    assert create_response.status_code == 409
+    assert create_response.json()['detail'] == 'WORLD_ARCHIVED'
+    assert update_response.status_code == 409
+    assert update_response.json()['detail'] == 'WORLD_ARCHIVED'
+    assert delete_response.status_code == 409
+    assert delete_response.json()['detail'] == 'WORLD_ARCHIVED'
+
+    list_response = client.get(f'/worlds/{world_id}/foreshadows', headers=auth(token))
+    get_response = client.get(f"/foreshadows/{existing['id']}", headers=auth(token))
+    assert list_response.status_code == 200
+    assert get_response.status_code == 200

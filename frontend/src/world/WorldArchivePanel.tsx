@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { WorldMarkdownExportResponse, WorldSnapshotCompareResponse, WorldSnapshotListResponse, WorldSnapshotSummary } from '../api/types';
 
 type Props = {
+  readOnly?: boolean;
   onCreateSnapshot: () => Promise<WorldSnapshotSummary>;
   onExportMarkdown: () => Promise<WorldMarkdownExportResponse>;
   onListSnapshots: () => Promise<WorldSnapshotListResponse>;
@@ -17,7 +18,7 @@ function archiveUrlFromBase64(archiveBase64: string) {
   return URL.createObjectURL(new Blob([bytes], { type: 'application/zip' }));
 }
 
-export function WorldArchivePanel({ onCreateSnapshot, onExportMarkdown, onListSnapshots, onCompareSnapshots }: Props) {
+export function WorldArchivePanel({ readOnly = false, onCreateSnapshot, onExportMarkdown, onListSnapshots, onCompareSnapshots }: Props) {
   const [snapshotLoading, setSnapshotLoading] = useState(false);
   const [snapshot, setSnapshot] = useState<WorldSnapshotSummary | null>(null);
   const [snapshotError, setSnapshotError] = useState('');
@@ -112,14 +113,21 @@ export function WorldArchivePanel({ onCreateSnapshot, onExportMarkdown, onListSn
           <p className="manuscript mt-2 text-sm text-[#5e3b1c]">创建当前世界版本的只读快照，或生成 Obsidian 风格 Markdown 档案。</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="secondary-button" disabled={snapshotLoading} onClick={handleCreateSnapshot}>
-            {snapshotLoading ? '创建中...' : '创建世界快照'}
-          </button>
+          {!readOnly && (
+            <button className="secondary-button" disabled={snapshotLoading} onClick={handleCreateSnapshot}>
+              {snapshotLoading ? '创建中...' : '创建世界快照'}
+            </button>
+          )}
           <button className="primary-button" disabled={exportLoading} onClick={handleExportMarkdown}>
             {exportLoading ? '导出中...' : '导出世界档案'}
           </button>
         </div>
       </div>
+      {readOnly && (
+        <p className="mt-4 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">
+          已归档小说为只读模式；可继续导出档案和查看历史快照，恢复写作后才能创建新快照。
+        </p>
+      )}
 
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <div className="rounded-2xl bg-amber-50/60 p-3">

@@ -17,7 +17,7 @@ import type {
   ForeshadowUpdate,
 } from '../api/types';
 
-type Props = { worldId: number; characters: Character[]; onChanged?: () => Promise<void> | void };
+type Props = { worldId: number; characters: Character[]; onChanged?: () => Promise<void> | void; readOnly?: boolean };
 
 const TYPE_OPTIONS = ['plot', 'character', 'world', 'theme'] as const;
 const TYPE_LABELS: Record<string, string> = {
@@ -130,7 +130,7 @@ function nextForwardStatus(statusValue: ForeshadowStatus): ForeshadowStatus | nu
   return null;
 }
 
-export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
+export function ForeshadowManager({ worldId, characters, onChanged, readOnly = false }: Props) {
   const [ledger, setLedger] = useState<ForeshadowLedgerResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -237,6 +237,7 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
   }
 
   async function dropOnStatus(statusValue: ForeshadowStatus) {
+    if (readOnly) return;
     if (draggingId === null) return;
     const source = foreshadows.find((item) => item.id === draggingId);
     setDraggingId(null);
@@ -273,21 +274,27 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
     return (
       <article
         key={f.id}
-        draggable
-        onDragStart={() => setDraggingId(f.id)}
+        draggable={!readOnly}
+        onDragStart={() => { if (!readOnly) setDraggingId(f.id); }}
         onDragEnd={() => setDraggingId(null)}
         className="book-card p-5 flex flex-col gap-3"
       >
         <div className="flex items-start justify-between gap-2">
           <h3 className="text-lg font-black text-[#3b2511] leading-snug">{f.title}</h3>
-          <button
-            className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${STATUS_COLORS[f.status]}`}
-            onClick={() => void advanceStatus(f)}
-            disabled={next === null}
-            title={next ? '推进到下一状态' : '终态不可继续推进'}
-          >
-            {STATUS_LABELS[f.status]}
-          </button>
+          {readOnly ? (
+            <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${STATUS_COLORS[f.status]}`}>
+              {STATUS_LABELS[f.status]}
+            </span>
+          ) : (
+            <button
+              className={`shrink-0 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-70 ${STATUS_COLORS[f.status]}`}
+              onClick={() => void advanceStatus(f)}
+              disabled={next === null}
+              title={next ? '推进到下一状态' : '终态不可继续推进'}
+            >
+              {STATUS_LABELS[f.status]}
+            </button>
+          )}
         </div>
 
         <p className="manuscript text-sm leading-relaxed">{f.description}</p>
@@ -356,44 +363,46 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
         </button>
         {expandedId === f.id && <ForeshadowTimeline foreshadowId={f.id} />}
 
-        <div className="mt-auto flex gap-2 pt-2">
-          <button className="secondary-button text-sm" onClick={() => openEdit(f)}>
-            编辑
-          </button>
-          {canDropStatus(f.status) && (
-            <button className="ghost-button text-sm text-red-700/80" onClick={() => void dropForeshadow(f)}>
-              放弃伏笔
+        {!readOnly && (
+          <div className="mt-auto flex gap-2 pt-2">
+            <button className="secondary-button text-sm" onClick={() => openEdit(f)}>
+              编辑
             </button>
-          )}
-          {confirmDelete === f.id ? (
-            <div className="w-full space-y-2">
-              <input
-                className="paper-input text-sm"
-                value={deleteReason}
-                placeholder="删除原因（可选）"
-                onChange={(e) => setDeleteReason(e.target.value)}
-              />
-              <div className="flex gap-2">
-                <button
-                  className="rounded-full border border-red-800/40 bg-red-100 px-3 py-1.5 text-sm font-bold text-red-800"
-                  onClick={() => handleDelete(f.id)}
-                >
-                  确认删除
-                </button>
-                <button className="ghost-button text-sm" onClick={() => { setConfirmDelete(null); setDeleteReason(''); }}>
-                  取消
-                </button>
+            {canDropStatus(f.status) && (
+              <button className="ghost-button text-sm text-red-700/80" onClick={() => void dropForeshadow(f)}>
+                放弃伏笔
+              </button>
+            )}
+            {confirmDelete === f.id ? (
+              <div className="w-full space-y-2">
+                <input
+                  className="paper-input text-sm"
+                  value={deleteReason}
+                  placeholder="删除原因（可选）"
+                  onChange={(e) => setDeleteReason(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  <button
+                    className="rounded-full border border-red-800/40 bg-red-100 px-3 py-1.5 text-sm font-bold text-red-800"
+                    onClick={() => handleDelete(f.id)}
+                  >
+                    确认删除
+                  </button>
+                  <button className="ghost-button text-sm" onClick={() => { setConfirmDelete(null); setDeleteReason(''); }}>
+                    取消
+                  </button>
+                </div>
               </div>
-            </div>
-          ) : (
-            <button
-              className="ghost-button text-sm text-red-700/80"
-              onClick={() => { setConfirmDelete(f.id); setDeleteReason(''); }}
-            >
-              删除
-            </button>
-          )}
-        </div>
+            ) : (
+              <button
+                className="ghost-button text-sm text-red-700/80"
+                onClick={() => { setConfirmDelete(f.id); setDeleteReason(''); }}
+              >
+                删除
+              </button>
+            )}
+          </div>
+        )}
       </article>
     );
   }
@@ -450,13 +459,15 @@ export function ForeshadowManager({ worldId, characters, onChanged }: Props) {
           <button className={viewMode === 'kanban' ? 'primary-button' : 'secondary-button'} onClick={() => setViewMode('kanban')}>
             看板视图
           </button>
-          <button className="primary-button" onClick={openCreate}>
-            + 新增伏笔
-          </button>
+          {!readOnly && (
+            <button className="primary-button" onClick={openCreate}>
+              + 新增伏笔
+            </button>
+          )}
         </div>
       </div>
       <p className="mt-3 rounded-2xl border border-amber-700/25 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-        这些编辑会正式写入世界状态，并使 world_version 增长。
+        {readOnly ? '已归档小说为只读模式；恢复写作后才能编辑世界资料。' : '这些编辑会正式写入世界状态，并使 world_version 增长。'}
       </p>
 
       <section className="mt-4 rounded-3xl border border-amber-900/15 bg-amber-50/50 p-4">

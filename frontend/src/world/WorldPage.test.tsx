@@ -1,8 +1,8 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, searchWorld, unassignWorldTag, updateWorldTag } from '../api/client';
+import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, generateStoryArc, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
 import type { WorldOverview, WorldSearchResponse } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -34,6 +34,7 @@ vi.mock('../api/client', () => ({
   mergeWorldTag: vi.fn(),
   searchWorld: vi.fn(),
   unassignWorldTag: vi.fn(),
+  updateWorldStatus: vi.fn(),
   updateWorldTag: vi.fn(),
   getCharacters: vi.fn(),
   getForeshadowLedger: vi.fn(),
@@ -82,6 +83,36 @@ const world: WorldOverview = {
   approved_chapter_count: 1,
 };
 
+const storyArcWorld: WorldOverview = {
+  ...world,
+  story_arc: Array.from({ length: 10 }, (_, index) => {
+    const chapterNumber = index + 1;
+    return {
+      chapter_number: chapterNumber,
+      title: `第 ${chapterNumber} 章标题`,
+      summary: `第 ${chapterNumber} 章摘要：林砚推进裂纹玉佩线索。`,
+      core_conflict: `第 ${chapterNumber} 章核心冲突详情`,
+      pov_suggestion: `第 ${chapterNumber} 章 POV 建议`,
+      foreshadow_hints: chapterNumber === 1 ? ['裂纹玉佩', '雨巷铜铃'] : [],
+    };
+  }),
+};
+
+const secondWorld: WorldOverview = {
+  ...world,
+  id: 8,
+  title: '星舰余烬',
+  genre_template: 'sci_fi',
+  truth_canon: '星舰仍在航行。',
+  world_version: 1,
+  status: 'active',
+};
+
+const archivedWorld: WorldOverview = {
+  ...world,
+  status: 'archived',
+};
+
 afterEach(() => cleanup());
 
 beforeEach(() => {
@@ -96,6 +127,7 @@ beforeEach(() => {
   vi.mocked(createWorldTag).mockReset();
   vi.mocked(deleteWorldTag).mockReset();
   vi.mocked(exportWorldArchiveMarkdown).mockReset();
+  vi.mocked(generateStoryArc).mockReset();
   vi.mocked(getChapterHistory).mockReset();
   vi.mocked(getChapterHistoryDetail).mockReset();
   vi.mocked(getNextChapterPrep).mockReset();
@@ -112,6 +144,7 @@ beforeEach(() => {
   vi.mocked(searchWorld).mockReset();
   vi.mocked(searchWorld).mockResolvedValue(worldSearchResponse);
   vi.mocked(unassignWorldTag).mockReset();
+  vi.mocked(updateWorldStatus).mockReset();
   vi.mocked(updateWorldTag).mockReset();
   vi.mocked(listWorldSnapshots).mockReset();
   vi.mocked(getCharacters).mockReset();
@@ -361,7 +394,108 @@ beforeEach(() => {
   });
 });
 
+describe('WorldPage operations dashboard', () => {
+  it('localizes overview headers, genre, and status without raw identifiers', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('世界正史档案')).toBeInTheDocument();
+    expect(screen.getByText('第 2 版 · 仙侠 · 进行中')).toBeInTheDocument();
+    expect(screen.getByText('今日运营')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('WORLD CANON');
+    expect(document.body).not.toHaveTextContent('World Canon');
+    expect(document.body).not.toHaveTextContent('WORLD OPERATIONS');
+    expect(document.body).not.toHaveTextContent('World Operations');
+    expect(document.body).not.toHaveTextContent('xianxia');
+    expect(document.body).not.toHaveTextContent('running');
+  });
+
+  it('shows world operations metrics in user language', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    const dashboard = within(await screen.findByLabelText('世界运营仪表盘'));
+    expect(dashboard.getByText('世界运营仪表盘')).toBeInTheDocument();
+    expect(dashboard.getByText('世界进度：第 2 版')).toBeInTheDocument();
+    expect(dashboard.getByText('已写入正史章节：1')).toBeInTheDocument();
+    expect(dashboard.getByText('近期世界历史记录：0')).toBeInTheDocument();
+    expect(dashboard.getByText('待处理悬念/伏笔：1')).toBeInTheDocument();
+  });
+
+  it('recommends explainable next actions from current world data', async () => {
+    const onEnterStudio = vi.fn();
+    const user = userEvent.setup();
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    const dashboard = within(await screen.findByLabelText('世界运营仪表盘'));
+    expect(dashboard.getByText('今天建议处理什么')).toBeInTheDocument();
+    expect(dashboard.getByText('继续下一章')).toBeInTheDocument();
+    expect(dashboard.getByText('回收或推进悬念/伏笔')).toBeInTheDocument();
+
+    await user.click(dashboard.getByRole('button', { name: '继续下一章' }));
+    expect(onEnterStudio).toHaveBeenCalledWith(world, {
+      initialChapterGoal: undefined,
+      executionContext: undefined,
+    });
+  });
+
+  it('summarizes active roles and urgent suspense without hardcoded generated prose', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    const dashboard = within(await screen.findByLabelText('世界运营仪表盘'));
+    expect(dashboard.getByText('活跃角色')).toBeInTheDocument();
+    expect(dashboard.getByText('林砚：追查湿信来源')).toBeInTheDocument();
+    expect(dashboard.getByText('紧迫悬念/伏笔')).toBeInTheDocument();
+    expect(dashboard.getByText('裂纹玉佩：推进中 · 紧迫度 4')).toBeInTheDocument();
+    expect(dashboard.getByTestId('world-dashboard-actions')).toHaveClass('gap-4');
+    expect(dashboard.getByTestId('world-dashboard-sidebars')).toHaveClass('gap-5');
+    expect(document.body).not.toHaveTextContent('WORLD OPERATIONS');
+    expect(document.body).not.toHaveTextContent('World Operations');
+    expect(dashboard.getByText('近期世界历史记录')).toBeInTheDocument();
+    expect(dashboard.queryByText('第一章 雨巷密谈')).not.toBeInTheDocument();
+    expect(dashboard.queryByText('林砚停在雨巷口。')).not.toBeInTheDocument();
+  });
+});
+
 describe('WorldPage world creation', () => {
+  it('shows the newcomer three-minute loop and high-tension embryo entry', async () => {
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockResolvedValueOnce([]);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('3 分钟开始运营你的故事世界')).toBeInTheDocument();
+    expect(screen.getByText('选世界胚胎')).toBeInTheDocument();
+    expect(screen.getByText('生成第一章')).toBeInTheDocument();
+    expect(screen.getByText('写入正史')).toBeInTheDocument();
+    expect(screen.getByText('查看世界变化')).toBeInTheDocument();
+    expect(await screen.findByText('高张力世界胚胎')).toBeInTheDocument();
+  });
+
+  it('creates a high-tension embryo without treating seed hook as generated chapter content', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(world);
+    vi.mocked(createWorldFromSeed).mockResolvedValue({ id: 7 });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('所有人都忘记太阳存在过。')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '直接创建此胚胎' }));
+
+    expect(createWorldFromSeed).toHaveBeenCalledWith('forgotten-sun-city');
+    expect(await screen.findByText('青岚城')).toBeInTheDocument();
+    expect(screen.queryByText('Writer Draft')).not.toBeInTheDocument();
+    expect(screen.queryByText('世界推进结算')).not.toBeInTheDocument();
+  });
+
+  it('aligns the first chapter launchpad with the three-minute loop', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('First Chapter Launchpad')).toBeInTheDocument();
+    expect(screen.getByText('生成第一章 → 写入正史 → 查看世界变化')).toBeInTheDocument();
+  });
+
   it('creates the built-in sample world and loads its overview', async () => {
     const user = userEvent.setup();
     vi.mocked(apiRequest).mockReset();
@@ -416,7 +550,376 @@ describe('WorldPage world creation', () => {
   });
 });
 
+describe('WorldPage bookshelf', () => {
+  it('shows a bookshelf for multiple worlds and opens the selected second world', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'active', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+        { id: 8, title: '星舰余烬', genre_template: 'sci_fi', truth_canon: '星舰仍在航行。', truth_canon_version: 1, world_version: 1, status: 'active', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(secondWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('作品书架')).toBeInTheDocument();
+    expect(screen.queryByText('世界正史档案')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '打开 星舰余烬' }));
+
+    expect(await screen.findByText('星舰余烬')).toBeInTheDocument();
+    expect(apiRequest).toHaveBeenNthCalledWith(2, '/worlds/8/overview');
+  });
+
+  it('returns from an open world to the bookshelf', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'active', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+        { id: 8, title: '星舰余烬', genre_template: 'sci_fi', truth_canon: '星舰仍在航行。', truth_canon_version: 1, world_version: 1, status: 'active', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(world);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
+    expect(await screen.findByText('世界正史档案')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '返回作品书架' }));
+
+    expect(screen.getByText('作品书架')).toBeInTheDocument();
+  });
+
+  it('shows archive entry copy on the current world page', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('归档前建议先创建世界快照并导出 Markdown ZIP。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '归档当前小说' })).toBeInTheDocument();
+  });
+
+  it('can archive and restore the current world without leaving the page', async () => {
+    const user = userEvent.setup();
+    vi.mocked(updateWorldStatus)
+      .mockResolvedValueOnce({ ...world, status: 'archived' })
+      .mockResolvedValueOnce({ ...world, status: 'active' });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '归档当前小说' }));
+
+    expect(updateWorldStatus).toHaveBeenCalledWith(7, { status: 'archived' });
+    expect(await screen.findByRole('button', { name: '取消归档当前小说' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '取消归档当前小说' }));
+
+    expect(updateWorldStatus).toHaveBeenCalledWith(7, { status: 'active' });
+    expect(await screen.findByRole('button', { name: '归档当前小说' })).toBeInTheDocument();
+  });
+
+  it('shows the bookshelf instead of auto-opening a single archived world', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'archived', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(archivedWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('作品书架')).toBeInTheDocument();
+    expect(screen.queryByText('世界正史档案')).not.toBeInTheDocument();
+    expect(screen.getByText('已归档')).toBeInTheDocument();
+    expect(screen.getByText('青岚城')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '打开 青岚城' }));
+
+    expect(await screen.findByText('世界正史档案')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '取消归档当前小说' })).toBeInTheDocument();
+  });
+
+  it('restores an archived world directly from the bookshelf', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockResolvedValueOnce([
+      { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'archived', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      { id: 8, title: '星舰余烬', genre_template: 'sci_fi', truth_canon: '星舰仍在航行。', truth_canon_version: 1, world_version: 1, status: 'active', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+    ]);
+    vi.mocked(updateWorldStatus).mockResolvedValueOnce({ ...archivedWorld, status: 'active' });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('作品书架')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '恢复写作 青岚城' }));
+
+    expect(updateWorldStatus).toHaveBeenCalledWith(7, { status: 'active' });
+    expect(await screen.findByText('第 2 版 · 仙侠 · 进行中')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('xianxia');
+    expect(document.body).not.toHaveTextContent('active');
+    expect(screen.getByRole('button', { name: '打开 青岚城' })).toBeInTheDocument();
+    expect(screen.getByText('暂无归档小说。')).toBeInTheDocument();
+  });
+
+  it('shows a paused state when opening an archived world', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'archived', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(archivedWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
+
+    expect(await screen.findByText('已归档：写作已暂停')).toBeInTheDocument();
+    expect(screen.getByText('这本小说已从活跃创作中移出。快照、章节、伏笔和导出都还在。恢复写作后再进入创作台。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '恢复写作' })).toBeInTheDocument();
+    expect(screen.queryByText('First Chapter Launchpad')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '进入创作台' })).not.toBeInTheDocument();
+  });
+
+  it('restores writing from the archived paused state', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'archived', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(archivedWorld);
+    vi.mocked(updateWorldStatus).mockResolvedValueOnce({ ...world, status: 'active' });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
+    await user.click(await screen.findByRole('button', { name: '恢复写作' }));
+
+    expect(updateWorldStatus).toHaveBeenCalledWith(7, { status: 'active' });
+    expect(await screen.findByText('First Chapter Launchpad')).toBeInTheDocument();
+    expect(screen.queryByText('已归档：写作已暂停')).not.toBeInTheDocument();
+  });
+
+  it('returns from a single auto-opened world to the bookshelf', async () => {
+    const user = userEvent.setup();
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('世界正史档案')).toBeInTheDocument();
+    expect(screen.queryByText('作品书架')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '返回作品书架' }));
+
+    expect(screen.getByText('作品书架')).toBeInTheDocument();
+    expect(screen.getByText('青岚城')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '创建新小说' })).toBeInTheDocument();
+  });
+
+  it('opens the creation form from a single-world bookshelf', async () => {
+    const user = userEvent.setup();
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '返回作品书架' }));
+    await user.click(screen.getByRole('button', { name: '创建新小说' }));
+
+    expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '返回作品书架' })).toBeInTheDocument();
+    expect(listWorldSeeds).toHaveBeenCalled();
+  });
+
+  it('still auto-opens a single existing world', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('世界正史档案')).toBeInTheDocument();
+    expect(screen.queryByText('作品书架')).not.toBeInTheDocument();
+  });
+});
+
+describe('WorldPage Story Arc Planner', () => {
+  it('shows a first chapter launchpad that can generate an arc when no story arc exists', async () => {
+    const user = userEvent.setup();
+    vi.mocked(generateStoryArc).mockResolvedValueOnce({
+      world_id: 7,
+      story_arc: storyArcWorld.story_arc,
+    });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('First Chapter Launchpad')).toBeInTheDocument();
+    expect(screen.getByText('先生成前 10 章故事弧线，再把下一章目标带入创作台。')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '生成第一轮故事弧线' }));
+
+    expect(generateStoryArc).toHaveBeenCalledWith(7);
+    expect(await screen.findByText('第 2 章标题')).toBeInTheDocument();
+  });
+
+  it('shows story-operation waiting copy while generating the story arc', async () => {
+    const user = userEvent.setup();
+    let resolveStoryArc!: (value: Awaited<ReturnType<typeof generateStoryArc>>) => void;
+    vi.mocked(generateStoryArc).mockImplementationOnce(async () => new Promise<Awaited<ReturnType<typeof generateStoryArc>>>((resolve) => {
+      resolveStoryArc = resolve;
+    }));
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '生成第一轮故事弧线' }));
+    expect((await screen.findAllByRole('button', { name: '故事弧线规划中…' })).length).toBeGreaterThan(0);
+
+    resolveStoryArc({ world_id: 7, story_arc: storyArcWorld.story_arc });
+    expect(await screen.findByText('第 2 章标题')).toBeInTheDocument();
+  });
+
+  it('shows the next unapproved story arc chapter in the launchpad', async () => {
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('First Chapter Launchpad')).toBeInTheDocument();
+    expect(screen.getByText('下一章 · 第 2 章')).toBeInTheDocument();
+    expect(screen.getByText('第 2 章标题')).toBeInTheDocument();
+    expect(screen.queryByText('下一章 · 第 1 章')).not.toBeInTheDocument();
+  });
+
+  it('launches Studio with the selected story arc chapter goal', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
+
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '用此目标进入创作台' }));
+
+    expect(onEnterStudio).toHaveBeenCalledWith(storyArcWorld, {
+      initialChapterGoal: '第 2 章标题：第 2 章摘要：林砚推进裂纹玉佩线索。',
+      executionContext: expect.objectContaining({
+        source: 'manual',
+        source_world_version: 2,
+        next_chapter_number: 2,
+        goal: '第 2 章标题：第 2 章摘要：林砚推进裂纹玉佩线索。',
+        recommended_pov: { character_id: null, name: '第 2 章 POV 建议' },
+      }),
+    });
+  });
+
+  it('renders ten story arc chapters as a dense collapsed index by default', async () => {
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('前 10 章故事弧线')).toBeInTheDocument();
+    const chapterButtons = screen.getAllByRole('button', { name: /第 \d+ 章 · 第 \d+ 章标题/ });
+    expect(chapterButtons).toHaveLength(10);
+    expect(chapterButtons[0]).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: '第 1 章 · 第 1 章标题 · 2 条伏笔' })).toBeInTheDocument();
+    expect(screen.queryByText('第 1 章摘要：林砚推进裂纹玉佩线索。')).not.toBeInTheDocument();
+    expect(screen.queryByText('第 1 章核心冲突详情')).not.toBeInTheDocument();
+    expect(screen.queryByText('第 1 章 POV 建议')).not.toBeInTheDocument();
+  });
+
+  it('expands an individual story arc chapter to reveal full content', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    const expandButton = await screen.findByRole('button', { name: '第 1 章 · 第 1 章标题 · 2 条伏笔' });
+    expect(expandButton).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('核心冲突')).not.toBeInTheDocument();
+
+    await user.click(expandButton);
+
+    expect(screen.getByRole('button', { name: '第 1 章 · 第 1 章标题 · 2 条伏笔' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('第 1 章摘要：林砚推进裂纹玉佩线索。')).toBeInTheDocument();
+    expect(screen.getByText('核心冲突')).toBeInTheDocument();
+    expect(screen.getByText('第 1 章核心冲突详情')).toBeInTheDocument();
+    expect(screen.getByText('第 1 章 POV 建议')).toBeInTheDocument();
+    expect(screen.getByText('裂纹玉佩、雨巷铜铃')).toBeInTheDocument();
+  });
+
+  it('allows neighboring story arc chapters to stay readable when both sides are expanded', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '第 1 章 · 第 1 章标题 · 2 条伏笔' }));
+    expect(screen.getByText('第 1 章摘要：林砚推进裂纹玉佩线索。')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '第 2 章 · 第 2 章标题' }));
+
+    expect(screen.getByRole('button', { name: '第 1 章 · 第 1 章标题 · 2 条伏笔' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: '第 2 章 · 第 2 章标题' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('第 1 章摘要：林砚推进裂纹玉佩线索。')).toBeInTheDocument();
+    expect(screen.getByText('第 1 章核心冲突详情')).toBeInTheDocument();
+    expect(screen.getAllByText('第 2 章摘要：林砚推进裂纹玉佩线索。').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('第 2 章核心冲突详情').length).toBeGreaterThan(0);
+  });
+
+  it('renders quick navigation anchors to major narrative modules', async () => {
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('前 10 章故事弧线')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '故事弧线' })).toHaveAttribute('href', '#story-arc-planner');
+    expect(screen.getByRole('link', { name: '叙事控制台' })).toHaveAttribute('href', '#narrative-control-center');
+    expect(screen.getByRole('link', { name: '导出/快照' })).toHaveAttribute('href', '#world-archive');
+    expect(screen.getByRole('link', { name: '章节历史' })).toHaveAttribute('href', '#chapter-history');
+    expect(document.querySelector('#story-arc-planner')).toBeInTheDocument();
+    expect(document.querySelector('#narrative-control-center')).toBeInTheDocument();
+    expect(document.querySelector('#world-archive')).toBeInTheDocument();
+    expect(document.querySelector('#chapter-history')).toBeInTheDocument();
+  });
+});
+
 describe('WorldPage Narrative Control Center', () => {
+  it('keeps Narrative Control Center read-only for archived worlds', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'archived', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(archivedWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
+
+    expect(await screen.findByText('已归档：写作已暂停')).toBeInTheDocument();
+    expect(await screen.findByText('Narrative Control Center')).toBeInTheDocument();
+    expect(screen.getByText('已归档小说为只读模式；恢复写作后才能把建议带入创作台。')).toBeInTheDocument();
+    expect(screen.getByText('下一章准备台')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '用作下一章目标' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '进入创作台并使用此目标' })).not.toBeInTheDocument();
+    expect(screen.getByText('已归档小说为只读模式；可继续导出档案和查看历史快照，恢复写作后才能创建新快照。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建世界快照' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '导出世界档案' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '加载快照列表' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '恢复写作' })).toBeInTheDocument();
+  });
+
   it('loads and displays Chapter History and Next Chapter Prep panels', async () => {
     const user = userEvent.setup();
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
@@ -432,14 +935,14 @@ describe('WorldPage Narrative Control Center', () => {
     expect(await screen.findByText('Arc Mode / Closure Plan')).toBeInTheDocument();
     expect(await screen.findByText('Narrative Health')).toBeInTheDocument();
     expect(await screen.findByText('Open Threads Board')).toBeInTheDocument();
-    expect(await screen.findByText('章节历史')).toBeInTheDocument();
+    expect((await screen.findAllByText('章节历史')).length).toBeGreaterThan(0);
     expect(screen.getByText('第一章 雨巷密谈 · v1 · 世界 1 → 2')).toBeInTheDocument();
     expect(screen.getByText('下一章准备台')).toBeInTheDocument();
     expect(screen.getByText('林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
-    expect(await screen.findByText('Timeline Explorer')).toBeInTheDocument();
+    expect(await screen.findByText('世界历史记录')).toBeInTheDocument();
     expect(getWorldEvents).toHaveBeenCalledWith(7, { limit: 20 });
-    expect(await screen.findByText('Global Search')).toBeInTheDocument();
-    expect(await screen.findByText('Tags / Collections')).toBeInTheDocument();
+    expect(await screen.findByText('全局搜索')).toBeInTheDocument();
+    expect(await screen.findByText('标签与收藏')).toBeInTheDocument();
     await waitFor(() => expect(listWorldTags).toHaveBeenCalledTimes(2));
     expect(listWorldTags).toHaveBeenCalledWith(7);
     await user.type(screen.getByLabelText('搜索世界资料'), '灯塔');
@@ -463,6 +966,35 @@ describe('WorldPage Narrative Control Center', () => {
     await waitFor(() => expect(getChapterHistory).toHaveBeenCalledWith(7));
     expect(await screen.findByText('章节历史暂不可用')).toBeInTheDocument();
     expect(await screen.findByText('下一章准备台暂不可用')).toBeInTheDocument();
+  });
+
+  it('keeps World Bible manager tabs read-only for archived worlds', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([
+        { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'archived', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      ])
+      .mockResolvedValueOnce(archivedWorld);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
+    await user.click(screen.getByRole('button', { name: '角色管理' }));
+
+    expect(await screen.findByText('已归档小说为只读模式；恢复写作后才能编辑世界资料。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '关系管理' }));
+    expect(await screen.findByText('已归档小说为只读模式；恢复写作后才能编辑世界资料。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ 新增关系' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '伏笔账本' }));
+    expect(await screen.findByText('已归档小说为只读模式；恢复写作后才能编辑世界资料。')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '+ 新增伏笔' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '放弃伏笔' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '展开时间线' })).toBeInTheDocument();
   });
 
   it('renders World Bible Editor manager tabs with governance warning', async () => {

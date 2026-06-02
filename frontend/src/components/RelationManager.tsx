@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createRelation, getRelations, updateRelation } from '../api/client';
 import type { Character, CharacterRelation, CharacterRelationCreate, CharacterRelationUpdate } from '../api/types';
 
-type Props = { worldId: number; characters: Character[]; onChanged?: () => Promise<void> | void };
+type Props = { worldId: number; characters: Character[]; onChanged?: () => Promise<void> | void; readOnly?: boolean };
 
 type FormData = {
   source_character_id: number;
@@ -48,7 +48,7 @@ function formToPayload(form: FormData): CharacterRelationCreate {
   };
 }
 
-export function RelationManager({ worldId, characters, onChanged }: Props) {
+export function RelationManager({ worldId, characters, onChanged, readOnly = false }: Props) {
   const [relations, setRelations] = useState<CharacterRelation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -122,12 +122,14 @@ export function RelationManager({ worldId, characters, onChanged }: Props) {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="chapter-kicker">关系管理</p>
-        <button className="primary-button" onClick={openCreate} disabled={characters.length < 2}>
-          + 新增关系
-        </button>
+        {!readOnly && (
+          <button className="primary-button" onClick={openCreate} disabled={characters.length < 2}>
+            + 新增关系
+          </button>
+        )}
       </div>
       <p className="mt-3 rounded-2xl border border-amber-700/25 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-        这些编辑会正式写入世界状态，并使 world_version 增长。
+        {readOnly ? '已归档小说为只读模式；恢复写作后才能编辑世界资料。' : '这些编辑会正式写入世界状态，并使 world_version 增长。'}
       </p>
 
       {error && (
@@ -154,11 +156,13 @@ export function RelationManager({ worldId, characters, onChanged }: Props) {
                 <span className="rounded-full border border-amber-800/20 px-2 py-0.5">强度：{relation.intensity}</span>
                 <span className="rounded-full border border-amber-800/20 px-2 py-0.5">可见性：{relation.visibility}</span>
               </div>
-              <div className="mt-auto flex gap-2 pt-2">
-                <button className="secondary-button text-sm" onClick={() => openEdit(relation)}>
-                  编辑
-                </button>
-              </div>
+              {!readOnly && (
+                <div className="mt-auto flex gap-2 pt-2">
+                  <button className="secondary-button text-sm" onClick={() => openEdit(relation)}>
+                    编辑
+                  </button>
+                </div>
+              )}
             </article>
           ))}
         </div>

@@ -46,9 +46,9 @@ export function SeedLibraryPanel({ seeds, selectedSeedKey, loading, error, onApp
   return (
     <section className="book-card p-5">
       <div>
-        <p className="chapter-kicker">World Embryos</p>
-        <h2 className="text-2xl font-black text-[#34210f]">Sandbox Seed Library</h2>
-        <p className="manuscript mt-2 text-sm text-[#5e3b1c]">从高张力官方世界胚胎开始，也可以套用后继续编辑。</p>
+        <p className="chapter-kicker">Sandbox Seed Library</p>
+        <h2 className="text-2xl font-black text-[#34210f]">高张力世界胚胎</h2>
+        <p className="manuscript mt-2 text-sm text-[#5e3b1c]">这些胚胎只是起跑提示：用来创建可运营的故事世界，不会被当成已经生成的章节正文。</p>
       </div>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         {seeds.map((seed) => {

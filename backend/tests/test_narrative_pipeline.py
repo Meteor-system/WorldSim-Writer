@@ -1,3 +1,5 @@
+from sqlalchemy import func, select
+
 from app.llm.schemas import (
     BeatCard,
     ChapterGeneration,
@@ -9,6 +11,7 @@ from app.llm.schemas import (
 )
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter, ChapterDraft
+from app.world.models import World
 
 
 def auth(token):
@@ -210,6 +213,36 @@ def test_critique_requires_draft_and_persists_report(client, db_session, monkeyp
     assert payload['critique_report']['issues'][0]['category'] == 'character_voice'
     chapter = db_session.get(Chapter, chapter_id)
     assert chapter.critique_report['consistency_check']['world_rule_adherence'] == 'pass'
+
+
+def test_archived_world_rejects_pipeline_mutations(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: PipelineLLMClient())
+    setup_outline = client.post(f'/chapters/{chapter_id}/outline', headers=auth(token), json={})
+    assert setup_outline.status_code == 200
+
+    archive_response = client.patch(f'/worlds/{world_id}/status', headers=auth(token), json={'status': 'archived'})
+    assert archive_response.status_code == 200
+
+    outline_response = client.post(f'/chapters/{chapter_id}/outline', headers=auth(token), json={})
+    write_response = client.post(f'/chapters/{chapter_id}/write', headers=auth(token), json={})
+    critique_response = client.post(f'/chapters/{chapter_id}/critique', headers=auth(token), json={})
+
+    assert outline_response.status_code == 409
+    assert outline_response.json()['detail'] == 'WORLD_ARCHIVED'
+    assert write_response.status_code == 409
+    assert write_response.json()['detail'] == 'WORLD_ARCHIVED'
+    assert critique_response.status_code == 409
+    assert critique_response.json()['detail'] == 'WORLD_ARCHIVED'
+
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, chapter_id)
+    draft_count = db_session.scalar(select(func.count()).select_from(ChapterDraft).where(ChapterDraft.chapter_id == chapter_id))
+    assert world.world_version == 1
+    assert chapter.status == 'outlined'
+    assert draft_count == 0
 
 
 def test_pipeline_approve_preserves_existing_world_update_invariant(client, monkeypatch):

@@ -93,6 +93,47 @@ def test_create_snapshot_freezes_current_world_version_without_mutating_world(cl
     assert 'events' in snapshot.payload
 
 
+def test_archived_world_rejects_snapshot_creation_but_allows_archive_reads(client, db_session):
+    token, world_id = register_and_create_world(client, 'snapshot-archived@example.com')
+    existing_snapshot = client.post(
+        f'/worlds/{world_id}/snapshots',
+        json={'label': 'Before archive'},
+        headers=auth_headers(token),
+    ).json()
+    archive_response = client.patch(
+        f'/worlds/{world_id}/status',
+        json={'status': 'archived'},
+        headers=auth_headers(token),
+    )
+    assert archive_response.status_code == 200
+    snapshot_count_before = db_session.scalar(
+        select(func.count()).select_from(WorldSnapshot).where(WorldSnapshot.world_id == world_id)
+    )
+
+    create_response = client.post(
+        f'/worlds/{world_id}/snapshots',
+        json={'label': 'After archive'},
+        headers=auth_headers(token),
+    )
+    list_response = client.get(f'/worlds/{world_id}/snapshots', headers=auth_headers(token))
+    detail_response = client.get(f"/snapshots/{existing_snapshot['id']}", headers=auth_headers(token))
+    export_response = client.post(f'/worlds/{world_id}/export/markdown', headers=auth_headers(token))
+
+    assert create_response.status_code == 409
+    assert create_response.json()['detail'] == 'WORLD_ARCHIVED'
+    assert list_response.status_code == 200
+    assert detail_response.status_code == 200
+    assert export_response.status_code == 200
+    assert list_response.json()['snapshots'][0]['id'] == existing_snapshot['id']
+    assert export_response.json()['archive_format'] == 'zip'
+
+    db_session.expire_all()
+    snapshot_count_after = db_session.scalar(
+        select(func.count()).select_from(WorldSnapshot).where(WorldSnapshot.world_id == world_id)
+    )
+    assert snapshot_count_after == snapshot_count_before
+
+
 def test_list_snapshots_returns_only_owned_world_snapshots(client):
     owner_token, world_id = register_and_create_world(client, 'snapshot-owner@example.com')
     other_token, other_world_id = register_and_create_world(client, 'snapshot-other@example.com')

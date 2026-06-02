@@ -47,6 +47,8 @@ import type {
   WorldCreateRequest,
   WorldMarkdownExportResponse,
   WorldPulseResponse,
+  WorldStatusUpdateRequest,
+  WorldSummary,
   WorldSearchResponse,
   WorldSeedDetail,
   WorldSeedListResponse,
@@ -124,6 +126,13 @@ export function createWorldFromSeed(seedKey: string) {
   return apiRequest<{ id: number }>(`/worlds/from-seed/${seedKey}`, {
     method: 'POST',
     body: '{}',
+  });
+}
+
+export function updateWorldStatus(worldId: number, data: WorldStatusUpdateRequest) {
+  return apiRequest<WorldSummary>(`/worlds/${worldId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
   });
 }
 

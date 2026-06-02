@@ -11,6 +11,7 @@ import {
   getApprovalReadiness,
   getDraftDiff,
   getDraftVersion,
+  exportWorldArchiveMarkdown,
   reviseDraft,
   reviseParagraph,
   stashDraft,
@@ -24,6 +25,18 @@ import { CharacterArcPanel } from './CharacterArcPanel';
 import { CriticReportPanel } from './CriticReportPanel';
 
 type Props = { world: WorldOverview; launchContext?: StudioLaunchContext; onBack: () => void; onApproved: (world: WorldOverview) => void };
+
+type WorldSettlement = {
+  worldBefore: number;
+  worldAfter: number;
+  approvedChapterCount: number;
+  characterChangeCount: number;
+  foreshadowChangeCount: number;
+  hasChapterApprovedEvent: boolean;
+  overview: WorldOverview;
+  exportMessage?: string;
+  exportError?: string;
+};
 
 function dialogueToText(beat: BeatCard): string {
   return beat.key_dialogue_hints.join('\n');
@@ -90,6 +103,7 @@ function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionConte
 }
 
 export function StudioPage({ world, launchContext, onBack, onApproved }: Props) {
+  const [localWorld, setLocalWorld] = useState(world);
   const [goal, setGoal] = useState(launchContext?.initialChapterGoal ?? '');
   const [executionContext] = useState(launchContext?.executionContext);
   const [chapter, setChapter] = useState<ChapterPipelineResponse | null>(null);
@@ -106,9 +120,11 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [approvalReadiness, setApprovalReadiness] = useState<ApprovalReadinessResponse | null>(null);
   const [critique, setCritique] = useState<CriticReportResponse | null>(null);
   const [characterArcReport, setCharacterArcReport] = useState<CharacterArcReportResponse | null>(null);
+  const [settlement, setSettlement] = useState<WorldSettlement | null>(null);
   const [latestDraftVersion, setLatestDraftVersion] = useState<number | null>(null);
   const [revisionInstruction, setRevisionInstruction] = useState('');
   const [working, setWorking] = useState(false);
+  const [operationHint, setOperationHint] = useState('');
   const [suggestingGoal, setSuggestingGoal] = useState(false);
   const [error, setError] = useState('');
   const [editMode, setEditMode] = useState(false);
@@ -121,11 +137,15 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }, []);
 
   useEffect(() => {
+    setLocalWorld(world);
+  }, [world]);
+
+  useEffect(() => {
     if (launchContext?.initialChapterGoal || chapter || goal.trim().length > 0) return;
-    const nextChapterNumber = world.approved_chapter_count + 1;
-    const nextArcChapter = world.story_arc.find((item) => item.chapter_number === nextChapterNumber);
+    const nextChapterNumber = localWorld.approved_chapter_count + 1;
+    const nextArcChapter = localWorld.story_arc.find((item) => item.chapter_number === nextChapterNumber);
     if (nextArcChapter) setGoal(nextArcChapter.summary);
-  }, [chapter, goal, launchContext?.initialChapterGoal, world.approved_chapter_count, world.story_arc]);
+  }, [chapter, goal, launchContext?.initialChapterGoal, localWorld.approved_chapter_count, localWorld.story_arc]);
 
   useEffect(() => {
     if (draft) draftTitleRef.current?.focus();
@@ -228,7 +248,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setSuggestingGoal(true);
     setError('');
     try {
-      const result = await suggestGoal(world.id);
+      const result = await suggestGoal(localWorld.id);
       setGoal(result.goal);
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成章节目标失败');
@@ -241,8 +261,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setWorking(true);
     setError('');
     try {
-      const frozenContext = withEditedGoal(executionContext, world, goal);
-      const created = await createChapterRequest(world.id, {
+      const frozenContext = withEditedGoal(executionContext, localWorld, goal);
+      const created = await createChapterRequest(localWorld.id, {
         chapter_goal: goal,
         title: goal.slice(0, 40),
         execution_context: frozenContext,
@@ -257,6 +277,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setApprovalReadiness(null);
       setCritique(null);
       setCharacterArcReport(null);
+      setSettlement(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建章节失败');
     } finally {
@@ -267,6 +288,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   async function runOutliner() {
     if (!chapter) return;
     setWorking(true);
+    setOperationHint('编剧室正在排布章节骨架…');
     setError('');
     try {
       const outline = await generateOutline(chapter.id, {});
@@ -280,10 +302,12 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setApprovalReadiness(null);
       setCritique(null);
       setCharacterArcReport(null);
+      setSettlement(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成大纲失败');
     } finally {
       setWorking(false);
+      setOperationHint('');
     }
   }
 
@@ -294,6 +318,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   async function runWriter() {
     if (!chapter) return;
     setWorking(true);
+    setOperationHint('导演正在拆场景…');
     setError('');
     try {
       const nextDraft = normalizeDraft(await writeChapter(chapter.id, { outline_beats: outlineBeats }));
@@ -317,12 +342,14 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setError(err instanceof Error ? err.message : '生成正文失败');
     } finally {
       setWorking(false);
+      setOperationHint('');
     }
   }
 
   async function runCritic() {
     if (!chapter || !draft) return;
     setWorking(true);
+    setOperationHint('评论席正在检查节奏与设定…');
     setError('');
     try {
       const report = await generateCriticReport(chapter.id);
@@ -337,6 +364,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setError(err instanceof Error ? err.message : '生成 Critic 报告失败');
     } finally {
       setWorking(false);
+      setOperationHint('');
     }
   }
 
@@ -390,6 +418,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   async function approveDraft() {
     if (!draft) return;
     setWorking(true);
+    setOperationHint('正在写入正史…');
     setError('');
     try {
       await approveChapter(draft.chapter_id, {
@@ -397,12 +426,66 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
         selected_character_change_indexes: selectedCharacterChangeIndexes,
         selected_foreshadow_change_indexes: selectedForeshadowChangeIndexes,
       });
-      onApproved(await apiRequest<WorldOverview>(`/worlds/${world.id}/overview`));
+      const overview = await apiRequest<WorldOverview>(`/worlds/${localWorld.id}/overview`);
+      setLocalWorld(overview);
+      setSettlement({
+        worldBefore: approvalPreview?.world_version_before ?? localWorld.world_version,
+        worldAfter: approvalPreview?.world_version_after ?? overview.world_version,
+        approvedChapterCount: overview.approved_chapter_count,
+        characterChangeCount: selectedCharacterChangeIndexes.length,
+        foreshadowChangeCount: selectedForeshadowChangeIndexes.length,
+        hasChapterApprovedEvent: overview.recent_events.some((event) => event.event_type === 'chapter_approved'),
+        overview,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : '审批草稿失败');
     } finally {
       setWorking(false);
+      setOperationHint('');
     }
+  }
+
+  async function exportSettlementArchive() {
+    if (!settlement) return;
+    setWorking(true);
+    setError('');
+    setSettlement({ ...settlement, exportMessage: undefined, exportError: undefined });
+    try {
+      const archive = await exportWorldArchiveMarkdown(localWorld.id);
+      setSettlement({ ...settlement, exportMessage: `已导出世界档案：${archive.archive_filename}`, exportError: undefined });
+    } catch (err) {
+      setSettlement({ ...settlement, exportMessage: undefined, exportError: err instanceof Error ? err.message : '导出世界档案失败' });
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function viewSettlementOverview() {
+    if (!settlement) return;
+    onApproved(settlement.overview);
+  }
+
+  function continueNextChapter() {
+    if (!settlement) return;
+    setLocalWorld(settlement.overview);
+    setGoal('');
+    setChapter(null);
+    setOutlineBeats([]);
+    setOutlineContext({});
+    setDraft(null);
+    setDraftVersions([]);
+    setDraftDiff(null);
+    setApprovalPreview(null);
+    clearApprovalSelection();
+    clearApprovalConsistency();
+    setApprovalReadiness(null);
+    setCritique(null);
+    setCharacterArcReport(null);
+    setLatestDraftVersion(null);
+    setRevisionInstruction('');
+    setEditMode(false);
+    setEditContent('');
+    setSettlement(null);
   }
 
   async function rejectDraft() {
@@ -563,7 +646,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
             <h1 ref={titleRef} tabIndex={-1} className="mt-3 text-3xl font-black text-[#34210f]">创作台</h1>
           </div>
           <div className="book-card p-5">
-            <h2 className="font-black text-[#3b2511]">Pipeline</h2>
+            <h2 className="font-black text-[#3b2511]">创作流程</h2>
             <ol className="mt-3 space-y-2 text-sm ink-muted">
               <li className={chapter ? 'font-bold text-[#3b2511]' : ''}>1. 创建章节</li>
               <li className={outlineBeats.length ? 'font-bold text-[#3b2511]' : ''}>2. Outliner 大纲</li>
@@ -573,15 +656,15 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           </div>
           <div className="book-card p-5">
             <h2 className="font-black text-[#3b2511]">当前上下文</h2>
-            <p className="mt-3 ink-muted">世界版本：{world.world_version}</p>
-            <p className="mt-2 ink-muted">POV：{world.characters[0]?.name ?? '未设置'}</p>
-            <p className="mt-2 ink-muted">故事大纲进度：下一章第 {world.approved_chapter_count + 1} 章</p>
+            <p className="mt-3 ink-muted">世界进度：{localWorld.world_version}</p>
+            <p className="mt-2 ink-muted">POV：{localWorld.characters[0]?.name ?? '未设置'}</p>
+            <p className="mt-2 ink-muted">故事大纲进度：下一章第 {localWorld.approved_chapter_count + 1} 章</p>
           </div>
           <ExecutionContextSummary context={chapter?.execution_context ?? executionContext} frozen={Boolean(chapter?.execution_context)} />
           <div className="book-card p-5">
             <h3 className="font-black text-[#3b2511]">紧迫伏笔</h3>
             <div className="mt-3 space-y-2">
-              {world.foreshadows.map((item) => <p className="manuscript" key={item.id}>{item.title} · {item.status}</p>)}
+              {localWorld.foreshadows.map((item) => <p className="manuscript" key={item.id}>{item.title} · {item.status}</p>)}
             </div>
           </div>
         </aside>
@@ -601,20 +684,45 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
             <textarea id="chapter-goal" className="paper-input min-h-28" value={goal} onChange={(event) => setGoal(event.target.value)} aria-label="章节目标" disabled={Boolean(chapter)} placeholder="输入本章要讲什么故事……或者点击「✨ 自动生成」让 AI 帮你写" />
             <div className="mt-4 flex flex-wrap gap-3">
               <button className="primary-button" disabled={working || Boolean(chapter)} onClick={createChapterSession}>{chapter ? '章节已创建' : '创建章节'}</button>
-              <button className="secondary-button" disabled={working || !chapter} onClick={runOutliner}>生成大纲</button>
-              <button className="secondary-button" disabled={working || !chapter || outlineBeats.length === 0} onClick={runWriter}>基于大纲生成正文</button>
-              <button className="secondary-button" disabled={working || !draft} onClick={runCritic}>生成 Critic 报告</button>
+              <button className="secondary-button" disabled={working || !chapter} onClick={runOutliner}>{operationHint === '编剧室正在排布章节骨架…' ? operationHint : '生成大纲'}</button>
+              <button className="secondary-button" disabled={working || !chapter || outlineBeats.length === 0} onClick={runWriter}>{operationHint === '导演正在拆场景…' ? operationHint : '基于大纲生成正文'}</button>
+              <button className="secondary-button" disabled={working || !draft} onClick={runCritic}>{operationHint === '评论席正在检查节奏与设定…' ? operationHint : '生成 Critic 报告'}</button>
               <button className="secondary-button" disabled={working || !draft} onClick={runCharacterArcReport}>生成角色弧线报告</button>
             </div>
           </div>
 
           {error && <p className="paper-error" role="alert">{error}</p>}
 
+          {settlement && (
+            <section className="book-card space-y-4 border-2 border-emerald-500/35 bg-emerald-50/70 p-5" role="status" aria-live="polite">
+              <div>
+                <p className="chapter-kicker">Canon Settlement</p>
+                <h2 className="text-2xl font-black text-[#203b20]">世界推进结算</h2>
+                <p className="manuscript mt-2">这一章已写入正史 / canon，后续章节会继承本次世界变化。</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">世界进度 v{settlement.worldBefore} → v{settlement.worldAfter}</p>
+                <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">已写入正史章节：{settlement.approvedChapterCount}</p>
+                <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">角色变化：{settlement.characterChangeCount}</p>
+                <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">悬念/伏笔变化：{settlement.foreshadowChangeCount}</p>
+              </div>
+              <p className="manuscript text-sm">{settlement.hasChapterApprovedEvent ? '已写入世界历史记录' : '尚未在最近世界历史记录中看到本章事件'}</p>
+              <p className="manuscript text-sm">下一章将基于这些变化继续生成。</p>
+              {settlement.exportMessage && <p className="paper-success px-4 py-2 text-sm">{settlement.exportMessage}</p>}
+              {settlement.exportError && <p className="paper-error">{settlement.exportError}</p>}
+              <div className="flex flex-wrap gap-3">
+                <button className="primary-button" disabled={working} onClick={continueNextChapter}>继续下一章</button>
+                <button className="secondary-button" disabled={working} onClick={viewSettlementOverview}>查看世界概览</button>
+                <button className="secondary-button" disabled={working} onClick={() => void exportSettlementArchive()}>导出世界档案</button>
+              </div>
+            </section>
+          )}
+
           {chapter && (
             <section className="book-card space-y-3 p-5">
               <p className="chapter-kicker">Chapter Session</p>
               <h2 className="text-2xl font-black text-[#34210f]">{chapter.title}</h2>
-              <p className="ink-muted">状态：{chapter.status} · 基准世界版本：{chapter.base_world_version}</p>
+              <p className="ink-muted">状态：{chapter.status} · 基准世界进度：{chapter.base_world_version}</p>
             </section>
           )}
 
@@ -749,12 +857,12 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
               </section>
               {approvalPreview && (
                 <section className="space-y-3 rounded-2xl border border-amber-900/15 bg-amber-50/45 p-4">
-                  <h3 className="font-black text-[#3b2511]">通过后将提交</h3>
-                  <p className="manuscript">世界版本：{approvalPreview.world_version_before} → {approvalPreview.world_version_after}</p>
+                  <h3 className="font-black text-[#3b2511]">写入正史前确认</h3>
+                  <p className="manuscript">世界进度：{approvalPreview.world_version_before} → {approvalPreview.world_version_after}</p>
                   <p className="manuscript text-sm">已选择 {selectedPreviewChanges} / {totalPreviewChanges} 条拟提交变化</p>
                   {consistencySummary && (
                     <div className="space-y-2 rounded-xl bg-white/45 p-3">
-                      <h4 className="font-black text-[#3b2511]">一致性检查</h4>
+                      <h4 className="font-black text-[#3b2511]">设定冲突检查</h4>
                       <p className="manuscript text-sm"><span>{consistencyLabel(consistencySummary)}</span> · blocking {consistencySummary.blocking_count} / warning {consistencySummary.warning_count} / info {consistencySummary.info_count}</p>
                       {consistencyWarnings.map((warning, index) => (
                         <p
@@ -806,7 +914,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                     <div className="space-y-2">
                       <h4 className="text-sm font-bold text-[#5e3b1c]">🎭 角色变化</h4>
                       {(draft.proposed_changes as any).characters.map((c: any, i: number) => {
-                        const charName = world.characters?.find((ch: any) => ch.id === c.character_id)?.name ?? `角色#${c.character_id}`;
+                        const charName = localWorld.characters?.find((ch: any) => ch.id === c.character_id)?.name ?? `角色#${c.character_id}`;
                         return (
                           <div key={i} className="rounded-xl bg-amber-50/60 p-3">
                             <p className="font-bold text-[#3b2511]">{charName} <span className="text-xs font-normal text-amber-700">({c.status})</span></p>
@@ -825,7 +933,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                     <div className="space-y-2">
                       <h4 className="text-sm font-bold text-[#5e3b1c]">🔮 伏笔推进</h4>
                       {(draft.proposed_changes as any).foreshadows.map((f: any, i: number) => {
-                        const fsName = world.foreshadows?.find((fs: any) => fs.id === f.foreshadow_id)?.title ?? `伏笔#${f.foreshadow_id}`;
+                        const fsName = localWorld.foreshadows?.find((fs: any) => fs.id === f.foreshadow_id)?.title ?? `伏笔#${f.foreshadow_id}`;
                         return (
                           <div key={i} className="rounded-xl bg-purple-50/60 p-3">
                             <p className="font-bold text-[#3b2511]">{fsName} <span className="text-xs font-normal text-purple-700">({f.status})</span></p>
@@ -850,7 +958,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
 
           {draft && (
             <div className="flex flex-wrap gap-3">
-              <button className="primary-button" disabled={working || !isViewingLatestDraft() || approvalBlockedByConsistency} onClick={approveDraft}>通过并更新世界</button>
+              <button className="primary-button" disabled={working || !isViewingLatestDraft() || approvalBlockedByConsistency} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '写入正史并更新世界'}</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={rejectDraft}>驳回</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={startEdit}>编辑正文</button>
             </div>

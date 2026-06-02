@@ -16,6 +16,8 @@ def require_owned_world_for_update(db: Session, user: User, world_id: int) -> Wo
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
     if world.owner_id != user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='FORBIDDEN')
+    if world.status == 'archived':
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_ARCHIVED')
     return world
 
 

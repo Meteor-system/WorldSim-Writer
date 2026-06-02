@@ -260,7 +260,23 @@ export function WorldCreationForm({
 
   return (
     <form onSubmit={submit} className="mx-auto max-w-5xl px-6 py-10 text-left">
-      <div className="text-center">
+      <section className="rounded-[28px] border border-amber-900/15 bg-amber-100/60 p-5 shadow-sm">
+        <p className="chapter-kicker">3-Minute World Loop</p>
+        <h1 className="mt-2 text-3xl font-black text-[#34210f]">3 分钟开始运营你的故事世界</h1>
+        <p className="manuscript mt-3 text-sm text-[#5e3b1c]">
+          不需要先填完后台表单：先选一个高张力世界胚胎，生成第一章，写入正史，再查看角色、悬念/伏笔和世界进度如何变化。
+        </p>
+        <ol className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+          {['选世界胚胎', '生成第一章', '写入正史', '查看世界变化'].map((step, index) => (
+            <li key={step} className="rounded-2xl bg-white/60 p-3 font-black text-[#3b2511]">
+              <span className="mr-2 rounded-full bg-amber-900 px-2 py-0.5 text-xs text-amber-50">{index + 1}</span>
+              {step}
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <div className="mt-8 text-center">
         <p className="chapter-kicker">World Genesis</p>
         <h1 className="mt-3 text-4xl font-black text-[#34210f]">创建世界工坊</h1>
         <p className="manuscript mx-auto mt-4 max-w-2xl">

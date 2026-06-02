@@ -1,8 +1,8 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveChapter, checkApprovalConsistency, createChapter, generateCharacterArcReport, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
+import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
 import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -43,6 +43,17 @@ const draftResponse: DraftResponse = {
 vi.mock('../api/client', () => ({
   apiRequest: vi.fn(async () => world),
   approveChapter: vi.fn(async () => ({ status: 'approved' })),
+  exportWorldArchiveMarkdown: vi.fn(async () => ({
+    world_id: 7,
+    world_version: 2,
+    generated_at: '2026-06-02T00:00:00Z',
+    archive_filename: 'qinglan-v2.zip',
+    archive_format: 'zip',
+    archive_encoding: 'base64',
+    archive_base64: 'UEs=',
+    files_are_inline: true,
+    files: [{ path: 'World.md', content: '# 青岚城' }],
+  })),
   checkApprovalConsistency: vi.fn(async () => ({
     chapter_id: 11,
     draft_version: 1,
@@ -255,11 +266,35 @@ const world: WorldOverview = {
   approved_chapter_count: 0,
 };
 
+const approvedWorld: WorldOverview = {
+  ...world,
+  world_version: 2,
+  approved_chapter_count: 1,
+  recent_events: [
+    {
+      id: 88,
+      world_id: 7,
+      chapter_id: 11,
+      event_type: 'chapter_approved',
+      source_type: 'approval',
+      commit_id: 'commit-88',
+      payload: { chapter_title: '第一章 雨巷密谈' },
+      world_version_before: 1,
+      world_version_after: 2,
+      created_at: '2026-06-02T00:00:00Z',
+    },
+  ],
+};
+
 afterEach(() => {
   cleanup();
+  vi.mocked(apiRequest).mockClear();
   vi.mocked(approveChapter).mockClear();
   vi.mocked(checkApprovalConsistency).mockClear();
+  vi.mocked(exportWorldArchiveMarkdown).mockClear();
   vi.mocked(writeChapter).mockClear();
+  vi.mocked(generateOutline).mockClear();
+  vi.mocked(generateCriticReport).mockClear();
   vi.mocked(getApprovalReadiness).mockClear();
   vi.mocked(reviseDraft).mockClear();
   vi.mocked(getDraftVersion).mockClear();
@@ -356,17 +391,145 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getAllByRole('button', { name: '重写本段' })[0]).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '润色本段' })[0]).toBeInTheDocument();
     expect(screen.getByText('版本差异')).toBeInTheDocument();
-    expect(screen.getByText('通过后将提交')).toBeInTheDocument();
-    expect(screen.getByText('世界版本：1 → 2')).toBeInTheDocument();
+    expect(screen.getByText('写入正史前确认')).toBeInTheDocument();
+    expect(screen.getByText('世界进度：1 → 2')).toBeInTheDocument();
     expect(screen.getByText('Approval Readiness')).toBeInTheDocument();
     expect(screen.getByText('建议复核后批准')).toBeInTheDocument();
     expect(screen.getByText('Critic 高风险')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '通过并更新世界' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled();
 
     await user.click(screen.getByRole('button', { name: '生成 Critic 报告' }));
     expect(await screen.findByText('总评分：78/100')).toBeInTheDocument();
     expect(screen.getByText('Critic 发现高风险问题，建议修订后再批准。')).toBeInTheDocument();
     expect(screen.getByText('林砚突然信任沈微霜，与当前谨慎状态冲突。')).toBeInTheDocument();
+  });
+
+  it('uses story-world terminology for the main canon workflow', async () => {
+    const user = userEvent.setup();
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    expect(screen.getByText('创作流程')).toBeInTheDocument();
+    expect(screen.getByText('世界进度：1')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+
+    expect(await screen.findByText('写入正史前确认')).toBeInTheDocument();
+    expect(screen.getByText('设定冲突检查')).toBeInTheDocument();
+    expect(screen.getByText('世界进度：1 → 2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled();
+  });
+
+  it('shows story-operation waiting copy while generating the outline', async () => {
+    const user = userEvent.setup();
+    let resolveOutline!: (value: Awaited<ReturnType<typeof generateOutline>>) => void;
+    vi.mocked(generateOutline).mockImplementationOnce(async () => new Promise<Awaited<ReturnType<typeof generateOutline>>>((resolve) => {
+      resolveOutline = resolve;
+    }));
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+
+    expect(await screen.findByRole('button', { name: '编剧室正在排布章节骨架…' })).toBeInTheDocument();
+
+    resolveOutline({
+      chapter_id: 11,
+      outline_beats: [
+        {
+          beat_id: 'beat-1',
+          summary: '雨巷交换线索',
+          pov_character: '林砚',
+          location: '雨巷',
+          emotional_arc: '警觉 -> 犹疑',
+          key_dialogue_hints: ['这封信不该在你手里。'],
+        },
+      ],
+      outline_context: { core_conflict: '林砚判断沈微霜是否可信' },
+      status: 'outlined',
+    });
+    await screen.findByText('可编辑节拍卡');
+  });
+
+  it('shows story-operation waiting copy while generating the critic report', async () => {
+    const user = userEvent.setup();
+    let resolveCritic!: (value: Awaited<ReturnType<typeof generateCriticReport>>) => void;
+    vi.mocked(generateCriticReport).mockImplementationOnce(async () => new Promise<Awaited<ReturnType<typeof generateCriticReport>>>((resolve) => {
+      resolveCritic = resolve;
+    }));
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(screen.getByRole('button', { name: '生成 Critic 报告' }));
+
+    expect(await screen.findByRole('button', { name: '评论席正在检查节奏与设定…' })).toBeInTheDocument();
+
+    resolveCritic({
+      chapter_id: 11,
+      draft_version: 1,
+      current_draft_version: 1,
+      is_stale: false,
+      overall_score: 78,
+      summary: '章节冲突清晰，但第二段信息揭示偏快。',
+      dimensions: {
+        pacing: { score: 72, summary: '中段推进略快。', issues: [], suggestions: ['放慢第二段的信息揭示。'] },
+        tension: { score: 82, summary: '雨巷会面有悬念。', issues: [], suggestions: [] },
+        character_consistency: { score: 60, summary: '人物动机需要补强。', issues: [], suggestions: [] },
+        dialogue_quality: { score: 68, summary: '对白略直白。', issues: [], suggestions: [] },
+        structure: { score: 80, summary: '开端清晰。', issues: [], suggestions: [] },
+        world_continuity: { score: 90, summary: '未发现世界观冲突。', issues: [], suggestions: [] },
+        readability: { score: 76, summary: '可读性良好。', issues: [], suggestions: [] },
+      },
+      issues: [],
+      suggestions: [],
+      created_at: '2026-05-29T00:00:00Z',
+    });
+    await screen.findByText('总评分：78/100');
+  });
+
+  it('shows story-operation waiting copy while generating the draft', async () => {
+    const user = userEvent.setup();
+    let resolveWrite!: (value: DraftResponse) => void;
+    vi.mocked(writeChapter).mockImplementationOnce(async () => new Promise<DraftResponse>((resolve) => {
+      resolveWrite = resolve;
+    }));
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(screen.getByRole('button', { name: '基于大纲生成正文' }));
+
+    expect(await screen.findByRole('button', { name: '导演正在拆场景…' })).toBeInTheDocument();
+
+    resolveWrite(draftResponse);
+    await screen.findByText('写入正史前确认');
+  });
+
+  it('shows canon-writing waiting copy while approving the draft', async () => {
+    const user = userEvent.setup();
+    let resolveApprove!: (value: Awaited<ReturnType<typeof approveChapter>>) => void;
+    vi.mocked(approveChapter).mockImplementationOnce(async () => new Promise<Awaited<ReturnType<typeof approveChapter>>>((resolve) => {
+      resolveApprove = resolve;
+    }));
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
+
+    expect(await screen.findByRole('button', { name: '正在写入正史…' })).toBeInTheDocument();
+
+    resolveApprove({ status: 'approved' } as Awaited<ReturnType<typeof approveChapter>>);
+    await waitFor(() => expect(approveChapter).toHaveBeenCalled());
   });
 
   it('falls back to the chapter draft version label and shows full paragraph card text', async () => {
@@ -431,7 +594,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByText('暂不可批准')).toBeInTheDocument();
     expect(screen.getByText('世界版本：v1 → v2')).toBeInTheDocument();
     expect(screen.getByText('世界版本已变化，请重新生成草稿后再批准。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '通过并更新世界' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled();
   });
 
   it('generates a full-draft revision from review context and shows parent diff', async () => {
@@ -472,7 +635,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(getDraftVersion).toHaveBeenCalledWith(11, 1);
     expect(await screen.findByText('第一段：林砚停在雨巷口。')).toBeInTheDocument();
     expect(screen.getByText('正在查看历史版本，切回最新版本后才能批准。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '通过并更新世界' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeDisabled();
   });
 
   it('renders approval preview changes as selected checkboxes by default', async () => {
@@ -499,7 +662,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.click(await screen.findByRole('button', { name: '生成大纲' }));
     await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
     await user.click(await screen.findByRole('checkbox', { name: /伏笔：裂纹玉佩/ }));
-    await user.click(screen.getByRole('button', { name: '通过并更新世界' }));
+    await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
 
     expect(checkApprovalConsistency).toHaveBeenCalledWith(11, {
       draft_version: 1,
@@ -513,6 +676,71 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     });
   });
 
+  it('shows world progression settlement after approval before returning to overview', async () => {
+    const user = userEvent.setup();
+    const onApproved = vi.fn();
+    vi.mocked(apiRequest).mockResolvedValueOnce(approvedWorld);
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={onApproved} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
+
+    expect(await screen.findByText('世界推进结算')).toBeInTheDocument();
+    expect(onApproved).not.toHaveBeenCalled();
+    expect(screen.getByText('世界进度 v1 → v2')).toBeInTheDocument();
+    expect(screen.getByText('已写入正史章节：1')).toBeInTheDocument();
+    expect(screen.getByText('角色变化：1')).toBeInTheDocument();
+    expect(screen.getByText('悬念/伏笔变化：1')).toBeInTheDocument();
+    expect(screen.getByText('已写入世界历史记录')).toBeInTheDocument();
+    expect(screen.getByText('下一章将基于这些变化继续生成。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '继续下一章' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看世界概览' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '导出世界档案' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '查看世界概览' }));
+
+    expect(onApproved).toHaveBeenCalledWith(approvedWorld);
+  });
+
+  it('exports the world archive from the settlement panel', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockResolvedValueOnce(approvedWorld);
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
+    await user.click(await screen.findByRole('button', { name: '导出世界档案' }));
+
+    expect(exportWorldArchiveMarkdown).toHaveBeenCalledWith(7);
+    expect(await screen.findByText('已导出世界档案：qinglan-v2.zip')).toBeInTheDocument();
+  });
+
+  it('continues with a fresh chapter session from the settlement panel', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockResolvedValueOnce(approvedWorld);
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
+    await user.click(await screen.findByRole('button', { name: '继续下一章' }));
+
+    expect(screen.queryByText('世界推进结算')).not.toBeInTheDocument();
+    expect(screen.queryByText('第一章 雨巷密谈')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('章节目标')).toHaveValue('');
+    expect(screen.getByRole('button', { name: '创建章节' })).toBeEnabled();
+    expect(screen.getByText('当前上下文')).toBeInTheDocument();
+    expect(screen.getByText('世界进度：2')).toBeInTheDocument();
+  });
+
   it('renders approval consistency warnings from the preview', async () => {
     const user = userEvent.setup();
     render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
@@ -522,7 +750,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.click(await screen.findByRole('button', { name: '生成大纲' }));
     await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
 
-    expect(await screen.findByText('一致性检查')).toBeInTheDocument();
+    expect(await screen.findByText('设定冲突检查')).toBeInTheDocument();
     expect(screen.getByText('存在需复核项')).toBeInTheDocument();
     expect(screen.getByText('角色「林砚」的状态与目标同时大幅变化，请确认正文已有足够铺垫。')).toBeInTheDocument();
   });
@@ -549,6 +777,6 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByText('存在阻塞项')).toBeInTheDocument();
     expect(screen.getByText('伏笔「裂纹玉佩」不能从 resolved 回退到 advanced。')).toBeInTheDocument();
     expect(screen.getByText('存在阻塞项，请取消相关变化或重新修订草稿。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '通过并更新世界' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeDisabled();
   });
 });

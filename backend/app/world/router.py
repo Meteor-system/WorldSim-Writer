@@ -13,6 +13,7 @@ from app.world.schemas import (
     WorldSearchResponse,
     WorldSeedDetail,
     WorldSeedListResponse,
+    WorldStatusUpdateRequest,
 )
 from app.world.service import (
     create_sample_world,
@@ -25,6 +26,7 @@ from app.world.service import (
     list_world_seeds,
     require_owned_world,
     search_world,
+    update_world_status,
 )
 from app.world.story_arc import generate_story_arc, suggest_chapter_goal
 
@@ -72,6 +74,16 @@ def list_worlds(current_user: User = Depends(require_user), db: Session = Depend
 @router.get('/{world_id}', response_model=WorldResponse)
 def get_world(world_id: int, current_user: User = Depends(require_user), db: Session = Depends(get_db)) -> WorldResponse:
     return WorldResponse.model_validate(require_owned_world(db, current_user, world_id))
+
+
+@router.patch('/{world_id}/status', response_model=WorldResponse)
+def update_status(
+    world_id: int,
+    data: WorldStatusUpdateRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> WorldResponse:
+    return WorldResponse.model_validate(update_world_status(db, current_user, world_id, data.status))
 
 
 @router.get('/{world_id}/overview', response_model=WorldOverviewResponse)

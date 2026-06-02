@@ -101,8 +101,8 @@ def test_character_create_increments_world_version_refreshes_projection_and_writ
     assert world.world_version == 2
     assert world.current_characters[-1]['id'] == character['id']
     assert world.current_characters[-1]['name'] == '林七'
-    assert [event.event_type for event in events] == ['character_change', 'world_version_increment']
-    character_event = events[0]
+    assert [event.event_type for event in events] == ['WORLD_CREATED', 'character_change', 'world_version_increment']
+    character_event = events[1]
     assert character_event.source_type == 'manual_edit'
     assert character_event.world_version_before == 1
     assert character_event.world_version_after == 2
@@ -256,3 +256,36 @@ def test_delete_character_removes_foreshadow_reference(client):
     assert delete_response.status_code == 204
     assert get_foreshadow_response.status_code == 200
     assert get_foreshadow_response.json()['related_character_ids'] == []
+
+
+def test_archived_world_rejects_character_writes_but_allows_reads(client):
+    token = register(client)
+    world_id = create_world(client, token)
+    existing = client.get(f'/worlds/{world_id}/characters', headers=auth(token)).json()[0]
+
+    archive_response = client.patch(f'/worlds/{world_id}/status', headers=auth(token), json={'status': 'archived'})
+    assert archive_response.status_code == 200
+
+    create_response = client.post(
+        f'/worlds/{world_id}/characters',
+        headers=auth(token),
+        json={'name': '归档后角色', 'role_type': 'supporting'},
+    )
+    update_response = client.put(
+        f"/characters/{existing['id']}",
+        headers=auth(token),
+        json={'name': '不应修改'},
+    )
+    delete_response = client.delete(f"/characters/{existing['id']}", headers=auth(token))
+
+    assert create_response.status_code == 409
+    assert create_response.json()['detail'] == 'WORLD_ARCHIVED'
+    assert update_response.status_code == 409
+    assert update_response.json()['detail'] == 'WORLD_ARCHIVED'
+    assert delete_response.status_code == 409
+    assert delete_response.json()['detail'] == 'WORLD_ARCHIVED'
+
+    list_response = client.get(f'/worlds/{world_id}/characters', headers=auth(token))
+    get_response = client.get(f"/characters/{existing['id']}", headers=auth(token))
+    assert list_response.status_code == 200
+    assert get_response.status_code == 200

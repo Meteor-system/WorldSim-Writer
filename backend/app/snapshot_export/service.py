@@ -15,6 +15,7 @@ from app.event.models import EventLog
 from app.narrative.models import Chapter
 from app.snapshot_export.models import WorldSnapshot
 from app.snapshot_export.schemas import WorldSnapshotCreate
+from app.world.governance import require_owned_world_for_update
 from app.world.models import World
 from app.world.service import require_owned_world
 
@@ -74,7 +75,7 @@ def build_world_archive_payload(db: Session, world: World) -> dict:
 
 
 def create_world_snapshot(db: Session, user: User, world_id: int, data: WorldSnapshotCreate) -> WorldSnapshot:
-    world = require_owned_world(db, user, world_id)
+    world = require_owned_world_for_update(db, user, world_id)
     snapshot = WorldSnapshot(
         world_id=world.id,
         world_version=world.world_version,

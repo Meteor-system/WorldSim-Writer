@@ -8,6 +8,7 @@ from app.core.config import get_settings
 from app.foreshadow.models import Foreshadow
 from app.llm.client import LLMClient
 from app.llm.schemas import StoryArcChapter
+from app.world.governance import require_owned_world_for_update
 from app.world.models import World
 from app.world.service import count_approved_chapters, require_owned_world
 
@@ -20,11 +21,16 @@ def _model_client(llm_client: LLMClient | None = None) -> LLMClient:
     return client
 
 
+SAFE_MODEL_RUNTIME_ERRORS = {'MODEL_REQUEST_FAILED', 'MODEL_AUTH_FAILED', 'MODEL_RATE_LIMITED'}
+
+
 def _map_model_error(exc: Exception) -> HTTPException:
     if isinstance(exc, TimeoutError):
         return HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail='MODEL_TIMEOUT')
     if isinstance(exc, ValueError):
         return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+    if isinstance(exc, RuntimeError) and str(exc) in SAFE_MODEL_RUNTIME_ERRORS:
+        return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
     return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_REQUEST_FAILED')
 
 
@@ -144,7 +150,7 @@ def suggest_chapter_goal(db: Session, user: User, world_id: int, llm_client: LLM
 
 
 def generate_story_arc(db: Session, user: User, world_id: int, llm_client: LLMClient | None = None) -> dict:
-    world = require_owned_world(db, user, world_id)
+    world = require_owned_world_for_update(db, user, world_id)
     characters, foreshadows = _load_story_arc_context(db, world)
     approved_count = count_approved_chapters(db, world.id)
     client = _model_client(llm_client)

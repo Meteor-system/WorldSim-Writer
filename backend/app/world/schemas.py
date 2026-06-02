@@ -77,6 +77,17 @@ class WorldCreateRequest(BaseModel):
         return _strip_required(value)
 
 
+class WorldStatusUpdateRequest(BaseModel):
+    status: str
+
+    @field_validator('status')
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        if value not in {'active', 'archived'}:
+            raise ValueError('status must be active or archived')
+        return value
+
+
 class WorldResponse(BaseModel):
     id: int
     title: str

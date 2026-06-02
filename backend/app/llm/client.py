@@ -258,6 +258,12 @@ class LLMClient:
             response.raise_for_status()
         except httpx.TimeoutException as exc:
             raise TimeoutError('MODEL_TIMEOUT') from exc
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in {401, 403}:
+                raise RuntimeError('MODEL_AUTH_FAILED') from exc
+            if exc.response.status_code == 429:
+                raise RuntimeError('MODEL_RATE_LIMITED') from exc
+            raise RuntimeError('MODEL_REQUEST_FAILED') from exc
         except httpx.HTTPError as exc:
             raise RuntimeError('MODEL_REQUEST_FAILED') from exc
 

@@ -170,6 +170,49 @@ def test_paragraph_rewrite_only_changes_target_paragraph_and_versions_draft(clie
     assert drafts[1].content == expected_content
 
 
+def test_archived_world_rejects_draft_lifecycle_mutations(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    edited_content = '第一段：林砚停在雨巷口，玉佩微微发烫。\n\n第二段：沈微霜递来一封湿透的信。'
+
+    archive_response = client.patch(f'/worlds/{world_id}/status', headers={'Authorization': f'Bearer {token}'}, json={'status': 'archived'})
+    assert archive_response.status_code == 200
+
+    edit_response = client.put(
+        f"/chapters/{draft['chapter_id']}/draft",
+        json={'content': edited_content, 'change_summary': '归档后不应编辑'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    stash_response = client.post(
+        f"/chapters/{draft['chapter_id']}/draft/stash",
+        json={'note': '归档后不应暂存'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    paragraph_response = client.post(
+        f"/chapters/{draft['chapter_id']}/draft/paragraph",
+        json={'paragraph_index': 1, 'mode': 'rewrite', 'instruction': '归档后不应改写'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    revise_response = client.post(
+        f"/chapters/{draft['chapter_id']}/draft/revise",
+        json={'instruction': '归档后不应修订'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    for response in (edit_response, stash_response, paragraph_response, revise_response):
+        assert response.status_code == 409
+        assert response.json()['detail'] == 'WORLD_ARCHIVED'
+
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    drafts = get_drafts_for_chapter(db_session, draft['chapter_id'])
+    assert world.world_version == 1
+    assert chapter.draft_version == 1
+    assert [item.draft_version for item in drafts] == [1]
+    assert drafts[0].content == draft['content']
+
+
 def test_draft_diff_endpoint_returns_line_changes_between_versions(client, monkeypatch):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)
@@ -299,7 +342,7 @@ def test_full_draft_revision_creates_new_version_from_review_context_without_mut
     world = db_session.get(World, world_id)
     chapter = db_session.get(Chapter, draft['chapter_id'])
     drafts = get_drafts_for_chapter(db_session, draft['chapter_id'])
-    event_count = db_session.query(EventLog).filter_by(world_id=world_id).count()
+    event_types = [event.event_type for event in db_session.query(EventLog).filter_by(world_id=world_id).order_by(EventLog.id)]
 
     assert world.world_version == 1
     assert chapter.draft_version == 2
@@ -307,7 +350,7 @@ def test_full_draft_revision_creates_new_version_from_review_context_without_mut
     assert [item.draft_version for item in drafts] == [1, 2]
     assert drafts[0].content == draft['content']
     assert drafts[1].change_type == 'revision'
-    assert event_count == 0
+    assert event_types == ['WORLD_CREATED']
 
     joined_messages = '\n'.join(message['content'] for message in fake_client.revision_messages)
     assert '保留雨巷会面，但补足林砚试探沈微霜的过程。' in joined_messages
