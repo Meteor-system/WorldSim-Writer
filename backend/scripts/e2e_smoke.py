@@ -195,6 +195,16 @@ def _require_int_fields(summary: dict, step: str, payload: dict, fields: list[st
     return False
 
 
+def _require_bool_fields(summary: dict, step: str, payload: dict, fields: list[str]) -> bool:
+    invalid = [field for field in fields if not isinstance(payload.get(field), bool)]
+    if not invalid:
+        return True
+    summary['failed_step'] = step
+    summary['error'] = 'INVALID_FIELD_TYPES'
+    summary['invalid_fields'] = invalid
+    return False
+
+
 def _require_string_fields(summary: dict, step: str, payload: dict, fields: list[str]) -> bool:
     invalid = [field for field in fields if not isinstance(payload.get(field), str) or not payload.get(field)]
     if not invalid:
@@ -371,7 +381,9 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         readiness = _step_json(summary, 'approval_readiness', lambda: client.get(f'/chapters/{chapter_id}/approval-readiness', headers=headers))
         if _has_failed(summary):
             return summary
-        if not _require_fields(summary, 'approval_readiness', readiness, ['status']):
+        if not _require_fields(summary, 'approval_readiness', readiness, ['ready', 'status']):
+            return summary
+        if not _require_bool_fields(summary, 'approval_readiness', readiness, ['ready']):
             return summary
         if not _require_list(summary, 'approval_readiness', readiness, 'blocking_reasons'):
             return summary
