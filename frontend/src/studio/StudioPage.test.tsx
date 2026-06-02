@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { approveChapter, checkApprovalConsistency, createChapter, generateCharacterArcReport, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
+import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, exportWorldArchiveMarkdown, generateCharacterArcReport, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
 import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -43,6 +43,17 @@ const draftResponse: DraftResponse = {
 vi.mock('../api/client', () => ({
   apiRequest: vi.fn(async () => world),
   approveChapter: vi.fn(async () => ({ status: 'approved' })),
+  exportWorldArchiveMarkdown: vi.fn(async () => ({
+    world_id: 7,
+    world_version: 2,
+    generated_at: '2026-06-02T00:00:00Z',
+    archive_filename: 'qinglan-v2.zip',
+    archive_format: 'zip',
+    archive_encoding: 'base64',
+    archive_base64: 'UEs=',
+    files_are_inline: true,
+    files: [{ path: 'World.md', content: '# 青岚城' }],
+  })),
   checkApprovalConsistency: vi.fn(async () => ({
     chapter_id: 11,
     draft_version: 1,
@@ -255,10 +266,32 @@ const world: WorldOverview = {
   approved_chapter_count: 0,
 };
 
+const approvedWorld: WorldOverview = {
+  ...world,
+  world_version: 2,
+  approved_chapter_count: 1,
+  recent_events: [
+    {
+      id: 88,
+      world_id: 7,
+      chapter_id: 11,
+      event_type: 'chapter_approved',
+      source_type: 'approval',
+      commit_id: 'commit-88',
+      payload: { chapter_title: '第一章 雨巷密谈' },
+      world_version_before: 1,
+      world_version_after: 2,
+      created_at: '2026-06-02T00:00:00Z',
+    },
+  ],
+};
+
 afterEach(() => {
   cleanup();
+  vi.mocked(apiRequest).mockClear();
   vi.mocked(approveChapter).mockClear();
   vi.mocked(checkApprovalConsistency).mockClear();
+  vi.mocked(exportWorldArchiveMarkdown).mockClear();
   vi.mocked(writeChapter).mockClear();
   vi.mocked(getApprovalReadiness).mockClear();
   vi.mocked(reviseDraft).mockClear();
@@ -511,6 +544,71 @@ describe('StudioPage Review Studio 2.0 controls', () => {
       selected_character_change_indexes: [0],
       selected_foreshadow_change_indexes: [],
     });
+  });
+
+  it('shows world progression settlement after approval before returning to overview', async () => {
+    const user = userEvent.setup();
+    const onApproved = vi.fn();
+    vi.mocked(apiRequest).mockResolvedValueOnce(approvedWorld);
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={onApproved} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(screen.getByRole('button', { name: '通过并更新世界' }));
+
+    expect(await screen.findByText('世界推进结算')).toBeInTheDocument();
+    expect(onApproved).not.toHaveBeenCalled();
+    expect(screen.getByText('世界进度 v1 → v2')).toBeInTheDocument();
+    expect(screen.getByText('已写入正史章节：1')).toBeInTheDocument();
+    expect(screen.getByText('角色变化：1')).toBeInTheDocument();
+    expect(screen.getByText('悬念/伏笔变化：1')).toBeInTheDocument();
+    expect(screen.getByText('已写入世界历史记录')).toBeInTheDocument();
+    expect(screen.getByText('下一章将基于这些变化继续生成。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '继续下一章' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看世界概览' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '导出世界档案' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '查看世界概览' }));
+
+    expect(onApproved).toHaveBeenCalledWith(approvedWorld);
+  });
+
+  it('exports the world archive from the settlement panel', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockResolvedValueOnce(approvedWorld);
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(screen.getByRole('button', { name: '通过并更新世界' }));
+    await user.click(await screen.findByRole('button', { name: '导出世界档案' }));
+
+    expect(exportWorldArchiveMarkdown).toHaveBeenCalledWith(7);
+    expect(await screen.findByText('已导出世界档案：qinglan-v2.zip')).toBeInTheDocument();
+  });
+
+  it('continues with a fresh chapter session from the settlement panel', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockResolvedValueOnce(approvedWorld);
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(screen.getByRole('button', { name: '通过并更新世界' }));
+    await user.click(await screen.findByRole('button', { name: '继续下一章' }));
+
+    expect(screen.queryByText('世界推进结算')).not.toBeInTheDocument();
+    expect(screen.queryByText('第一章 雨巷密谈')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('章节目标')).toHaveValue('');
+    expect(screen.getByRole('button', { name: '创建章节' })).toBeEnabled();
+    expect(screen.getByText('当前上下文')).toBeInTheDocument();
+    expect(screen.getByText('世界版本：2')).toBeInTheDocument();
   });
 
   it('renders approval consistency warnings from the preview', async () => {
