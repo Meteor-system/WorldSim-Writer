@@ -1424,6 +1424,61 @@ def test_e2e_smoke_script_reports_missing_access_token_for_login_fallback(monkey
     ]
 
 
+def test_e2e_smoke_script_logs_in_when_register_returns_email_conflict(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'detail': 'EMAIL_ALREADY_REGISTERED'}, status_code=409),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
+            json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
+            json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
+            json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is True
+    assert 'login' in summary['checks']
+    assert 'register' not in summary['checks']
+    assert [request.url.path for request in transport.requests][:3] == [
+        '/health',
+        '/auth/register',
+        '/auth/login',
+    ]
+
+
+def test_e2e_smoke_script_does_not_login_for_unrelated_register_conflict(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'detail': 'ACCOUNT_LOCKED'}, status_code=409),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'register'
+    assert summary['status_code'] == 409
+    assert summary['response_body'] == '{"detail":"ACCOUNT_LOCKED"}'
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+    ]
+
+
 def test_e2e_smoke_script_requires_login_access_token_to_be_string(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()

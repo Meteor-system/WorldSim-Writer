@@ -74,6 +74,18 @@ def _json_response(response: httpx.Response) -> dict:
     return payload
 
 
+def _is_duplicate_email_register_response(response: httpx.Response) -> bool:
+    if response.status_code == 400:
+        return True
+    if response.status_code != 409:
+        return False
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    return isinstance(payload, dict) and payload.get('detail') == 'EMAIL_ALREADY_REGISTERED'
+
+
 def _step_json(summary: dict, step: str, request_call) -> dict:
     try:
         response = request_call()
@@ -204,7 +216,7 @@ def _register_or_login(client: httpx.Client, email: str, password: str, summary:
         summary['failed_step'] = 'register'
         summary['error'] = str(exc)
         return {}, 'register'
-    if response.status_code == 400:
+    if _is_duplicate_email_register_response(response):
         return _step_json(summary, 'login', lambda: client.post('/auth/login', json={'email': email, 'password': password})), 'login'
     return _step_json(summary, 'register', lambda: response), 'register'
 
