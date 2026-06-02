@@ -109,6 +109,107 @@ function describeEvent(event: { event_type: string; payload: Record<string, unkn
   }
 }
 
+function isOpenForeshadow(status: string): boolean {
+  return !['fully_resolved', 'resolved', 'abandoned'].includes(status);
+}
+
+function openForeshadows(world: WorldOverview): WorldOverview['foreshadows'] {
+  return world.foreshadows
+    .filter((item) => isOpenForeshadow(item.status))
+    .sort((a, b) => (b.urgency_level ?? 0) - (a.urgency_level ?? 0));
+}
+
+function dashboardActions(world: WorldOverview, isArchivedWorld: boolean): Array<{ label: string; detail: string; primary?: boolean }> {
+  const urgentForeshadow = openForeshadows(world)[0];
+  const actions = [
+    isArchivedWorld
+      ? { label: '恢复写作后继续下一章', detail: '这本小说已归档；恢复写作后再继续推进正史。' }
+      : { label: '继续下一章', detail: `下一章会继承世界进度 v${world.world_version} 和已写入正史的变化。`, primary: true },
+  ];
+  if (urgentForeshadow) {
+    actions.push({
+      label: '回收或推进悬念/伏笔',
+      detail: `优先处理「${urgentForeshadow.title}」，紧迫度 ${urgentForeshadow.urgency_level ?? 0}。`,
+    });
+  } else {
+    actions.push({ label: '埋设新的悬念/伏笔', detail: '当前没有待处理悬念/伏笔，可以为下一章准备新的牵引线。' });
+  }
+  actions.push(
+    world.recent_events.length > 0
+      ? { label: '检查世界历史记录', detail: `最近有 ${world.recent_events.length} 条世界历史记录，可确认正史连续性。` }
+      : { label: '写入第一条世界历史记录', detail: '批准第一章后，这里会出现世界历史记录证据。' },
+  );
+  return actions;
+}
+
+function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowForeshadows }: { world: WorldOverview; isArchivedWorld: boolean; onContinue: () => void; onShowForeshadows: () => void }) {
+  const activeCharacters = world.characters.slice(0, 3);
+  const urgentForeshadows = openForeshadows(world).slice(0, 3);
+  const actions = dashboardActions(world, isArchivedWorld);
+
+  return (
+    <section className="book-card mt-8 space-y-5 border-2 border-amber-900/15 bg-amber-50/70 p-5" aria-label="世界运营仪表盘">
+      <div>
+        <p className="chapter-kicker">World Operations</p>
+        <h2 className="text-2xl font-black text-[#34210f]">世界运营仪表盘</h2>
+        <p className="manuscript mt-2 text-sm text-[#5e3b1c]">今天这个故事世界需要处理什么？先看正史进度、活跃角色、悬念/伏笔和世界历史记录。</p>
+      </div>
+      <div className="grid gap-3 text-sm md:grid-cols-4">
+        <p className="rounded-2xl bg-white/65 p-3 font-black text-[#3b2511]">世界进度 v{world.world_version}</p>
+        <p className="rounded-2xl bg-white/65 p-3 font-black text-[#3b2511]">已写入正史章节：{world.approved_chapter_count}</p>
+        <p className="rounded-2xl bg-white/65 p-3 font-black text-[#3b2511]">近期世界历史记录：{world.recent_events.length}</p>
+        <p className="rounded-2xl bg-white/65 p-3 font-black text-[#3b2511]">待处理悬念/伏笔：{openForeshadows(world).length}</p>
+      </div>
+      <section>
+        <h3 className="font-black text-[#3b2511]">今天建议处理什么</h3>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          {actions.map((action) => (
+            <article key={action.label} className="rounded-2xl bg-white/60 p-3">
+              {action.primary && !isArchivedWorld ? (
+                <button className="primary-button" type="button" onClick={onContinue}>{action.label}</button>
+              ) : (
+                <p className="font-black text-[#3b2511]">{action.label}</p>
+              )}
+              <p className="manuscript mt-2 text-sm">{action.detail}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+      <div className="grid gap-4 md:grid-cols-3">
+        <section className="rounded-2xl bg-white/55 p-4">
+          <h3 className="font-black text-[#3b2511]">活跃角色</h3>
+          <div className="mt-3 space-y-2">
+            {activeCharacters.length === 0 && <p className="ink-muted text-sm">暂无活跃角色。</p>}
+            {activeCharacters.map((character) => (
+              <p className="manuscript text-sm" key={character.id}>{character.name}：{character.current_goals.join('、') || character.status}</p>
+            ))}
+          </div>
+        </section>
+        <section className="rounded-2xl bg-white/55 p-4">
+          <h3 className="font-black text-[#3b2511]">紧迫悬念/伏笔</h3>
+          <div className="mt-3 space-y-2">
+            {urgentForeshadows.length === 0 && <p className="ink-muted text-sm">暂无待处理悬念/伏笔。</p>}
+            {urgentForeshadows.map((item) => (
+              <p className="manuscript text-sm" key={item.id}>{item.title}：{item.status} · 紧迫度 {item.urgency_level ?? 0}</p>
+            ))}
+          </div>
+          <button className="secondary-button mt-3" type="button" onClick={onShowForeshadows}>查看悬念/伏笔账本</button>
+        </section>
+        <section className="rounded-2xl bg-white/55 p-4">
+          <h3 className="font-black text-[#3b2511]">近期世界历史记录</h3>
+          <div className="mt-3 space-y-2">
+            {world.recent_events.length === 0 && <p className="ink-muted text-sm">还没有正式写入的章节事件。</p>}
+            {world.recent_events.slice(0, 3).map((event) => (
+              <p className="manuscript text-sm" key={event.id}>{describeEvent(event, world)}</p>
+            ))}
+          </div>
+          <a className="secondary-button mt-3 inline-block" href="#chapter-history">查看章节历史</a>
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function StoryArcCard({ chapter, expanded, onToggle }: { chapter: StoryArcChapter; expanded: boolean; onToggle: () => void }) {
   const detailId = `story-arc-chapter-${chapter.chapter_number}-detail`;
   const buttonLabel = `第 ${chapter.chapter_number} 章 · ${chapter.title}${chapter.foreshadow_hints.length ? ` · ${chapter.foreshadow_hints.length} 条伏笔` : ''}`;
@@ -649,6 +750,15 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 第 {world.world_version} 版 · {world.genre_template} · {world.status}
               </p>
               <p className="manuscript mt-8 text-lg">{world.truth_canon}</p>
+              <WorldOperationsDashboard
+                world={world}
+                isArchivedWorld={isArchivedWorld}
+                onContinue={() => onEnterStudio(world, {
+                  initialChapterGoal: selectedExecutionContext?.goal,
+                  executionContext: selectedExecutionContext ?? undefined,
+                })}
+                onShowForeshadows={() => setTab('foreshadows')}
+              />
               {isArchivedWorld ? (
                 <ArchivedWorldPauseCard
                   archiveLoading={archiveLoading}

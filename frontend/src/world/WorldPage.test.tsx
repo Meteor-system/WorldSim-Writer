@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, generateStoryArc, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
@@ -391,6 +391,49 @@ beforeEach(() => {
     target_snapshot: { id: 13, world_id: 7, world_version: 2, label: 'After', note: null, created_at: '2026-05-31T00:00:00Z' },
     summary: { total_changes: 1, object_type_counts: { character: 1 } },
     changes: { world: [], characters: [], relations: [], foreshadows: [], chapters: [], events: [] },
+  });
+});
+
+describe('WorldPage operations dashboard', () => {
+  it('shows world operations metrics in user language', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    const dashboard = within(await screen.findByLabelText('世界运营仪表盘'));
+    expect(dashboard.getByText('世界运营仪表盘')).toBeInTheDocument();
+    expect(dashboard.getByText('世界进度 v2')).toBeInTheDocument();
+    expect(dashboard.getByText('已写入正史章节：1')).toBeInTheDocument();
+    expect(dashboard.getByText('近期世界历史记录：0')).toBeInTheDocument();
+    expect(dashboard.getByText('待处理悬念/伏笔：1')).toBeInTheDocument();
+  });
+
+  it('recommends explainable next actions from current world data', async () => {
+    const onEnterStudio = vi.fn();
+    const user = userEvent.setup();
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    const dashboard = within(await screen.findByLabelText('世界运营仪表盘'));
+    expect(dashboard.getByText('今天建议处理什么')).toBeInTheDocument();
+    expect(dashboard.getByText('继续下一章')).toBeInTheDocument();
+    expect(dashboard.getByText('回收或推进悬念/伏笔')).toBeInTheDocument();
+
+    await user.click(dashboard.getByRole('button', { name: '继续下一章' }));
+    expect(onEnterStudio).toHaveBeenCalledWith(world, {
+      initialChapterGoal: undefined,
+      executionContext: undefined,
+    });
+  });
+
+  it('summarizes active roles and urgent suspense without hardcoded generated prose', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    const dashboard = within(await screen.findByLabelText('世界运营仪表盘'));
+    expect(dashboard.getByText('活跃角色')).toBeInTheDocument();
+    expect(dashboard.getByText('林砚：追查湿信来源')).toBeInTheDocument();
+    expect(dashboard.getByText('紧迫悬念/伏笔')).toBeInTheDocument();
+    expect(dashboard.getByText('裂纹玉佩：advanced · 紧迫度 4')).toBeInTheDocument();
+    expect(dashboard.getByText('近期世界历史记录')).toBeInTheDocument();
+    expect(dashboard.queryByText('第一章 雨巷密谈')).not.toBeInTheDocument();
+    expect(dashboard.queryByText('林砚停在雨巷口。')).not.toBeInTheDocument();
   });
 });
 
