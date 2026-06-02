@@ -11,6 +11,7 @@ DEFAULT_BASE_URL = 'http://localhost:8000'
 DEFAULT_PASSWORD = 'strongpass123'
 DEFAULT_TIMEOUT_SECONDS = 60.0
 MAX_RESPONSE_BODY_CHARS = 1000
+READINESS_STATUSES = {'ready', 'needs_review', 'blocked'}
 CONSISTENCY_STATUSES = {'clear', 'needs_review', 'blocked'}
 
 _REDACTION_PATTERNS = [
@@ -412,6 +413,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if not _require_fields(summary, 'approval_readiness', readiness, ['ready', 'status']):
             return summary
         if not _require_bool_fields(summary, 'approval_readiness', readiness, ['ready']):
+            return summary
+        if not _require_string_path_in(summary, 'approval_readiness', readiness, 'status', READINESS_STATUSES):
             return summary
         if not _require_list(summary, 'approval_readiness', readiness, 'blocking_reasons'):
             return summary
