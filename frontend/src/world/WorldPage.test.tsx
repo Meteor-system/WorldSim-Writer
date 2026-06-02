@@ -736,6 +736,22 @@ describe('WorldPage Story Arc Planner', () => {
     expect(await screen.findByText('第 2 章标题')).toBeInTheDocument();
   });
 
+  it('shows story-operation waiting copy while generating the story arc', async () => {
+    const user = userEvent.setup();
+    let resolveStoryArc!: (value: Awaited<ReturnType<typeof generateStoryArc>>) => void;
+    vi.mocked(generateStoryArc).mockImplementationOnce(async () => new Promise<Awaited<ReturnType<typeof generateStoryArc>>>((resolve) => {
+      resolveStoryArc = resolve;
+    }));
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '生成第一轮故事弧线' }));
+    expect((await screen.findAllByRole('button', { name: '故事弧线规划中…' })).length).toBeGreaterThan(0);
+
+    resolveStoryArc({ world_id: 7, story_arc: storyArcWorld.story_arc });
+    expect(await screen.findByText('第 2 章标题')).toBeInTheDocument();
+  });
+
   it('shows the next unapproved story arc chapter in the launchpad', async () => {
     vi.mocked(apiRequest).mockReset();
     vi.mocked(apiRequest)

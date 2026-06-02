@@ -295,7 +295,7 @@ function FirstChapterLaunchpad({ world, nextChapter, arcLoading, onGenerateArc, 
           <p className="manuscript text-sm text-[#5e3b1c]">先生成前 10 章故事弧线，再把下一章目标带入创作台。</p>
           <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">生成第一章 → 写入正史 → 查看世界变化</p>
           <button className="primary-button mt-4" type="button" disabled={arcLoading} onClick={onGenerateArc}>
-            {arcLoading ? '规划中...' : '生成第一轮故事弧线'}
+            {arcLoading ? '故事弧线规划中…' : '生成第一轮故事弧线'}
           </button>
         </div>
       ) : nextChapter ? (
@@ -313,7 +313,7 @@ function FirstChapterLaunchpad({ world, nextChapter, arcLoading, onGenerateArc, 
         <div className="mt-3">
           <p className="manuscript text-sm text-[#5e3b1c]">当前故事弧线已写完。可重新生成故事大纲，或在 Narrative Control Center 继续准备下一章。</p>
           <button className="secondary-button mt-4" type="button" disabled={arcLoading} onClick={onGenerateArc}>
-            {arcLoading ? '规划中...' : '重新生成故事大纲'}
+            {arcLoading ? '故事弧线规划中…' : '重新生成故事大纲'}
           </button>
         </div>
       )}
@@ -799,7 +799,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                     进入创作台
                   </button>
                   <button className="secondary-button" disabled={arcLoading} onClick={runStoryArcPlanner}>
-                    {arcLoading ? '规划中...' : world.story_arc.length ? '重新生成故事大纲' : '生成故事大纲'}
+                    {arcLoading ? '故事弧线规划中…' : world.story_arc.length ? '重新生成故事大纲' : '生成故事大纲'}
                   </button>
                 </div>
               )}
@@ -875,7 +875,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               <div>
                 <p className="chapter-kicker">Narrative Console</p>
                 <h2 className="mt-2 text-3xl font-black text-[#34210f]">Narrative Control Center</h2>
-                <p className="manuscript mt-2 text-sm text-[#5e3b1c]">查看已批准章节历史，并准备下一章目标。</p>
+                <p className="manuscript mt-2 text-sm text-[#5e3b1c]">查看已写入正史的世界历史记录，并准备下一章目标。</p>
                 {isArchivedWorld && (
                   <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">
                     已归档小说为只读模式；恢复写作后才能把建议带入创作台。

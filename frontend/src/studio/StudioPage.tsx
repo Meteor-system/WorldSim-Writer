@@ -288,6 +288,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   async function runOutliner() {
     if (!chapter) return;
     setWorking(true);
+    setOperationHint('编剧室正在排布章节骨架…');
     setError('');
     try {
       const outline = await generateOutline(chapter.id, {});
@@ -306,6 +307,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setError(err instanceof Error ? err.message : '生成大纲失败');
     } finally {
       setWorking(false);
+      setOperationHint('');
     }
   }
 
@@ -347,6 +349,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   async function runCritic() {
     if (!chapter || !draft) return;
     setWorking(true);
+    setOperationHint('评论席正在检查节奏与设定…');
     setError('');
     try {
       const report = await generateCriticReport(chapter.id);
@@ -361,6 +364,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setError(err instanceof Error ? err.message : '生成 Critic 报告失败');
     } finally {
       setWorking(false);
+      setOperationHint('');
     }
   }
 
@@ -642,7 +646,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
             <h1 ref={titleRef} tabIndex={-1} className="mt-3 text-3xl font-black text-[#34210f]">创作台</h1>
           </div>
           <div className="book-card p-5">
-            <h2 className="font-black text-[#3b2511]">Pipeline</h2>
+            <h2 className="font-black text-[#3b2511]">创作流程</h2>
             <ol className="mt-3 space-y-2 text-sm ink-muted">
               <li className={chapter ? 'font-bold text-[#3b2511]' : ''}>1. 创建章节</li>
               <li className={outlineBeats.length ? 'font-bold text-[#3b2511]' : ''}>2. Outliner 大纲</li>
@@ -652,7 +656,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           </div>
           <div className="book-card p-5">
             <h2 className="font-black text-[#3b2511]">当前上下文</h2>
-            <p className="mt-3 ink-muted">世界版本：{localWorld.world_version}</p>
+            <p className="mt-3 ink-muted">世界进度：{localWorld.world_version}</p>
             <p className="mt-2 ink-muted">POV：{localWorld.characters[0]?.name ?? '未设置'}</p>
             <p className="mt-2 ink-muted">故事大纲进度：下一章第 {localWorld.approved_chapter_count + 1} 章</p>
           </div>
@@ -680,9 +684,9 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
             <textarea id="chapter-goal" className="paper-input min-h-28" value={goal} onChange={(event) => setGoal(event.target.value)} aria-label="章节目标" disabled={Boolean(chapter)} placeholder="输入本章要讲什么故事……或者点击「✨ 自动生成」让 AI 帮你写" />
             <div className="mt-4 flex flex-wrap gap-3">
               <button className="primary-button" disabled={working || Boolean(chapter)} onClick={createChapterSession}>{chapter ? '章节已创建' : '创建章节'}</button>
-              <button className="secondary-button" disabled={working || !chapter} onClick={runOutliner}>生成大纲</button>
+              <button className="secondary-button" disabled={working || !chapter} onClick={runOutliner}>{operationHint === '编剧室正在排布章节骨架…' ? operationHint : '生成大纲'}</button>
               <button className="secondary-button" disabled={working || !chapter || outlineBeats.length === 0} onClick={runWriter}>{operationHint === '导演正在拆场景…' ? operationHint : '基于大纲生成正文'}</button>
-              <button className="secondary-button" disabled={working || !draft} onClick={runCritic}>生成 Critic 报告</button>
+              <button className="secondary-button" disabled={working || !draft} onClick={runCritic}>{operationHint === '评论席正在检查节奏与设定…' ? operationHint : '生成 Critic 报告'}</button>
               <button className="secondary-button" disabled={working || !draft} onClick={runCharacterArcReport}>生成角色弧线报告</button>
             </div>
           </div>
@@ -718,7 +722,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
             <section className="book-card space-y-3 p-5">
               <p className="chapter-kicker">Chapter Session</p>
               <h2 className="text-2xl font-black text-[#34210f]">{chapter.title}</h2>
-              <p className="ink-muted">状态：{chapter.status} · 基准世界版本：{chapter.base_world_version}</p>
+              <p className="ink-muted">状态：{chapter.status} · 基准世界进度：{chapter.base_world_version}</p>
             </section>
           )}
 
@@ -853,12 +857,12 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
               </section>
               {approvalPreview && (
                 <section className="space-y-3 rounded-2xl border border-amber-900/15 bg-amber-50/45 p-4">
-                  <h3 className="font-black text-[#3b2511]">通过后将提交</h3>
-                  <p className="manuscript">世界版本：{approvalPreview.world_version_before} → {approvalPreview.world_version_after}</p>
+                  <h3 className="font-black text-[#3b2511]">写入正史前确认</h3>
+                  <p className="manuscript">世界进度：{approvalPreview.world_version_before} → {approvalPreview.world_version_after}</p>
                   <p className="manuscript text-sm">已选择 {selectedPreviewChanges} / {totalPreviewChanges} 条拟提交变化</p>
                   {consistencySummary && (
                     <div className="space-y-2 rounded-xl bg-white/45 p-3">
-                      <h4 className="font-black text-[#3b2511]">一致性检查</h4>
+                      <h4 className="font-black text-[#3b2511]">设定冲突检查</h4>
                       <p className="manuscript text-sm"><span>{consistencyLabel(consistencySummary)}</span> · blocking {consistencySummary.blocking_count} / warning {consistencySummary.warning_count} / info {consistencySummary.info_count}</p>
                       {consistencyWarnings.map((warning, index) => (
                         <p
@@ -954,7 +958,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
 
           {draft && (
             <div className="flex flex-wrap gap-3">
-              <button className="primary-button" disabled={working || !isViewingLatestDraft() || approvalBlockedByConsistency} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '通过并更新世界'}</button>
+              <button className="primary-button" disabled={working || !isViewingLatestDraft() || approvalBlockedByConsistency} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '写入正史并更新世界'}</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={rejectDraft}>驳回</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={startEdit}>编辑正文</button>
             </div>
