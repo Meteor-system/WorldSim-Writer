@@ -187,6 +187,15 @@ def _require_list(summary: dict, step: str, payload: dict, field: str) -> bool:
     return False
 
 
+def _require_optional_dict(summary: dict, step: str, payload: dict, field: str) -> bool:
+    if field not in payload or isinstance(payload.get(field), dict):
+        return True
+    summary['failed_step'] = step
+    summary['error'] = 'INVALID_FIELD_TYPES'
+    summary['invalid_fields'] = [field]
+    return False
+
+
 def _require_int_fields(summary: dict, step: str, payload: dict, fields: list[str]) -> bool:
     invalid = [field for field in fields if not isinstance(payload.get(field), int) or isinstance(payload.get(field), bool)]
     if not invalid:
@@ -556,6 +565,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if not _require_fields(summary, 'events', events, ['items']):
             return summary
         if not _require_list_of_dicts(summary, 'events', events, 'items'):
+            return summary
+        if not _require_optional_dict(summary, 'events', events, 'summary'):
             return summary
         event_types = [event.get('event_type') for event in events.get('items', [])]
         chapter_approved_seen = 'chapter_approved' in event_types or 'chapter_approved' in (events.get('summary') or {}).get('event_type_counts', {})
