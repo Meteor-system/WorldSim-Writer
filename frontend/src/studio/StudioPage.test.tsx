@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, exportWorldArchiveMarkdown, generateCharacterArcReport, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
@@ -400,6 +400,45 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByText('总评分：78/100')).toBeInTheDocument();
     expect(screen.getByText('Critic 发现高风险问题，建议修订后再批准。')).toBeInTheDocument();
     expect(screen.getByText('林砚突然信任沈微霜，与当前谨慎状态冲突。')).toBeInTheDocument();
+  });
+
+  it('shows story-operation waiting copy while generating the draft', async () => {
+    const user = userEvent.setup();
+    let resolveWrite!: (value: DraftResponse) => void;
+    vi.mocked(writeChapter).mockImplementationOnce(async () => new Promise<DraftResponse>((resolve) => {
+      resolveWrite = resolve;
+    }));
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(screen.getByRole('button', { name: '基于大纲生成正文' }));
+
+    expect(await screen.findByRole('button', { name: '导演正在拆场景…' })).toBeInTheDocument();
+
+    resolveWrite(draftResponse);
+    await screen.findByText('通过后将提交');
+  });
+
+  it('shows canon-writing waiting copy while approving the draft', async () => {
+    const user = userEvent.setup();
+    let resolveApprove!: (value: Awaited<ReturnType<typeof approveChapter>>) => void;
+    vi.mocked(approveChapter).mockImplementationOnce(async () => new Promise<Awaited<ReturnType<typeof approveChapter>>>((resolve) => {
+      resolveApprove = resolve;
+    }));
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(screen.getByRole('button', { name: '通过并更新世界' }));
+
+    expect(await screen.findByRole('button', { name: '正在写入正史…' })).toBeInTheDocument();
+
+    resolveApprove({ status: 'approved' } as Awaited<ReturnType<typeof approveChapter>>);
+    await waitFor(() => expect(approveChapter).toHaveBeenCalled());
   });
 
   it('falls back to the chapter draft version label and shows full paragraph card text', async () => {

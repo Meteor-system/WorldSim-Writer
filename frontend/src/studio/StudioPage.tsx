@@ -124,6 +124,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [latestDraftVersion, setLatestDraftVersion] = useState<number | null>(null);
   const [revisionInstruction, setRevisionInstruction] = useState('');
   const [working, setWorking] = useState(false);
+  const [operationHint, setOperationHint] = useState('');
   const [suggestingGoal, setSuggestingGoal] = useState(false);
   const [error, setError] = useState('');
   const [editMode, setEditMode] = useState(false);
@@ -315,6 +316,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   async function runWriter() {
     if (!chapter) return;
     setWorking(true);
+    setOperationHint('导演正在拆场景…');
     setError('');
     try {
       const nextDraft = normalizeDraft(await writeChapter(chapter.id, { outline_beats: outlineBeats }));
@@ -338,6 +340,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setError(err instanceof Error ? err.message : '生成正文失败');
     } finally {
       setWorking(false);
+      setOperationHint('');
     }
   }
 
@@ -411,6 +414,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   async function approveDraft() {
     if (!draft) return;
     setWorking(true);
+    setOperationHint('正在写入正史…');
     setError('');
     try {
       await approveChapter(draft.chapter_id, {
@@ -433,6 +437,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setError(err instanceof Error ? err.message : '审批草稿失败');
     } finally {
       setWorking(false);
+      setOperationHint('');
     }
   }
 
@@ -676,7 +681,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
             <div className="mt-4 flex flex-wrap gap-3">
               <button className="primary-button" disabled={working || Boolean(chapter)} onClick={createChapterSession}>{chapter ? '章节已创建' : '创建章节'}</button>
               <button className="secondary-button" disabled={working || !chapter} onClick={runOutliner}>生成大纲</button>
-              <button className="secondary-button" disabled={working || !chapter || outlineBeats.length === 0} onClick={runWriter}>基于大纲生成正文</button>
+              <button className="secondary-button" disabled={working || !chapter || outlineBeats.length === 0} onClick={runWriter}>{operationHint === '导演正在拆场景…' ? operationHint : '基于大纲生成正文'}</button>
               <button className="secondary-button" disabled={working || !draft} onClick={runCritic}>生成 Critic 报告</button>
               <button className="secondary-button" disabled={working || !draft} onClick={runCharacterArcReport}>生成角色弧线报告</button>
             </div>
@@ -949,7 +954,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
 
           {draft && (
             <div className="flex flex-wrap gap-3">
-              <button className="primary-button" disabled={working || !isViewingLatestDraft() || approvalBlockedByConsistency} onClick={approveDraft}>通过并更新世界</button>
+              <button className="primary-button" disabled={working || !isViewingLatestDraft() || approvalBlockedByConsistency} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '通过并更新世界'}</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={rejectDraft}>驳回</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={startEdit}>编辑正文</button>
             </div>

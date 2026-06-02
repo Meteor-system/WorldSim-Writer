@@ -192,6 +192,7 @@ function FirstChapterLaunchpad({ world, nextChapter, arcLoading, onGenerateArc, 
       {world.story_arc.length === 0 ? (
         <div className="mt-3">
           <p className="manuscript text-sm text-[#5e3b1c]">先生成前 10 章故事弧线，再把下一章目标带入创作台。</p>
+          <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">生成第一章 → 写入正史 → 查看世界变化</p>
           <button className="primary-button mt-4" type="button" disabled={arcLoading} onClick={onGenerateArc}>
             {arcLoading ? '规划中...' : '生成第一轮故事弧线'}
           </button>

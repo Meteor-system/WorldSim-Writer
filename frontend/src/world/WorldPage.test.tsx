@@ -395,6 +395,46 @@ beforeEach(() => {
 });
 
 describe('WorldPage world creation', () => {
+  it('shows the newcomer three-minute loop and high-tension embryo entry', async () => {
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockResolvedValueOnce([]);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('3 分钟开始运营你的故事世界')).toBeInTheDocument();
+    expect(screen.getByText('选世界胚胎')).toBeInTheDocument();
+    expect(screen.getByText('生成第一章')).toBeInTheDocument();
+    expect(screen.getByText('写入正史')).toBeInTheDocument();
+    expect(screen.getByText('查看世界变化')).toBeInTheDocument();
+    expect(await screen.findByText('高张力世界胚胎')).toBeInTheDocument();
+  });
+
+  it('creates a high-tension embryo without treating seed hook as generated chapter content', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(world);
+    vi.mocked(createWorldFromSeed).mockResolvedValue({ id: 7 });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('所有人都忘记太阳存在过。')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '直接创建此胚胎' }));
+
+    expect(createWorldFromSeed).toHaveBeenCalledWith('forgotten-sun-city');
+    expect(await screen.findByText('青岚城')).toBeInTheDocument();
+    expect(screen.queryByText('Writer Draft')).not.toBeInTheDocument();
+    expect(screen.queryByText('世界推进结算')).not.toBeInTheDocument();
+  });
+
+  it('aligns the first chapter launchpad with the three-minute loop', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('First Chapter Launchpad')).toBeInTheDocument();
+    expect(screen.getByText('生成第一章 → 写入正史 → 查看世界变化')).toBeInTheDocument();
+  });
+
   it('creates the built-in sample world and loads its overview', async () => {
     const user = userEvent.setup();
     vi.mocked(apiRequest).mockReset();
