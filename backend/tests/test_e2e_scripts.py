@@ -162,6 +162,29 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
     ]
 
 
+def test_e2e_smoke_script_requires_auth_user_to_be_object_when_present(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': ['unexpected-user-shape']}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'register'
+    assert summary['error'] == 'INVALID_FIELD_TYPES'
+    assert summary['invalid_fields'] == ['user']
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+    ]
+
+
 def test_e2e_smoke_script_fails_when_approval_preview_has_version_conflict(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()

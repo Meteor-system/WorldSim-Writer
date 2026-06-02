@@ -362,6 +362,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             return summary
         if not _require_string_fields(summary, auth_step, auth_payload, ['access_token']):
             return summary
+        if not _require_optional_dict(summary, auth_step, auth_payload, 'user'):
+            return summary
         token = auth_payload['access_token']
         headers = {'Authorization': f'Bearer {token}'}
         summary['checks'][auth_step] = {'user_id': (auth_payload.get('user') or {}).get('id')}
