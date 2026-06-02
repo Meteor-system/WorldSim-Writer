@@ -423,6 +423,53 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             summary['error'] = 'WORLD_VERSION_NOT_INCREMENTED'
             return summary
 
+        overview = _step_json(summary, 'overview', lambda: client.get(f'/worlds/{world_id}/overview', headers=headers))
+        if _has_failed(summary):
+            return summary
+        if not _require_fields(summary, 'overview', overview, ['world_version', 'approved_chapter_count', 'characters', 'foreshadows']):
+            return summary
+        if not _require_int_fields(summary, 'overview', overview, ['world_version', 'approved_chapter_count']):
+            return summary
+        if not _require_list_of_dicts(summary, 'overview', overview, 'characters'):
+            return summary
+        if not _require_list_of_dicts(summary, 'overview', overview, 'foreshadows'):
+            return summary
+        overview_world_version = overview.get('world_version')
+        approved_chapter_count = overview.get('approved_chapter_count')
+        expected_approved_chapter_count = 1
+        character_count = len(overview.get('characters') or [])
+        foreshadow_count = len(overview.get('foreshadows') or [])
+        overview_world_version_matches_approval = overview_world_version == approved_version
+        overview_approved_chapter_count_incremented = approved_chapter_count >= expected_approved_chapter_count
+        summary['checks']['overview'] = {
+            'world_version': overview_world_version,
+            'approved_chapter_count': approved_chapter_count,
+            'expected_world_version': approved_version,
+            'expected_approved_chapter_count': expected_approved_chapter_count,
+            'world_version_matches_approval': overview_world_version_matches_approval,
+            'approved_chapter_count_incremented': overview_approved_chapter_count_incremented,
+            'character_count': character_count,
+            'foreshadow_count': foreshadow_count,
+        }
+        if not overview_world_version_matches_approval:
+            summary['failed_step'] = 'overview'
+            summary['error'] = 'OVERVIEW_WORLD_VERSION_NOT_UPDATED'
+            return summary
+        if not overview_approved_chapter_count_incremented:
+            summary['failed_step'] = 'overview'
+            summary['error'] = 'OVERVIEW_APPROVED_CHAPTER_MISSING'
+            return summary
+        empty_projection_fields = []
+        if character_count == 0:
+            empty_projection_fields.append('characters')
+        if foreshadow_count == 0:
+            empty_projection_fields.append('foreshadows')
+        if empty_projection_fields:
+            summary['failed_step'] = 'overview'
+            summary['error'] = 'OVERVIEW_PROJECTION_EMPTY'
+            summary['invalid_fields'] = empty_projection_fields
+            return summary
+
         events = _step_json(summary, 'events', lambda: client.get(f'/worlds/{world_id}/events', params={'limit': 100}, headers=headers))
         if _has_failed(summary):
             return summary
@@ -484,6 +531,10 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 not consistency_blocked,
                 approved.get('status') == 'approved',
                 world_version_incremented,
+                overview_world_version_matches_approval,
+                overview_approved_chapter_count_incremented,
+                character_count > 0,
+                foreshadow_count > 0,
                 chapter_approved_seen,
                 export.get('archive_format') == 'zip',
                 export.get('archive_encoding') == 'base64',

@@ -43,6 +43,17 @@ def json_response(payload, status_code=200):
     return httpx.Response(status_code, json=payload)
 
 
+def overview_response(world_version=2, approved_chapter_count=1):
+    return json_response(
+        {
+            'world_version': world_version,
+            'approved_chapter_count': approved_chapter_count,
+            'characters': [{'id': 1, 'name': 'Lin Yan'}],
+            'foreshadows': [{'id': 1, 'title': 'Jade Pendant'}],
+        }
+    )
+
+
 def test_e2e_smoke_script_uses_default_timeout_seconds(monkeypatch):
     monkeypatch.delenv('E2E_TIMEOUT_SECONDS', raising=False)
     module = load_e2e_smoke_module()
@@ -110,6 +121,7 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
             json_response({'ready': False, 'status': 'needs_review', 'blocking_reasons': [], 'warnings': ['mock warnings']}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -128,6 +140,10 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
     assert summary['checks']['approval_preview']['proposed_change_count'] == 1
     assert summary['checks']['approve']['expected_world_version_after'] == 2
     assert summary['checks']['approve']['world_version_incremented'] is True
+    assert summary['checks']['overview']['world_version_matches_approval'] is True
+    assert summary['checks']['overview']['approved_chapter_count_incremented'] is True
+    assert summary['checks']['overview']['character_count'] == 1
+    assert summary['checks']['overview']['foreshadow_count'] == 1
     assert summary['checks']['events']['chapter_approved_seen'] is True
     assert summary['checks']['markdown_export']['archive_format'] == 'zip'
     assert summary['checks']['markdown_export']['files_are_inline'] is True
@@ -140,6 +156,7 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
         '/chapters/20/approval-readiness',
         '/chapters/20/approval-consistency',
         '/chapters/20/approve',
+        '/worlds/10/overview',
         '/worlds/10/events',
         '/worlds/10/export/markdown',
     ]
@@ -158,6 +175,7 @@ def test_e2e_smoke_script_fails_when_approval_preview_has_version_conflict(monke
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -193,6 +211,7 @@ def test_e2e_smoke_script_fails_when_approval_preview_has_no_proposed_changes(mo
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -228,6 +247,7 @@ def test_e2e_smoke_script_requires_preview_character_changes_to_be_list_of_objec
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -262,6 +282,7 @@ def test_e2e_smoke_script_requires_preview_foreshadow_changes_to_be_list_of_obje
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -283,6 +304,45 @@ def test_e2e_smoke_script_requires_preview_foreshadow_changes_to_be_list_of_obje
     ]
 
 
+def test_e2e_smoke_script_fails_when_post_approval_overview_is_stale(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
+            json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
+            json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(world_version=1),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['checks']['overview']['world_version'] == 1
+    assert summary['checks']['overview']['expected_world_version'] == 2
+    assert summary['checks']['overview']['world_version_matches_approval'] is False
+    assert summary['failed_step'] == 'overview'
+    assert summary['error'] == 'OVERVIEW_WORLD_VERSION_NOT_UPDATED'
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+        '/worlds/10/chapters/draft',
+        '/chapters/20/approval-preview',
+        '/chapters/20/approval-readiness',
+        '/chapters/20/approval-consistency',
+        '/chapters/20/approve',
+        '/worlds/10/overview',
+    ]
+
+
 def test_e2e_smoke_script_fails_when_expected_event_is_missing(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()
@@ -296,6 +356,7 @@ def test_e2e_smoke_script_fails_when_expected_event_is_missing(monkeypatch):
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'world_version_increment'}], 'summary': {'event_type_counts': {'world_version_increment': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -317,6 +378,7 @@ def test_e2e_smoke_script_fails_when_expected_event_is_missing(monkeypatch):
         '/chapters/20/approval-readiness',
         '/chapters/20/approval-consistency',
         '/chapters/20/approve',
+        '/worlds/10/overview',
         '/worlds/10/events',
     ]
 
@@ -334,6 +396,7 @@ def test_e2e_smoke_script_requires_event_items_for_event_check(monkeypatch):
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'summary': {'event_type_counts': {'chapter_approved': 1}}}),
         ]
     )
@@ -354,6 +417,7 @@ def test_e2e_smoke_script_requires_event_items_for_event_check(monkeypatch):
         '/chapters/20/approval-readiness',
         '/chapters/20/approval-consistency',
         '/chapters/20/approve',
+        '/worlds/10/overview',
         '/worlds/10/events',
     ]
 
@@ -371,6 +435,7 @@ def test_e2e_smoke_script_requires_event_items_to_be_list_of_objects(monkeypatch
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': {'event_type': 'chapter_approved'}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -392,6 +457,7 @@ def test_e2e_smoke_script_requires_event_items_to_be_list_of_objects(monkeypatch
         '/chapters/20/approval-readiness',
         '/chapters/20/approval-consistency',
         '/chapters/20/approve',
+        '/worlds/10/overview',
         '/worlds/10/events',
     ]
 
@@ -409,6 +475,7 @@ def test_e2e_smoke_script_requires_markdown_export_archive_fields(monkeypatch):
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -436,6 +503,7 @@ def test_e2e_smoke_script_requires_markdown_export_files_to_be_list_of_objects(m
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': 'World.md'}),
         ]
@@ -463,6 +531,7 @@ def test_e2e_smoke_script_fails_when_markdown_export_archive_format_is_invalid(m
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'tar', 'archive_encoding': 'plain', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -490,6 +559,7 @@ def test_e2e_smoke_script_fails_when_markdown_export_world_file_is_missing(monke
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'Characters.md', 'content': '# Characters'}]}),
         ]
@@ -699,6 +769,7 @@ def test_e2e_smoke_script_requires_readiness_status_before_approval(monkeypatch)
             json_response({'ready': True, 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -734,6 +805,7 @@ def test_e2e_smoke_script_requires_readiness_blocking_reasons_to_be_list(monkeyp
             json_response({'ready': False, 'status': 'blocked', 'blocking_reasons': 'version conflict', 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -769,6 +841,7 @@ def test_e2e_smoke_script_requires_readiness_warnings_to_be_list(monkeypatch):
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': 'warning text'}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -804,6 +877,7 @@ def test_e2e_smoke_script_fails_when_approval_readiness_is_blocked(monkeypatch):
             json_response({'ready': False, 'status': 'blocked', 'blocking_reasons': ['世界版本已变化，请重新生成草稿后再批准。'], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -874,6 +948,7 @@ def test_e2e_smoke_script_requires_consistency_blocking_count_before_approval(mo
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -910,6 +985,7 @@ def test_e2e_smoke_script_requires_consistency_blocking_count_to_be_int(monkeypa
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': '0'}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -956,6 +1032,7 @@ def test_e2e_smoke_script_fails_when_approval_consistency_is_blocked(monkeypatch
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'blocked', 'blocking_count': 1}, 'consistency_warnings': consistency_warnings}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -995,6 +1072,7 @@ def test_e2e_smoke_script_requires_consistency_warnings_before_approval(monkeypa
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -1031,6 +1109,7 @@ def test_e2e_smoke_script_requires_consistency_warnings_to_be_list_of_objects(mo
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': 'warning text'}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
@@ -1494,6 +1573,7 @@ def test_e2e_smoke_script_logs_in_when_register_returns_email_conflict(monkeypat
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
             json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
             json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
         ]
