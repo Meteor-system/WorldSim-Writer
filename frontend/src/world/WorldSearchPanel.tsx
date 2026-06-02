@@ -171,7 +171,7 @@ export function WorldSearchPanel({ worldId, readOnly = false, onSearch, onListTa
   const taggableResultCount = taggableResults(response).length;
 
   return (
-    <section className="book-card space-y-5 p-5">
+    <section className="book-card motion-page-enter space-y-5 p-5" data-testid="world-search-panel">
       <div>
         <p className="chapter-kicker">资料工具台</p>
         <h2 className="text-2xl font-black text-[#34210f]">全局搜索</h2>
@@ -245,7 +245,7 @@ export function WorldSearchPanel({ worldId, readOnly = false, onSearch, onListTa
           </div>
 
           {!readOnly && onBulkAssignTag && tags.length > 0 && taggableResultCount > 0 && (
-            <form className="space-y-3 rounded-2xl bg-amber-50/60 p-4" onSubmit={submitBulkAssignment}>
+            <form className="surface-layer grid gap-4 rounded-2xl p-4 md:grid-cols-[minmax(0,1fr)_auto]" data-testid="world-search-bulk-form" onSubmit={submitBulkAssignment}>
               <div>
                 <p className="text-sm font-black text-[#3b2511]">搜索结果批量打标</p>
                 <p className="manuscript mt-1 text-sm text-[#5e3b1c]">将当前可见搜索结果按对象类型批量加入已有标签。</p>
@@ -271,7 +271,7 @@ export function WorldSearchPanel({ worldId, readOnly = false, onSearch, onListTa
           ) : (
             <div className="space-y-3">
               {response.results.map((result) => (
-                <article key={`${result.object_type}-${result.object_id ?? result.title}`} className="rounded-2xl border border-amber-900/15 bg-white/35 p-4">
+                <article key={`${result.object_type}-${result.object_id ?? result.title}`} className="motion-soft-lift rounded-2xl border border-amber-900/15 bg-white/35 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-xs font-black tracking-[0.14em] text-[#8a5a2b]">{labelObjectType(result.object_type)}</p>

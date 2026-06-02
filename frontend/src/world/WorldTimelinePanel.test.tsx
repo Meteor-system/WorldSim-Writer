@@ -76,4 +76,16 @@ describe('WorldTimelinePanel', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('timeline down');
   });
+
+  it('uses layered timeline cards with motion while keeping Chinese event labels', async () => {
+    render(<WorldTimelinePanel worldId={7} onLoadEvents={vi.fn().mockResolvedValue(timeline)} />);
+
+    expect(await screen.findByText('世界历史记录')).toBeInTheDocument();
+    expect(screen.getByTestId('world-timeline-panel')).toHaveClass('motion-page-enter');
+    expect(screen.getByTestId('world-timeline-summary')).toHaveClass('gap-4');
+
+    const eventCards = screen.getAllByTestId('world-timeline-event-card');
+    expect(eventCards[0]).toHaveClass('motion-soft-lift');
+    expect(document.body).not.toHaveTextContent('WORLD_CREATED');
+  });
 });

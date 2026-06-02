@@ -259,8 +259,8 @@ export function WorldCreationForm({
   }
 
   return (
-    <form onSubmit={submit} className="mx-auto max-w-5xl px-6 py-10 text-left">
-      <section className="rounded-[28px] border border-amber-900/15 bg-amber-100/60 p-5 shadow-sm">
+    <form onSubmit={submit} className="motion-page-enter mx-auto max-w-5xl px-6 py-10 text-left" data-testid="world-creation-form">
+      <section className="surface-layer rounded-[28px] border border-amber-900/15 bg-amber-100/60 p-5 shadow-sm" data-testid="newcomer-loop-panel">
         <p className="chapter-kicker">3-Minute World Loop</p>
         <h1 className="mt-2 text-3xl font-black text-[#34210f]">3 分钟开始运营你的故事世界</h1>
         <p className="manuscript mt-3 text-sm text-[#5e3b1c]">
@@ -300,13 +300,13 @@ export function WorldCreationForm({
         </section>
       ) : null}
 
-      <section className="mt-8 grid gap-3 md:grid-cols-3">
+      <section className="mt-8 grid gap-4 md:grid-cols-3" data-testid="genre-preset-grid">
         {GENRE_PRESETS.map((preset) => (
           <button
             key={preset.key}
             type="button"
             onClick={() => selectPreset(preset.key)}
-            className={`book-card p-4 text-left transition ${
+            className={`book-card motion-soft-lift p-4 text-left transition ${
               selectedPresetKey === preset.key ? 'border-amber-900 bg-amber-100/70' : 'hover:bg-amber-50'
             }`}
           >

@@ -151,7 +151,7 @@ function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowFo
         <h2 className="text-2xl font-black text-[#34210f]">世界运营仪表盘</h2>
         <p className="manuscript mt-2 text-sm text-[#5e3b1c]">今天这个故事世界需要处理什么？先看正史进度、活跃角色、悬念/伏笔和世界历史记录。</p>
       </div>
-      <div className="grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-4" data-testid="world-dashboard-metrics">
         <p className="rounded-2xl bg-white/65 p-4 font-black text-[#3b2511]">世界进度：{labelWorldVersion(world.world_version)}</p>
         <p className="rounded-2xl bg-white/65 p-4 font-black text-[#3b2511]">已写入正史章节：{world.approved_chapter_count}</p>
         <p className="rounded-2xl bg-white/65 p-4 font-black text-[#3b2511]">近期世界历史记录：{world.recent_events.length}</p>
@@ -161,7 +161,7 @@ function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowFo
         <h3 className="font-black text-[#3b2511]">今天建议处理什么</h3>
         <div className="mt-4 grid gap-4 lg:grid-cols-3" data-testid="world-dashboard-actions">
           {actions.map((action) => (
-            <article key={action.label} className="rounded-2xl bg-white/60 p-4">
+            <article key={action.label} className="surface-layer motion-soft-lift rounded-2xl bg-white/60 p-4" data-testid="world-dashboard-action-card">
               {action.primary && !isArchivedWorld ? (
                 <button className="primary-button" type="button" onClick={onContinue}>{action.label}</button>
               ) : (
@@ -173,7 +173,7 @@ function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowFo
         </div>
       </section>
       <div className="grid gap-5 xl:grid-cols-3" data-testid="world-dashboard-sidebars">
-        <section className="rounded-2xl bg-white/55 p-4">
+        <section className="motion-soft-lift rounded-2xl bg-white/55 p-4">
           <h3 className="font-black text-[#3b2511]">活跃角色</h3>
           <div className="mt-3 space-y-2">
             {activeCharacters.length === 0 && <p className="ink-muted text-sm">暂无活跃角色。</p>}
@@ -182,7 +182,7 @@ function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowFo
             ))}
           </div>
         </section>
-        <section className="rounded-2xl bg-white/55 p-4">
+        <section className="motion-soft-lift rounded-2xl bg-white/55 p-4">
           <h3 className="font-black text-[#3b2511]">紧迫悬念/伏笔</h3>
           <div className="mt-3 space-y-2">
             {urgentForeshadows.length === 0 && <p className="ink-muted text-sm">暂无待处理悬念/伏笔。</p>}
@@ -192,7 +192,7 @@ function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowFo
           </div>
           <button className="secondary-button mt-3" type="button" onClick={onShowForeshadows}>查看悬念/伏笔账本</button>
         </section>
-        <section className="rounded-2xl bg-white/55 p-4">
+        <section className="motion-soft-lift rounded-2xl bg-white/55 p-4">
           <h3 className="font-black text-[#3b2511]">近期世界历史记录</h3>
           <div className="mt-3 space-y-2">
             {world.recent_events.length === 0 && <p className="ink-muted text-sm">还没有正式写入的章节事件。</p>}
@@ -733,8 +733,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
 
         {/* Tab content */}
         {tab === 'overview' && (
-          <div className="grid gap-8 md:grid-cols-[1fr_1fr]">
-            <div>
+          <div className="workspace-shell motion-page-enter" data-testid="world-overview-workspace">
+            <div className="space-y-8" data-testid="world-primary-stage">
               <p className="chapter-kicker">世界正史档案</p>
               <h1
                 ref={titleRef}
@@ -801,8 +801,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 </div>
               )}
             </div>
-            <div className="space-y-4">
-              <article className="book-card p-5">
+            <div className="space-y-5" data-testid="world-supporting-rail">
+              <article className="book-card motion-soft-lift p-5">
                 <h2 className="text-lg font-black text-[#3b2511]">角色线索</h2>
                 <div className="mt-3 space-y-3">
                   {world.characters.map((character) => (
@@ -812,7 +812,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   ))}
                 </div>
               </article>
-              <article className="book-card p-5">
+              <article className="book-card motion-soft-lift p-5">
                 <h2 className="text-lg font-black text-[#3b2511]">伏笔笺</h2>
                 <div className="mt-3 space-y-3">
                   {world.foreshadows.map((item) => (
@@ -822,7 +822,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   ))}
                 </div>
               </article>
-              <article className="book-card p-5">
+              <article className="book-card motion-soft-lift p-5">
                 <h2 className="text-lg font-black text-[#3b2511]">最近事件</h2>
                 <div className="mt-3 space-y-2 ink-muted">
                   {world.recent_events.length === 0 && <p>还没有正式写入的章节事件。</p>}

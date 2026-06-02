@@ -105,4 +105,18 @@ describe('WorldCreationForm', () => {
 
     expect(onCreateSeed).toHaveBeenCalledWith('forgotten-sun-city');
   });
+
+  it('uses a layered responsive creation layout with motion classes', () => {
+    render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
+
+    const form = screen.getByTestId('world-creation-form');
+    expect(form).toHaveClass('motion-page-enter');
+
+    const loop = screen.getByTestId('newcomer-loop-panel');
+    expect(loop).toHaveClass('surface-layer');
+
+    const presetGrid = screen.getByTestId('genre-preset-grid');
+    expect(presetGrid).toHaveClass('gap-4');
+    expect(presetGrid).toHaveClass('md:grid-cols-3');
+  });
 });

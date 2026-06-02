@@ -44,12 +44,12 @@ export function App() {
 
   return (
     <main className="book-app">
-      <div className="mx-auto max-w-6xl overflow-hidden rounded-[28px] border border-amber-900/20 bg-[#fff8e8]/70 shadow-xl shadow-amber-950/10">
-        <header className="flex items-center justify-between border-b border-amber-900/15 px-6 py-4 text-sm ink-muted">
+      <div className="motion-page-enter mx-auto max-w-6xl overflow-hidden rounded-[28px] border border-amber-900/20 bg-[#fff8e8]/70 shadow-xl shadow-amber-950/10" data-testid="app-shell">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-900/15 px-6 py-4 text-sm ink-muted">
           <span className="font-bold text-[#4a321e]">WorldSim-Writer</span>
           <span>{userEmail}</span>
         </header>
-        {approvedWorld && <div ref={successRef} tabIndex={-1} className="paper-success px-6 py-3" role="status" aria-live="polite">章节已通过，世界版本更新为 {approvedWorld.world_version}</div>}
+        {approvedWorld && <div ref={successRef} tabIndex={-1} className="paper-success px-6 py-3" role="status" aria-live="polite">章节已通过，世界进度更新为第 {approvedWorld.world_version} 版</div>}
         <WorldPage onEnterStudio={enterStudio} autoFocusTitle={!approvedWorld} />
       </div>
     </main>

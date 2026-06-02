@@ -221,4 +221,25 @@ describe('WorldSearchPanel', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('search down');
   });
+
+  it('uses layered motion classes for the search workspace and bulk controls', async () => {
+    const user = userEvent.setup();
+    const onSearch = vi.fn().mockResolvedValue(searchResponse);
+    const onListTags = vi.fn().mockResolvedValue(tagList);
+    const onBulkAssignTag = vi.fn().mockResolvedValue(characterBulkResponse);
+    render(<WorldSearchPanel worldId={7} onSearch={onSearch} onListTags={onListTags} onBulkAssignTag={onBulkAssignTag} />);
+
+    expect(await screen.findByText('全局搜索')).toBeInTheDocument();
+    const panel = screen.getByTestId('world-search-panel');
+    expect(panel).toHaveClass('motion-page-enter');
+
+    expect(screen.getByTestId('world-search-controls')).toHaveClass('flex-wrap');
+
+    await user.type(screen.getByLabelText('搜索世界资料'), '灯塔');
+    await user.click(screen.getByRole('button', { name: '搜索' }));
+
+    const bulkForm = await screen.findByTestId('world-search-bulk-form');
+    expect(bulkForm).toHaveClass('surface-layer');
+    expect(bulkForm).toHaveClass('gap-4');
+  });
 });

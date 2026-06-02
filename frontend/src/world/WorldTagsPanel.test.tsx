@@ -912,4 +912,17 @@ describe('WorldTagsPanel', () => {
     renderPanel({ onListTags: vi.fn().mockRejectedValue(new Error('tags down')) });
     expect(await screen.findByRole('alert')).toHaveTextContent('tags down');
   });
+
+  it('uses layered motion classes for tag workspace controls and detail cards', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    expect(await screen.findByText('标签与收藏')).toBeInTheDocument();
+    expect(screen.getByTestId('world-tags-panel')).toHaveClass('motion-page-enter');
+    expect(screen.getByTestId('tag-create-form')).toHaveClass('gap-4');
+    expect(screen.getByTestId('tag-filter-controls')).toHaveClass('gap-4');
+
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+    expect(await screen.findByTestId('tag-detail-panel')).toHaveClass('surface-layer');
+  });
 });

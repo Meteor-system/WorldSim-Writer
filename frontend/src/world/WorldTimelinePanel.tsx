@@ -77,7 +77,7 @@ export function WorldTimelinePanel({ worldId, onLoadEvents }: Props) {
   }, [worldId]);
 
   return (
-    <section className="book-card space-y-5 p-5">
+    <section className="book-card motion-page-enter space-y-5 p-5" data-testid="world-timeline-panel">
       <div>
         <p className="chapter-kicker">世界历史</p>
         <h2 className="text-2xl font-black text-[#34210f]">世界历史记录</h2>
@@ -89,7 +89,7 @@ export function WorldTimelinePanel({ worldId, onLoadEvents }: Props) {
 
       {timeline && (
         <>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2" data-testid="world-timeline-summary">
             <p className="rounded-2xl bg-amber-50/70 p-3 text-sm font-bold text-[#5e3b1c]">总事件：{timeline.summary.total}</p>
             <p className="rounded-2xl bg-amber-50/70 p-3 text-sm font-bold text-[#5e3b1c]">最新世界进度：{labelWorldVersion(timeline.summary.latest_world_version)}</p>
           </div>
@@ -119,7 +119,7 @@ export function WorldTimelinePanel({ worldId, onLoadEvents }: Props) {
           ) : (
             <div className="space-y-3">
               {timeline.items.map((event) => (
-                <article key={event.id} className="rounded-2xl border border-amber-900/15 bg-white/35 p-4">
+                <article key={event.id} className="surface-layer motion-soft-lift rounded-2xl border border-amber-900/15 p-4" data-testid="world-timeline-event-card">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <h3 className="font-black text-[#3b2511]">{labelEventType(event.event_type)}</h3>

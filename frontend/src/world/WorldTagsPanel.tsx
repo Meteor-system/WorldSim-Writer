@@ -376,7 +376,7 @@ export function WorldTagsPanel({ worldId, readOnly = false, onListTags, onCreate
   const detailFilteredEmptyText = `没有匹配${constraintText(detailEmptyGuidance)}的对象。请重置对象视图或调整搜索与类型筛选。`;
 
   return (
-    <section className="book-card space-y-5 p-5">
+    <section className="book-card motion-page-enter space-y-5 p-5" data-testid="world-tags-panel">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="chapter-kicker">资料工具台</p>
@@ -411,7 +411,7 @@ export function WorldTagsPanel({ worldId, readOnly = false, onListTags, onCreate
 
       {tags.length > 0 && (
         <div className="space-y-2">
-          <div className="grid gap-3 md:grid-cols-[1fr_12rem_14rem_auto]">
+          <div className="grid gap-4 md:grid-cols-[1fr_12rem_14rem_auto]" data-testid="tag-filter-controls">
             <label className="block rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#3b2511]">
               搜索标签
               <input
@@ -461,7 +461,7 @@ export function WorldTagsPanel({ worldId, readOnly = false, onListTags, onCreate
           {visibleTags.map((tag) => (
             <button
               key={tag.id}
-              className={`rounded-2xl border border-amber-900/15 bg-white/40 px-4 py-3 text-left ${selectedTagId === tag.id ? 'ring-2 ring-amber-800' : ''}`}
+              className={`motion-soft-lift rounded-2xl border border-amber-900/15 bg-white/40 px-4 py-3 text-left ${selectedTagId === tag.id ? 'ring-2 ring-amber-800' : ''}`}
               type="button"
               onClick={() => void loadTag(tag.id)}
               aria-label={`查看 ${tag.name}`}
@@ -477,7 +477,7 @@ export function WorldTagsPanel({ worldId, readOnly = false, onListTags, onCreate
 
       {detailLoading && <p className="ink-muted" role="status">正在读取标签详情...</p>}
       {detail && (
-        <div className="space-y-4 rounded-2xl bg-white/35 p-4">
+        <div className="surface-layer motion-page-enter space-y-4 rounded-2xl p-4" data-testid="tag-detail-panel">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-sm font-bold text-[#5e3b1c]">当前标签</p>
@@ -627,7 +627,7 @@ export function WorldTagsPanel({ worldId, readOnly = false, onListTags, onCreate
           ) : (
             <div className="space-y-3">
               {filteredObjects.map((item) => (
-                <article key={`${item.object_type}-${item.object_id}`} className="rounded-2xl border border-amber-900/15 bg-amber-50/50 p-3">
+                <article key={`${item.object_type}-${item.object_id}`} className="motion-soft-lift rounded-2xl border border-amber-900/15 bg-amber-50/50 p-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-xs font-black tracking-[0.14em] text-[#8a5a2b]">{labelObjectType(item.object_type)} #{item.object_id}</p>

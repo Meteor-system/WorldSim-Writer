@@ -9,7 +9,7 @@ describe('App', () => {
 
     render(<App />);
 
-    expect(screen.getByText('WorldSim-Writer')).toBeInTheDocument();
+    expect(screen.getByText('进入故事世界运营台')).toBeInTheDocument();
     expect(screen.getByText('登录')).toBeInTheDocument();
     expect(screen.getByText('注册')).toBeInTheDocument();
   });

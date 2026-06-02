@@ -1058,3 +1058,38 @@ describe('WorldPage Narrative Control Center', () => {
     });
   });
 });
+
+describe('WorldPage motion and layout polish', () => {
+  it('renders the overview as a staged responsive workspace without internal identifiers', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('世界正史档案')).toBeInTheDocument();
+
+    const workspace = screen.getByTestId('world-overview-workspace');
+    expect(workspace).toHaveClass('workspace-shell');
+    expect(workspace).toHaveClass('motion-page-enter');
+
+    const primary = screen.getByTestId('world-primary-stage');
+    expect(primary).toHaveClass('space-y-8');
+
+    const supporting = screen.getByTestId('world-supporting-rail');
+    expect(supporting).toHaveClass('space-y-5');
+
+    expect(document.body).not.toHaveTextContent('WORLD CANON');
+    expect(document.body).not.toHaveTextContent('WORLD OPERATIONS');
+    expect(document.body).not.toHaveTextContent('xianxia');
+    expect(document.body).not.toHaveTextContent('running');
+  });
+
+  it('adds motion and hierarchy classes to dashboard cards and actions', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    const dashboard = within(await screen.findByLabelText('世界运营仪表盘'));
+    expect(dashboard.getByTestId('world-dashboard-metrics')).toHaveClass('gap-4');
+    expect(dashboard.getByTestId('world-dashboard-actions')).toHaveClass('lg:grid-cols-3');
+    dashboard.getAllByTestId('world-dashboard-action-card').forEach((card) => {
+      expect(card).toHaveClass('motion-soft-lift');
+      expect(card).toHaveClass('surface-layer');
+    });
+  });
+});
