@@ -86,6 +86,11 @@ def _is_duplicate_email_register_response(response: httpx.Response) -> bool:
     return isinstance(payload, dict) and payload.get('detail') == 'EMAIL_ALREADY_REGISTERED'
 
 
+def _mark_request_error(summary: dict, step: str, exc: httpx.RequestError) -> None:
+    summary['failed_step'] = step
+    summary['error'] = 'REQUEST_TIMEOUT' if isinstance(exc, httpx.TimeoutException) else str(exc)
+
+
 def _step_json(summary: dict, step: str, request_call) -> dict:
     try:
         response = request_call()
@@ -112,8 +117,7 @@ def _step_json(summary: dict, step: str, request_call) -> dict:
         summary['response_body'] = _response_body_snippet(exc.response)
         return {}
     except httpx.RequestError as exc:
-        summary['failed_step'] = step
-        summary['error'] = str(exc)
+        _mark_request_error(summary, step, exc)
         return {}
     except Exception as exc:
         summary['failed_step'] = step
@@ -213,8 +217,7 @@ def _register_or_login(client: httpx.Client, email: str, password: str, summary:
     try:
         response = client.post('/auth/register', json={'email': email, 'password': password})
     except httpx.RequestError as exc:
-        summary['failed_step'] = 'register'
-        summary['error'] = str(exc)
+        _mark_request_error(summary, 'register', exc)
         return {}, 'register'
     if _is_duplicate_email_register_response(response):
         return _step_json(summary, 'login', lambda: client.post('/auth/login', json={'email': email, 'password': password})), 'login'

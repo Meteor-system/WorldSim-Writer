@@ -23,7 +23,10 @@ class SequencedTransport(httpx.BaseTransport):
     def handle_request(self, request):
         self.requests.append(request)
         assert self.responses, f'unexpected request: {request.method} {request.url}'
-        return self.responses.pop(0)
+        response = self.responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response
 
 
 class FailingTransport(httpx.BaseTransport):
@@ -1185,6 +1188,36 @@ def test_e2e_smoke_script_returns_step_context_for_http_failure(monkeypatch):
     assert summary['checks']['create_world']['world_version'] == 1
 
 
+def test_e2e_smoke_script_reports_request_timeout_for_draft_timeout(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    timeout_request = httpx.Request('POST', 'https://worldsim.test/worlds/10/chapters/draft')
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            httpx.ReadTimeout('draft timed out', request=timeout_request),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'draft'
+    assert summary['error'] == 'REQUEST_TIMEOUT'
+    assert summary['timeout_seconds'] == 60.0
+    assert 'status_code' not in summary
+    assert 'response_body' not in summary
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+        '/worlds/10/chapters/draft',
+    ]
+
+
 def test_e2e_smoke_script_reports_invalid_json_response_body_for_success_response(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()
@@ -1393,6 +1426,29 @@ def test_e2e_smoke_script_requires_register_access_token_to_be_string(monkeypatc
     assert summary['failed_step'] == 'register'
     assert summary['error'] == 'INVALID_FIELD_TYPES'
     assert summary['invalid_fields'] == ['access_token']
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+    ]
+
+
+def test_e2e_smoke_script_reports_request_timeout_for_register_timeout(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    timeout_request = httpx.Request('POST', 'https://worldsim.test/auth/register')
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            httpx.ConnectTimeout('register timed out', request=timeout_request),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'register'
+    assert summary['error'] == 'REQUEST_TIMEOUT'
     assert [request.url.path for request in transport.requests] == [
         '/health',
         '/auth/register',
