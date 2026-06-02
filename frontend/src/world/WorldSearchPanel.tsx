@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import type { ObjectTagBulkAssignResponse, TagListResponse, TagSummaryResponse, WorldSearchResponse } from '../api/types';
+import { labelObjectType, labelTagName, localizeSubtitle } from './displayLabels';
 
 type Props = {
   worldId: number;
@@ -172,22 +173,22 @@ export function WorldSearchPanel({ worldId, readOnly = false, onSearch, onListTa
   return (
     <section className="book-card space-y-5 p-5">
       <div>
-        <p className="chapter-kicker">Tools Workspace</p>
-        <h2 className="text-2xl font-black text-[#34210f]">Global Search</h2>
+        <p className="chapter-kicker">资料工具台</p>
+        <h2 className="text-2xl font-black text-[#34210f]">全局搜索</h2>
         <p className="manuscript mt-2 text-sm text-[#5e3b1c]">跨世界设定、角色、章节、伏笔与正式事件查找资料。</p>
       </div>
 
       <form className="space-y-3" onSubmit={submitSearch}>
         <label className="block text-sm font-bold text-[#3b2511]" htmlFor="world-search-input">搜索世界资料</label>
-        <div className="flex flex-col gap-2 md:flex-row">
+        <div className="flex flex-col flex-wrap gap-3 sm:flex-row" data-testid="world-search-controls">
           <input
             id="world-search-input"
-            className="w-full rounded-2xl border border-amber-900/20 bg-white/60 px-4 py-3 text-sm text-[#2f1b0c] outline-none focus:border-amber-800"
+            className="min-w-0 flex-1 rounded-2xl border border-amber-900/20 bg-white/60 px-4 py-3 text-sm text-[#2f1b0c] outline-none focus:border-amber-800 sm:min-w-72"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="输入角色、伏笔、章节或事件关键词"
           />
-          <button className="primary-button" disabled={loading} type="submit">搜索</button>
+          <button className="primary-button w-full sm:w-auto" disabled={loading} type="submit">搜索</button>
         </div>
       </form>
 
@@ -216,12 +217,12 @@ export function WorldSearchPanel({ worldId, readOnly = false, onSearch, onListTa
                 return (
                   <button
                     key={tag.id}
-                    aria-label={`标签 ${tag.name} ${tag.assignment_count}`}
+                    aria-label={`标签 ${labelTagName(tag.name)} ${tag.assignment_count}`}
                     className={`secondary-button text-sm ${selectedTags.includes(value) ? 'bg-amber-100' : ''}`}
                     type="button"
                     onClick={() => toggleTag(value)}
                   >
-                    {tag.name} · {tag.assignment_count}
+                    {labelTagName(tag.name)} · {tag.assignment_count}
                   </button>
                 );
               })}
@@ -239,7 +240,7 @@ export function WorldSearchPanel({ worldId, readOnly = false, onSearch, onListTa
           <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-[#5e3b1c]">
             <span>找到 {totalCount(response)} 条结果</span>
             {Object.entries(response.object_type_counts).map(([type, count]) => (
-              <span key={type} className="rounded-full bg-amber-50 px-3 py-1">{type} × {count}</span>
+              <span key={type} className="rounded-full bg-amber-50 px-3 py-1">{labelObjectType(type)} × {count}</span>
             ))}
           </div>
 
@@ -273,16 +274,16 @@ export function WorldSearchPanel({ worldId, readOnly = false, onSearch, onListTa
                 <article key={`${result.object_type}-${result.object_id ?? result.title}`} className="rounded-2xl border border-amber-900/15 bg-white/35 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-black uppercase tracking-[0.2em] text-[#8a5a2b]">{result.object_type}</p>
+                      <p className="text-xs font-black tracking-[0.14em] text-[#8a5a2b]">{labelObjectType(result.object_type)}</p>
                       <h3 className="mt-1 font-black text-[#3b2511]">{result.title}</h3>
                     </div>
-                    <p className="text-xs font-bold text-[#5e3b1c]">{result.subtitle}</p>
+                    <p className="text-xs font-bold text-[#5e3b1c]">{localizeSubtitle(result.subtitle)}</p>
                   </div>
                   <p className="manuscript mt-3 text-sm">{result.snippet}</p>
                   {resultTags(result.metadata).length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {resultTags(result.metadata).map((tag) => (
-                        <span key={tag.id} className="rounded-full bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c]">{tag.name}</span>
+                        <span key={tag.id} className="rounded-full bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c]">{labelTagName(tag.name)}</span>
                       ))}
                     </div>
                   )}

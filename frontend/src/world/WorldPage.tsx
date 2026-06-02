@@ -46,6 +46,7 @@ import { WorldPulsePanel } from './WorldPulsePanel';
 import { WorldSearchPanel } from './WorldSearchPanel';
 import { WorldTagsPanel } from './WorldTagsPanel';
 import { WorldTimelinePanel } from './WorldTimelinePanel';
+import { labelGenre, labelStatus, labelWorldVersion } from './displayLabels';
 
 type Props = { onEnterStudio: (world: WorldOverview, context?: StudioLaunchContext) => void; autoFocusTitle?: boolean };
 
@@ -92,18 +93,14 @@ function describeEvent(event: { event_type: string; payload: Record<string, unkn
       if (change === 'updated') {
         const after = payload.after as Record<string, any>;
         if (after?.status) {
-          const statusMap: Record<string, string> = {
-            planted: '已埋下', advanced: '推进中', partially_resolved: '部分揭晓',
-            fully_resolved: '已揭晓', abandoned: '已废弃',
-          };
-          return `🔮 伏笔「${fsName}」${statusMap[after.status] ?? after.status}`;
+          return `🔮 伏笔「${fsName}」${labelStatus(after.status)}`;
         }
         return `🔮 伏笔「${fsName}」发生了变化`;
       }
       return `🔮 伏笔「${fsName}」发生了变化`;
     }
     case 'world_version_increment':
-      return `📖 世界版本更新至 v${payload.world_version_after ?? event.event_type}`;
+      return `📖 世界进度更新至${labelWorldVersion(payload.world_version_after ?? event.event_type)}`;
     default:
       return `${event.event_type}`;
   }
@@ -124,7 +121,7 @@ function dashboardActions(world: WorldOverview, isArchivedWorld: boolean): Array
   const actions = [
     isArchivedWorld
       ? { label: '恢复写作后继续下一章', detail: '这本小说已归档；恢复写作后再继续推进正史。' }
-      : { label: '继续下一章', detail: `下一章会继承世界进度 v${world.world_version} 和已写入正史的变化。`, primary: true },
+      : { label: '继续下一章', detail: `下一章会继承世界进度${labelWorldVersion(world.world_version)}和已写入正史的变化。`, primary: true },
   ];
   if (urgentForeshadow) {
     actions.push({
@@ -148,23 +145,23 @@ function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowFo
   const actions = dashboardActions(world, isArchivedWorld);
 
   return (
-    <section className="book-card mt-8 space-y-5 border-2 border-amber-900/15 bg-amber-50/70 p-5" aria-label="世界运营仪表盘">
+    <section className="book-card mt-8 space-y-6 border-2 border-amber-900/15 bg-amber-50/70 p-6" aria-label="世界运营仪表盘">
       <div>
-        <p className="chapter-kicker">World Operations</p>
+        <p className="chapter-kicker">今日运营</p>
         <h2 className="text-2xl font-black text-[#34210f]">世界运营仪表盘</h2>
         <p className="manuscript mt-2 text-sm text-[#5e3b1c]">今天这个故事世界需要处理什么？先看正史进度、活跃角色、悬念/伏笔和世界历史记录。</p>
       </div>
-      <div className="grid gap-3 text-sm md:grid-cols-4">
-        <p className="rounded-2xl bg-white/65 p-3 font-black text-[#3b2511]">世界进度 v{world.world_version}</p>
-        <p className="rounded-2xl bg-white/65 p-3 font-black text-[#3b2511]">已写入正史章节：{world.approved_chapter_count}</p>
-        <p className="rounded-2xl bg-white/65 p-3 font-black text-[#3b2511]">近期世界历史记录：{world.recent_events.length}</p>
-        <p className="rounded-2xl bg-white/65 p-3 font-black text-[#3b2511]">待处理悬念/伏笔：{openForeshadows(world).length}</p>
+      <div className="grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
+        <p className="rounded-2xl bg-white/65 p-4 font-black text-[#3b2511]">世界进度：{labelWorldVersion(world.world_version)}</p>
+        <p className="rounded-2xl bg-white/65 p-4 font-black text-[#3b2511]">已写入正史章节：{world.approved_chapter_count}</p>
+        <p className="rounded-2xl bg-white/65 p-4 font-black text-[#3b2511]">近期世界历史记录：{world.recent_events.length}</p>
+        <p className="rounded-2xl bg-white/65 p-4 font-black text-[#3b2511]">待处理悬念/伏笔：{openForeshadows(world).length}</p>
       </div>
       <section>
         <h3 className="font-black text-[#3b2511]">今天建议处理什么</h3>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
+        <div className="mt-4 grid gap-4 lg:grid-cols-3" data-testid="world-dashboard-actions">
           {actions.map((action) => (
-            <article key={action.label} className="rounded-2xl bg-white/60 p-3">
+            <article key={action.label} className="rounded-2xl bg-white/60 p-4">
               {action.primary && !isArchivedWorld ? (
                 <button className="primary-button" type="button" onClick={onContinue}>{action.label}</button>
               ) : (
@@ -175,7 +172,7 @@ function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowFo
           ))}
         </div>
       </section>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-5 xl:grid-cols-3" data-testid="world-dashboard-sidebars">
         <section className="rounded-2xl bg-white/55 p-4">
           <h3 className="font-black text-[#3b2511]">活跃角色</h3>
           <div className="mt-3 space-y-2">
@@ -190,7 +187,7 @@ function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowFo
           <div className="mt-3 space-y-2">
             {urgentForeshadows.length === 0 && <p className="ink-muted text-sm">暂无待处理悬念/伏笔。</p>}
             {urgentForeshadows.map((item) => (
-              <p className="manuscript text-sm" key={item.id}>{item.title}：{item.status} · 紧迫度 {item.urgency_level ?? 0}</p>
+              <p className="manuscript text-sm" key={item.id}>{item.title}：{labelStatus(item.status)} · 紧迫度 {item.urgency_level ?? 0}</p>
             ))}
           </div>
           <button className="secondary-button mt-3" type="button" onClick={onShowForeshadows}>查看悬念/伏笔账本</button>
@@ -656,7 +653,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 {activeWorlds.map((item) => (
                   <article key={item.id} className="rounded-2xl bg-amber-50/60 p-3">
                     <p className="font-black text-[#34210f]">{item.title}</p>
-                    <p className="ink-muted mt-1 text-sm">v{item.world_version} · {item.genre_template} · {item.status}</p>
+                    <p className="ink-muted mt-1 text-sm">{labelWorldVersion(item.world_version)} · {labelGenre(item.genre_template)} · {labelStatus(item.status)}</p>
                     <button className="secondary-button mt-3" type="button" onClick={() => void openWorldFromShelf(item.id)}>打开 {item.title}</button>
                   </article>
                 ))}
@@ -670,7 +667,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 {archivedWorlds.map((item) => (
                   <article key={item.id} className="rounded-2xl bg-white/40 p-3">
                     <p className="font-black text-[#34210f]">{item.title}</p>
-                    <p className="ink-muted mt-1 text-sm">v{item.world_version} · {item.genre_template} · archived</p>
+                    <p className="ink-muted mt-1 text-sm">{labelWorldVersion(item.world_version)} · {labelGenre(item.genre_template)} · 已归档</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button className="secondary-button" type="button" onClick={() => void openWorldFromShelf(item.id)}>打开 {item.title}</button>
                       <button className="primary-button" type="button" disabled={archiveLoading} onClick={() => void restoreArchivedWorldFromShelf(item.id)}>恢复写作 {item.title}</button>
@@ -738,7 +735,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
         {tab === 'overview' && (
           <div className="grid gap-8 md:grid-cols-[1fr_1fr]">
             <div>
-              <p className="chapter-kicker">World Canon</p>
+              <p className="chapter-kicker">世界正史档案</p>
               <h1
                 ref={titleRef}
                 tabIndex={-1}
@@ -747,7 +744,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 {world.title}
               </h1>
               <p className="mt-3 ink-muted">
-                第 {world.world_version} 版 · {world.genre_template} · {world.status}
+                {labelWorldVersion(world.world_version)} · {labelGenre(world.genre_template)} · {labelStatus(world.status)}
               </p>
               <p className="manuscript mt-8 text-lg">{world.truth_canon}</p>
               <WorldOperationsDashboard
@@ -820,7 +817,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 <div className="mt-3 space-y-3">
                   {world.foreshadows.map((item) => (
                     <p className="manuscript" key={item.id}>
-                      {item.title}：{item.status}
+                      {item.title}：{labelStatus(item.status)}
                     </p>
                   ))}
                 </div>

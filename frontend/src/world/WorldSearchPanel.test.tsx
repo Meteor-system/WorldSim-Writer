@@ -18,6 +18,16 @@ const tagList: TagListResponse = {
       assignment_count: 1,
       object_type_counts: { foreshadow: 1 },
     },
+    {
+      id: 4,
+      world_id: 7,
+      name: 'xianxia_intrigue',
+      slug: 'xianxia_intrigue',
+      color: 'red',
+      created_at: '2026-05-31T00:00:00Z',
+      assignment_count: 2,
+      object_type_counts: { character: 1, foreshadow: 1 },
+    },
   ],
 };
 
@@ -75,17 +85,21 @@ describe('WorldSearchPanel', () => {
     const onSearch = vi.fn().mockResolvedValue(searchResponse);
     render(<WorldSearchPanel worldId={7} onSearch={onSearch} />);
 
-    expect(screen.getByText('Global Search')).toBeInTheDocument();
+    expect(screen.getByText('全局搜索')).toBeInTheDocument();
+    expect(screen.getByText('资料工具台')).toBeInTheDocument();
     await user.type(screen.getByLabelText('搜索世界资料'), '灯塔');
     await user.click(screen.getByRole('button', { name: '搜索' }));
 
     await waitFor(() => expect(onSearch).toHaveBeenCalledWith(7, { q: '灯塔', object_types: [], limit: 20 }));
     expect(await screen.findByText('找到 2 条结果')).toBeInTheDocument();
-    expect(screen.getByText('character × 1')).toBeInTheDocument();
-    expect(screen.getByText('foreshadow × 1')).toBeInTheDocument();
+    expect(screen.getByText('角色 × 1')).toBeInTheDocument();
+    expect(screen.getByText('悬念/伏笔 × 1')).toBeInTheDocument();
     expect(screen.getByText('许砚')).toBeInTheDocument();
     expect(screen.getByText('废弃黑匣子收到来自未来的求救信号。')).toBeInTheDocument();
     expect(screen.getByText('灯塔线')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('Global Search');
+    expect(document.body).not.toHaveTextContent('Tools Workspace');
+    expect(document.body).not.toHaveTextContent('planted');
   });
 
   it('loads tag filters and sends selected tags', async () => {
@@ -172,6 +186,18 @@ describe('WorldSearchPanel', () => {
     await user.click(screen.getByRole('button', { name: '搜索' }));
 
     await waitFor(() => expect(onSearch).toHaveBeenCalledWith(7, { q: '灯塔', object_types: ['character'], limit: 20 }));
+  });
+
+  it('shows readable tags and wraps search controls instead of exposing raw keys', async () => {
+    const onSearch = vi.fn().mockResolvedValue(searchResponse);
+    const onListTags = vi.fn().mockResolvedValue(tagList);
+    render(<WorldSearchPanel worldId={7} onSearch={onSearch} onListTags={onListTags} />);
+
+    expect(await screen.findByRole('button', { name: '标签 仙侠 · 权谋/悬疑 2' })).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('xianxia_intrigue');
+
+    expect(screen.getByTestId('world-search-controls')).toHaveClass('flex-wrap');
+    expect(screen.getByRole('button', { name: '搜索' })).toHaveClass('sm:w-auto');
   });
 
   it('does not search blank queries', async () => {

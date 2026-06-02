@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { EventLog, EventLogListResponse } from '../api/types';
+import { labelEventType, labelGenre, labelObjectType, labelStatus, labelWorldVersion } from './displayLabels';
 
 type Props = {
   worldId: number;
@@ -27,21 +28,21 @@ function describeEvent(event: EventLog): string {
   const payload = event.payload;
   if (event.event_type === 'WORLD_CREATED') {
     const counts = starterCounts(payload);
-    return `世界「${String(payload.title ?? event.world_id)}」创建，题材 ${String(payload.genre_template ?? 'unknown')}，初始角色 ${counts.characters ?? 0}、关系 ${counts.relations ?? 0}、伏笔 ${counts.foreshadows ?? 0}。`;
+    return `世界「${String(payload.title ?? event.world_id)}」创建，题材 ${labelGenre(String(payload.genre_template ?? 'unknown'))}，初始角色 ${counts.characters ?? 0}、关系 ${counts.relations ?? 0}、伏笔 ${counts.foreshadows ?? 0}。`;
   }
   if (event.event_type === 'chapter_approved' || event.event_type === 'CHAPTER_APPROVED') {
     const title = payload.chapter_title ? `《${String(payload.chapter_title)}》` : `#${String(payload.chapter_id ?? event.chapter_id ?? 'unknown')}`;
-    return `章节 ${title} 已批准并写入正式世界。`;
+    return `章节 ${title} 已写入正史。`;
   }
   if (event.event_type === 'character_change' || event.event_type === 'foreshadow_change') {
-    const objectType = String(payload.object_type ?? event.event_type.replace('_change', ''));
-    const action = String(payload.action ?? payload.change ?? 'changed');
+    const objectType = labelObjectType(String(payload.object_type ?? event.event_type.replace('_change', '')));
+    const action = labelStatus(String(payload.action ?? payload.change ?? 'changed'));
     const objectId = String(payload.object_id ?? 'unknown');
     const reason = payload.edit_reason ? `；原因：${String(payload.edit_reason)}` : '';
-    return `${objectType} 已 ${action}：#${objectId}${reason}`;
+    return `${objectType}已${action}：#${objectId}${reason}`;
   }
   if (event.event_type === 'world_version_increment') {
-    return `世界版本更新至 v${String(payload.world_version_after ?? event.world_version_after)}。`;
+    return `世界进度更新至${labelWorldVersion(String(payload.world_version_after ?? event.world_version_after))}。`;
   }
   return compactPayload(payload);
 }
@@ -78,8 +79,8 @@ export function WorldTimelinePanel({ worldId, onLoadEvents }: Props) {
   return (
     <section className="book-card space-y-5 p-5">
       <div>
-        <p className="chapter-kicker">Formal Event History</p>
-        <h2 className="text-2xl font-black text-[#34210f]">Timeline Explorer</h2>
+        <p className="chapter-kicker">世界历史</p>
+        <h2 className="text-2xl font-black text-[#34210f]">世界历史记录</h2>
         <p className="manuscript mt-2 text-sm text-[#5e3b1c]">查看正式写入世界状态的事件、版本变化与来源。</p>
       </div>
 
@@ -90,7 +91,7 @@ export function WorldTimelinePanel({ worldId, onLoadEvents }: Props) {
         <>
           <div className="grid gap-3 md:grid-cols-2">
             <p className="rounded-2xl bg-amber-50/70 p-3 text-sm font-bold text-[#5e3b1c]">总事件：{timeline.summary.total}</p>
-            <p className="rounded-2xl bg-amber-50/70 p-3 text-sm font-bold text-[#5e3b1c]">最新世界版本：v{timeline.summary.latest_world_version}</p>
+            <p className="rounded-2xl bg-amber-50/70 p-3 text-sm font-bold text-[#5e3b1c]">最新世界进度：{labelWorldVersion(timeline.summary.latest_world_version)}</p>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -108,7 +109,7 @@ export function WorldTimelinePanel({ worldId, onLoadEvents }: Props) {
                 type="button"
                 onClick={() => selectEventType(eventType)}
               >
-                {eventType} × {count}
+                {labelEventType(eventType)} × {count}
               </button>
             ))}
           </div>
@@ -121,9 +122,9 @@ export function WorldTimelinePanel({ worldId, onLoadEvents }: Props) {
                 <article key={event.id} className="rounded-2xl border border-amber-900/15 bg-white/35 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <h3 className="font-black text-[#3b2511]">{event.event_type}</h3>
+                      <h3 className="font-black text-[#3b2511]">{labelEventType(event.event_type)}</h3>
                       <p className="mt-1 text-xs font-bold text-[#5e3b1c]">
-                        {event.source_type} · 世界 {event.world_version_before} → {event.world_version_after}
+                        世界进度 {labelWorldVersion(event.world_version_before)} → {labelWorldVersion(event.world_version_after)}
                       </p>
                     </div>
                     <time className="text-xs font-bold text-[#5e3b1c]">{new Date(event.created_at).toLocaleString()}</time>

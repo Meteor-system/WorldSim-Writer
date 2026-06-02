@@ -48,13 +48,16 @@ describe('WorldTimelinePanel', () => {
   it('renders timeline summary and user-readable event descriptions', async () => {
     render(<WorldTimelinePanel worldId={7} onLoadEvents={vi.fn().mockResolvedValue(timeline)} />);
 
-    expect(await screen.findByText('Timeline Explorer')).toBeInTheDocument();
+    expect(await screen.findByText('世界历史记录')).toBeInTheDocument();
     expect(screen.getByText('总事件：3')).toBeInTheDocument();
-    expect(screen.getByText('最新世界版本：v2')).toBeInTheDocument();
-    expect(screen.getByText('WORLD_CREATED × 1')).toBeInTheDocument();
-    expect(screen.getByText('character_change × 1')).toBeInTheDocument();
-    expect(screen.getByText('世界「群星边境」创建，题材 sci_fi，初始角色 2、关系 1、伏笔 1。')).toBeInTheDocument();
-    expect(screen.getByText('character 已 updated：#1；原因：推进角色线索')).toBeInTheDocument();
+    expect(screen.getByText('最新世界进度：第 2 版')).toBeInTheDocument();
+    expect(screen.getByText('世界已创建 × 1')).toBeInTheDocument();
+    expect(screen.getByText('角色变化 × 1')).toBeInTheDocument();
+    expect(screen.getByText('世界「群星边境」创建，题材 科幻，初始角色 2、关系 1、伏笔 1。')).toBeInTheDocument();
+    expect(screen.getByText('角色已更新：#1；原因：推进角色线索')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('WORLD_CREATED');
+    expect(document.body).not.toHaveTextContent('sci_fi');
+    expect(document.body).not.toHaveTextContent('character_change');
   });
 
   it('reloads events when an event-type filter is selected', async () => {
@@ -62,8 +65,8 @@ describe('WorldTimelinePanel', () => {
     const onLoadEvents = vi.fn().mockResolvedValue(timeline);
     render(<WorldTimelinePanel worldId={7} onLoadEvents={onLoadEvents} />);
 
-    await screen.findByText('Timeline Explorer');
-    await user.click(screen.getByRole('button', { name: 'character_change × 1' }));
+    await screen.findByText('世界历史记录');
+    await user.click(screen.getByRole('button', { name: '角色变化 × 1' }));
 
     await waitFor(() => expect(onLoadEvents).toHaveBeenLastCalledWith(7, { limit: 20, event_type: 'character_change' }));
   });

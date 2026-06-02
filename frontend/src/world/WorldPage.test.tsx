@@ -395,12 +395,26 @@ beforeEach(() => {
 });
 
 describe('WorldPage operations dashboard', () => {
+  it('localizes overview headers, genre, and status without raw identifiers', async () => {
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('世界正史档案')).toBeInTheDocument();
+    expect(screen.getByText('第 2 版 · 仙侠 · 进行中')).toBeInTheDocument();
+    expect(screen.getByText('今日运营')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('WORLD CANON');
+    expect(document.body).not.toHaveTextContent('World Canon');
+    expect(document.body).not.toHaveTextContent('WORLD OPERATIONS');
+    expect(document.body).not.toHaveTextContent('World Operations');
+    expect(document.body).not.toHaveTextContent('xianxia');
+    expect(document.body).not.toHaveTextContent('running');
+  });
+
   it('shows world operations metrics in user language', async () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
     const dashboard = within(await screen.findByLabelText('世界运营仪表盘'));
     expect(dashboard.getByText('世界运营仪表盘')).toBeInTheDocument();
-    expect(dashboard.getByText('世界进度 v2')).toBeInTheDocument();
+    expect(dashboard.getByText('世界进度：第 2 版')).toBeInTheDocument();
     expect(dashboard.getByText('已写入正史章节：1')).toBeInTheDocument();
     expect(dashboard.getByText('近期世界历史记录：0')).toBeInTheDocument();
     expect(dashboard.getByText('待处理悬念/伏笔：1')).toBeInTheDocument();
@@ -430,7 +444,11 @@ describe('WorldPage operations dashboard', () => {
     expect(dashboard.getByText('活跃角色')).toBeInTheDocument();
     expect(dashboard.getByText('林砚：追查湿信来源')).toBeInTheDocument();
     expect(dashboard.getByText('紧迫悬念/伏笔')).toBeInTheDocument();
-    expect(dashboard.getByText('裂纹玉佩：advanced · 紧迫度 4')).toBeInTheDocument();
+    expect(dashboard.getByText('裂纹玉佩：推进中 · 紧迫度 4')).toBeInTheDocument();
+    expect(dashboard.getByTestId('world-dashboard-actions')).toHaveClass('gap-4');
+    expect(dashboard.getByTestId('world-dashboard-sidebars')).toHaveClass('gap-5');
+    expect(document.body).not.toHaveTextContent('WORLD OPERATIONS');
+    expect(document.body).not.toHaveTextContent('World Operations');
     expect(dashboard.getByText('近期世界历史记录')).toBeInTheDocument();
     expect(dashboard.queryByText('第一章 雨巷密谈')).not.toBeInTheDocument();
     expect(dashboard.queryByText('林砚停在雨巷口。')).not.toBeInTheDocument();
@@ -546,7 +564,7 @@ describe('WorldPage bookshelf', () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
     expect(await screen.findByText('作品书架')).toBeInTheDocument();
-    expect(screen.queryByText('World Canon')).not.toBeInTheDocument();
+    expect(screen.queryByText('世界正史档案')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '打开 星舰余烬' }));
 
     expect(await screen.findByText('星舰余烬')).toBeInTheDocument();
@@ -566,7 +584,7 @@ describe('WorldPage bookshelf', () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
     await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
-    expect(await screen.findByText('World Canon')).toBeInTheDocument();
+    expect(await screen.findByText('世界正史档案')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '返回作品书架' }));
 
@@ -611,13 +629,13 @@ describe('WorldPage bookshelf', () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
     expect(await screen.findByText('作品书架')).toBeInTheDocument();
-    expect(screen.queryByText('World Canon')).not.toBeInTheDocument();
+    expect(screen.queryByText('世界正史档案')).not.toBeInTheDocument();
     expect(screen.getByText('已归档')).toBeInTheDocument();
     expect(screen.getByText('青岚城')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '打开 青岚城' }));
 
-    expect(await screen.findByText('World Canon')).toBeInTheDocument();
+    expect(await screen.findByText('世界正史档案')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '取消归档当前小说' })).toBeInTheDocument();
   });
 
@@ -636,7 +654,9 @@ describe('WorldPage bookshelf', () => {
     await user.click(screen.getByRole('button', { name: '恢复写作 青岚城' }));
 
     expect(updateWorldStatus).toHaveBeenCalledWith(7, { status: 'active' });
-    expect(await screen.findByText('v2 · xianxia · active')).toBeInTheDocument();
+    expect(await screen.findByText('第 2 版 · 仙侠 · 进行中')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('xianxia');
+    expect(document.body).not.toHaveTextContent('active');
     expect(screen.getByRole('button', { name: '打开 青岚城' })).toBeInTheDocument();
     expect(screen.getByText('暂无归档小说。')).toBeInTheDocument();
   });
@@ -686,7 +706,7 @@ describe('WorldPage bookshelf', () => {
 
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
-    expect(await screen.findByText('World Canon')).toBeInTheDocument();
+    expect(await screen.findByText('世界正史档案')).toBeInTheDocument();
     expect(screen.queryByText('作品书架')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '返回作品书架' }));
@@ -712,7 +732,7 @@ describe('WorldPage bookshelf', () => {
   it('still auto-opens a single existing world', async () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
-    expect(await screen.findByText('World Canon')).toBeInTheDocument();
+    expect(await screen.findByText('世界正史档案')).toBeInTheDocument();
     expect(screen.queryByText('作品书架')).not.toBeInTheDocument();
   });
 });
@@ -919,10 +939,10 @@ describe('WorldPage Narrative Control Center', () => {
     expect(screen.getByText('第一章 雨巷密谈 · v1 · 世界 1 → 2')).toBeInTheDocument();
     expect(screen.getByText('下一章准备台')).toBeInTheDocument();
     expect(screen.getByText('林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
-    expect(await screen.findByText('Timeline Explorer')).toBeInTheDocument();
+    expect(await screen.findByText('世界历史记录')).toBeInTheDocument();
     expect(getWorldEvents).toHaveBeenCalledWith(7, { limit: 20 });
-    expect(await screen.findByText('Global Search')).toBeInTheDocument();
-    expect(await screen.findByText('Tags / Collections')).toBeInTheDocument();
+    expect(await screen.findByText('全局搜索')).toBeInTheDocument();
+    expect(await screen.findByText('标签与收藏')).toBeInTheDocument();
     await waitFor(() => expect(listWorldTags).toHaveBeenCalledTimes(2));
     expect(listWorldTags).toHaveBeenCalledWith(7);
     await user.type(screen.getByLabelText('搜索世界资料'), '灯塔');

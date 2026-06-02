@@ -141,8 +141,10 @@ describe('WorldTagsPanel', () => {
     const onLoadTag = vi.fn().mockResolvedValue(detailResponse);
     renderPanel({ onListTags, onLoadTag });
 
-    expect(screen.getByText('Tags / Collections')).toBeInTheDocument();
-    expect(screen.getByText('标签只用于资料归档，不会写入 canon 或推进世界版本。')).toBeInTheDocument();
+    expect(screen.getByText('标签与收藏')).toBeInTheDocument();
+    expect(screen.getByText('标签只用于资料归档，不会写入正史或推进世界进度。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('Tags / Collections');
+    expect(document.body).not.toHaveTextContent('Tools Workspace');
     expect(await screen.findByText('灯塔线')).toBeInTheDocument();
     expect(screen.getByText('总数 1')).toBeInTheDocument();
 
@@ -151,6 +153,15 @@ describe('WorldTagsPanel', () => {
     await waitFor(() => expect(onLoadTag).toHaveBeenCalledWith(7, 3));
     expect(await screen.findByText('许砚')).toBeInTheDocument();
     expect(screen.getByText('查明灯塔异常')).toBeInTheDocument();
+  });
+
+  it('uses roomy responsive layouts for tag creation forms', async () => {
+    renderPanel();
+
+    expect(await screen.findByText('灯塔线')).toBeInTheDocument();
+    expect(screen.getByTestId('tag-create-form')).toHaveClass('grid');
+    expect(screen.getByTestId('tag-create-form')).toHaveClass('lg:grid-cols-[minmax(0,1fr)_minmax(10rem,14rem)_auto]');
+    expect(screen.getByTestId('tag-create-form')).toHaveClass('gap-4');
   });
 
   it('creates, assigns, bulk assigns, unassigns, and deletes tags', async () => {
@@ -329,6 +340,23 @@ describe('WorldTagsPanel', () => {
     expect(await screen.findByText('需要至少另一个标签才能合并当前标签。')).toBeInTheDocument();
   });
 
+  it('renders selected tag objects with Chinese object and status labels', async () => {
+    const user = userEvent.setup();
+    renderPanel({ onLoadTag: vi.fn().mockResolvedValue(mixedDetailResponse) });
+
+    await screen.findByText('灯塔线');
+    await user.click(screen.getByRole('button', { name: '查看 灯塔线' }));
+
+    expect(await screen.findByText('角色 #1')).toBeInTheDocument();
+    expect(screen.getByText('悬念/伏笔 #2')).toBeInTheDocument();
+    expect(screen.getByText('章节 #11')).toBeInTheDocument();
+    expect(screen.getByText('角色 · 主角 · 进行中')).toBeInTheDocument();
+    expect(screen.getByText('悬念/伏笔 · 已埋下 · 紧迫度 4')).toBeInTheDocument();
+    expect(screen.getByText('章节 · 已写入正史 · 世界第 1 版')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('planted');
+    expect(document.body).not.toHaveTextContent('active');
+  });
+
   it('filters selected tag objects by object type', async () => {
     const user = userEvent.setup();
     renderPanel({ onLoadTag: vi.fn().mockResolvedValue(mixedDetailResponse) });
@@ -499,7 +527,7 @@ describe('WorldTagsPanel', () => {
     renderPanel();
 
     await screen.findByText('灯塔线');
-    await user.type(screen.getByLabelText('搜索标签'), 'character 1');
+    await user.type(screen.getByLabelText('搜索标签'), '角色 1');
 
     expect(screen.getByText('灯塔线')).toBeInTheDocument();
     expect(screen.queryByText('主线归档')).not.toBeInTheDocument();
@@ -610,8 +638,8 @@ describe('WorldTagsPanel', () => {
 
     const tagButtons = screen.getAllByRole('button', { name: /查看 / });
     expect(tagButtons.map((button) => button.textContent)).toEqual([
-      '灯塔线总数 3character 1 · chapter 2',
-      '阿尔法档案总数 1foreshadow 1',
+      '灯塔线总数 3角色 1 · 章节 2',
+      '阿尔法档案总数 1悬念/伏笔 1',
       '主线归档总数 0无对象',
     ]);
   });
@@ -626,7 +654,7 @@ describe('WorldTagsPanel', () => {
 
     const tagButtons = screen.getAllByRole('button', { name: /查看 / });
     expect(tagButtons.map((button) => button.textContent)).toEqual([
-      '阿尔法档案总数 1foreshadow 1',
+      '阿尔法档案总数 1悬念/伏笔 1',
       '主线归档总数 0无对象',
     ]);
     expect(screen.getByText('显示 2 / 3 个标签')).toBeInTheDocument();
@@ -713,7 +741,7 @@ describe('WorldTagsPanel', () => {
 
     const tagButtons = screen.getAllByRole('button', { name: /查看 / });
     expect(tagButtons.map((button) => button.textContent)).toEqual([
-      '阿尔法档案总数 1foreshadow 1',
+      '阿尔法档案总数 1悬念/伏笔 1',
     ]);
     expect(screen.getByText('显示 1 / 3 个标签')).toBeInTheDocument();
   });
@@ -770,8 +798,8 @@ describe('WorldTagsPanel', () => {
     const tagButtons = screen.getAllByRole('button', { name: /查看 / });
     expect(tagButtons.map((button) => button.textContent)).toEqual([
       '主线归档总数 0无对象',
-      '灯塔线总数 3character 1 · chapter 2',
-      '阿尔法档案总数 1foreshadow 1',
+      '灯塔线总数 3角色 1 · 章节 2',
+      '阿尔法档案总数 1悬念/伏笔 1',
     ]);
     expect(screen.getByText('显示 3 / 3 个标签')).toBeInTheDocument();
   });

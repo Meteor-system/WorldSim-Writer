@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import type { ObjectTagBulkAssignResponse, ObjectTagResponse, TagDetailResponse, TagListResponse, TagMergeRequest, TagMergeResponse, TagResponse, TagSummaryResponse, TagUpdateRequest } from '../api/types';
+import { labelObjectType, localizeSubtitle } from './displayLabels';
 
 type Props = {
   worldId: number;
@@ -25,7 +26,7 @@ const OBJECT_TYPES = [
 function countText(tag: TagSummaryResponse): string {
   const counts = Object.entries(tag.object_type_counts);
   if (counts.length === 0) return '无对象';
-  return counts.map(([type, count]) => `${type} ${count}`).join(' · ');
+  return counts.map(([type, count]) => `${labelObjectType(type)} ${count}`).join(' · ');
 }
 
 function tagTypeFilterCount(tags: TagSummaryResponse[], value: string): number {
@@ -376,11 +377,11 @@ export function WorldTagsPanel({ worldId, readOnly = false, onListTags, onCreate
 
   return (
     <section className="book-card space-y-5 p-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="chapter-kicker">Tools Workspace</p>
-          <h2 className="text-2xl font-black text-[#34210f]">Tags / Collections</h2>
-          <p className="manuscript mt-2 text-sm text-[#5e3b1c]">标签只用于资料归档，不会写入 canon 或推进世界版本。</p>
+          <p className="chapter-kicker">资料工具台</p>
+          <h2 className="text-2xl font-black text-[#34210f]">标签与收藏</h2>
+          <p className="manuscript mt-2 text-sm text-[#5e3b1c]">标签只用于资料归档，不会写入正史或推进世界进度。</p>
           {readOnly && (
             <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">
               已归档小说为只读模式；恢复写作后才能编辑标签和对象关联。
@@ -390,7 +391,7 @@ export function WorldTagsPanel({ worldId, readOnly = false, onListTags, onCreate
       </div>
 
       {!readOnly && (
-        <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitTag}>
+        <form className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(10rem,14rem)_auto]" data-testid="tag-create-form" onSubmit={submitTag}>
           <label className="text-sm font-bold text-[#3b2511]">
             新标签名称
             <input className="paper-input mt-1" value={tagName} onChange={(event) => setTagName(event.target.value)} placeholder="例如：主线压力" />
@@ -496,7 +497,7 @@ export function WorldTagsPanel({ worldId, readOnly = false, onListTags, onCreate
           )}
 
           {!readOnly && (
-            <form className="grid gap-3 rounded-2xl bg-amber-50/60 p-4 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitTagUpdate}>
+            <form className="grid gap-4 rounded-2xl bg-amber-50/60 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(10rem,14rem)_auto]" onSubmit={submitTagUpdate}>
               <p className="text-sm font-black text-[#3b2511] md:col-span-3">编辑标签</p>
               <label className="text-sm font-bold text-[#3b2511]">
                 编辑标签名称
@@ -514,7 +515,7 @@ export function WorldTagsPanel({ worldId, readOnly = false, onListTags, onCreate
           {!readOnly && (availableMergeTargets().length === 0 ? (
             <p className="ink-muted text-sm">需要至少另一个标签才能合并当前标签。</p>
           ) : (
-            <form className="grid gap-3 rounded-2xl bg-white/45 p-4 md:grid-cols-[1fr_auto]" onSubmit={submitTagMerge}>
+            <form className="grid gap-4 rounded-2xl bg-white/45 p-4 md:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitTagMerge}>
               <p className="text-sm font-black text-[#3b2511] md:col-span-2">合并标签</p>
               <label className="text-sm font-bold text-[#3b2511]">
                 合并到标签
@@ -588,7 +589,7 @@ export function WorldTagsPanel({ worldId, readOnly = false, onListTags, onCreate
           </div>
 
           {!readOnly && (
-            <form className="grid gap-3 md:grid-cols-[1fr_1fr_auto]" onSubmit={submitAssignment}>
+            <form className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(8rem,12rem)_auto]" onSubmit={submitAssignment}>
               <label className="text-sm font-bold text-[#3b2511]">
                 对象类型
                 <select className="paper-input mt-1" value={objectType} onChange={(event) => setObjectType(event.target.value)}>
@@ -604,7 +605,7 @@ export function WorldTagsPanel({ worldId, readOnly = false, onListTags, onCreate
           )}
 
           {!readOnly && onBulkAssignTag && (
-            <form className="grid gap-3 md:grid-cols-[1fr_auto]" onSubmit={submitBulkAssignment}>
+            <form className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]" onSubmit={submitBulkAssignment}>
               <label className="text-sm font-bold text-[#3b2511]">
                 批量对象 ID
                 <textarea
@@ -629,12 +630,12 @@ export function WorldTagsPanel({ worldId, readOnly = false, onListTags, onCreate
                 <article key={`${item.object_type}-${item.object_id}`} className="rounded-2xl border border-amber-900/15 bg-amber-50/50 p-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-black uppercase tracking-[0.2em] text-[#8a5a2b]">{item.object_type} #{item.object_id}</p>
+                      <p className="text-xs font-black tracking-[0.14em] text-[#8a5a2b]">{labelObjectType(item.object_type)} #{item.object_id}</p>
                       <h4 className="mt-1 font-black text-[#3b2511]">{item.title}</h4>
                     </div>
                     {!readOnly && <button className="secondary-button text-sm" disabled={saving} onClick={() => void removeAssignment(item.object_type, item.object_id)}>移除标签</button>}
                   </div>
-                  <p className="mt-1 text-xs font-bold text-[#5e3b1c]">{item.subtitle}</p>
+                  <p className="mt-1 text-xs font-bold text-[#5e3b1c]">{localizeSubtitle(item.subtitle)}</p>
                   <p className="manuscript mt-2 text-sm">{item.snippet}</p>
                 </article>
               ))}
