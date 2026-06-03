@@ -4,6 +4,7 @@ import {
   assignWorldTag,
   bulkAssignWorldTag,
   compareWorldSnapshots,
+  confirmWorldImport,
   createSampleWorld,
   createWorld,
   createWorldFromSeed,
@@ -22,10 +23,12 @@ import {
   getWorldPulse,
   getWorldSeed,
   getWorldTag,
+  listWorldImports,
   listWorldSeeds,
   listWorldSnapshots,
   listWorldTags,
   mergeWorldTag,
+  previewWorldImport,
   searchWorld,
   unassignWorldTag,
   updateWorldStatus,
@@ -42,6 +45,7 @@ import { NextChapterPrepPanel } from './NextChapterPrepPanel';
 import { OpenThreadsPanel } from './OpenThreadsPanel';
 import { WorldArchivePanel } from './WorldArchivePanel';
 import { WorldCreationForm } from './WorldCreationForm';
+import { WorldImportPanel } from './WorldImportPanel';
 import { WorldPulsePanel } from './WorldPulsePanel';
 import { WorldSearchPanel } from './WorldSearchPanel';
 import { WorldTagsPanel } from './WorldTagsPanel';
@@ -895,6 +899,13 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 })}
               />
               <WorldSearchPanel worldId={world.id} readOnly={isArchivedWorld} onSearch={searchWorld} onListTags={listWorldTags} onBulkAssignTag={bulkAssignWorldTag} />
+              <WorldImportPanel
+                worldId={world.id}
+                readOnly={isArchivedWorld}
+                onPreview={previewWorldImport}
+                onConfirm={confirmWorldImport}
+                onListBatches={listWorldImports}
+              />
               <WorldTagsPanel
                 worldId={world.id}
                 readOnly={isArchivedWorld}

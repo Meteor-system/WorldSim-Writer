@@ -257,6 +257,82 @@ export type WorldSearchResponse = {
   results: WorldSearchResult[];
 };
 
+export type ImportSourceType = 'pasted_text' | 'markdown' | 'txt';
+export type ImportAssetPool = 'inspiration' | 'character' | 'canon';
+
+export type ImportConflict = {
+  severity: 'info' | 'warning' | 'blocking';
+  category: string;
+  message: string;
+  matched_text: string | null;
+  details: Record<string, unknown>;
+};
+
+export type ImportCandidateAssetPreview = {
+  asset_pool: ImportAssetPool;
+  title: string;
+  summary: string;
+  raw_text: string;
+  metadata: Record<string, unknown>;
+};
+
+export type ImportPreviewRequest = {
+  source_type: ImportSourceType;
+  source_title: string;
+  content: string;
+};
+
+export type ImportPreviewResponse = {
+  world_id: number;
+  source_type: ImportSourceType;
+  source_title: string;
+  cleaned_excerpt: string;
+  assets: ImportCandidateAssetPreview[];
+  conflicts: ImportConflict[];
+  asset_counts: Record<string, number>;
+};
+
+export type ImportConfirmRequest = ImportPreviewRequest & {
+  assets: ImportCandidateAssetPreview[];
+  conflicts: ImportConflict[];
+};
+
+export type ImportCandidateAssetResponse = ImportCandidateAssetPreview & {
+  id: number;
+  world_id: number;
+  batch_id: number;
+  status: 'candidate';
+  created_at: string;
+};
+
+export type ImportBatchResponse = {
+  id: number;
+  world_id: number;
+  source_type: ImportSourceType;
+  source_title: string;
+  original_excerpt: string;
+  cleaned_excerpt: string;
+  status: 'confirmed';
+  asset_counts: Record<string, number>;
+  conflicts: ImportConflict[];
+  created_at: string;
+  confirmed_at: string | null;
+};
+
+export type ImportConfirmResponse = {
+  batch: ImportBatchResponse;
+  assets: ImportCandidateAssetResponse[];
+};
+
+export type ImportBatchWithAssetsResponse = ImportBatchResponse & {
+  assets: ImportCandidateAssetResponse[];
+};
+
+export type ImportBatchListResponse = {
+  world_id: number;
+  batches: ImportBatchWithAssetsResponse[];
+};
+
 export type TagResponse = {
   id: number;
   world_id: number;

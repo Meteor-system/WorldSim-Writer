@@ -28,6 +28,11 @@ import type {
   ForeshadowLedgerResponse,
   ForeshadowStatus,
   ForeshadowUpdate,
+  ImportBatchListResponse,
+  ImportConfirmRequest,
+  ImportConfirmResponse,
+  ImportPreviewRequest,
+  ImportPreviewResponse,
   NarrativeHealthResponse,
   NextChapterPrepResponse,
   OpenThreadsResponse,
@@ -151,6 +156,24 @@ export function searchWorld(worldId: number, params: { q: string; object_types?:
   if (params.tags?.length) search.set('tags', params.tags.join(','));
   if (params.limit !== undefined) search.set('limit', String(params.limit));
   return apiRequest<WorldSearchResponse>(`/worlds/${worldId}/search?${search.toString()}`);
+}
+
+export function previewWorldImport(worldId: number, data: ImportPreviewRequest) {
+  return apiRequest<ImportPreviewResponse>(`/worlds/${worldId}/imports/preview`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function confirmWorldImport(worldId: number, data: ImportConfirmRequest) {
+  return apiRequest<ImportConfirmResponse>(`/worlds/${worldId}/imports/confirm`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function listWorldImports(worldId: number) {
+  return apiRequest<ImportBatchListResponse>(`/worlds/${worldId}/imports`);
 }
 
 export function listWorldTags(worldId: number) {

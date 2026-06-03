@@ -24,4 +24,4 @@ def test_ensure_alembic_version_table_capacity_creates_wide_version_column():
 def test_get_repository_heads_reads_current_alembic_heads():
     heads = get_repository_heads(Path('/opt/WorldSim-Writer/backend/alembic.ini'))
 
-    assert heads == ['0012_add_tags']
+    assert heads == ['0013_add_import_node']

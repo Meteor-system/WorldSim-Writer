@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, generateStoryArc, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
+import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, confirmWorldImport, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, generateStoryArc, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldImports, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, previewWorldImport, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
 import type { WorldOverview, WorldSearchResponse } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -10,6 +10,7 @@ vi.mock('../api/client', () => ({
   apiRequest: vi.fn(),
   createSampleWorld: vi.fn(),
   compareWorldSnapshots: vi.fn(),
+  confirmWorldImport: vi.fn(),
   assignWorldTag: vi.fn(),
   bulkAssignWorldTag: vi.fn(),
   createWorld: vi.fn(),
@@ -29,9 +30,11 @@ vi.mock('../api/client', () => ({
   getArcPlan: vi.fn(),
   getWorldSeed: vi.fn(),
   getWorldTag: vi.fn(),
+  listWorldImports: vi.fn(),
   listWorldSeeds: vi.fn(),
   listWorldTags: vi.fn(),
   mergeWorldTag: vi.fn(),
+  previewWorldImport: vi.fn(),
   searchWorld: vi.fn(),
   unassignWorldTag: vi.fn(),
   updateWorldStatus: vi.fn(),
@@ -118,6 +121,7 @@ afterEach(() => cleanup());
 beforeEach(() => {
   vi.mocked(apiRequest).mockReset();
   vi.mocked(compareWorldSnapshots).mockReset();
+  vi.mocked(confirmWorldImport).mockReset();
   vi.mocked(createSampleWorld).mockReset();
   vi.mocked(createWorld).mockReset();
   vi.mocked(assignWorldTag).mockReset();
@@ -138,9 +142,11 @@ beforeEach(() => {
   vi.mocked(getArcPlan).mockReset();
   vi.mocked(getWorldSeed).mockReset();
   vi.mocked(getWorldTag).mockReset();
+  vi.mocked(listWorldImports).mockReset();
   vi.mocked(listWorldSeeds).mockReset();
   vi.mocked(listWorldTags).mockReset();
   vi.mocked(mergeWorldTag).mockReset();
+  vi.mocked(previewWorldImport).mockReset();
   vi.mocked(searchWorld).mockReset();
   vi.mocked(searchWorld).mockResolvedValue(worldSearchResponse);
   vi.mocked(unassignWorldTag).mockReset();
@@ -179,6 +185,7 @@ beforeEach(() => {
   vi.mocked(apiRequest)
     .mockResolvedValueOnce([{ id: 7 }])
     .mockResolvedValueOnce(world);
+  vi.mocked(listWorldImports).mockResolvedValue({ world_id: 7, batches: [] });
   vi.mocked(listWorldSeeds).mockResolvedValue({
     seeds: [
       {
