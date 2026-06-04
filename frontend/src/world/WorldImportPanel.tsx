@@ -42,6 +42,10 @@ function conflictText(conflict: ImportPreviewResponse['conflicts'][number]) {
   return conflict.message.replace(/canon/g, '正式设定');
 }
 
+function assetReferenceLabel(asset: { asset_pool: ImportCandidateAssetPreview['asset_pool']; title: string }) {
+  return `${POOL_LABELS[asset.asset_pool]}：${asset.title}`;
+}
+
 function groupAssets(assets: ImportCandidateAssetPreview[]) {
   return {
     canon: assets.filter((asset) => asset.asset_pool === 'canon'),
@@ -215,6 +219,20 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
                   <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-[#5e3b1c]">候选资产 {batch.assets.length} 项</span>
                 </div>
                 <p className="mt-2 text-sm ink-muted">{countText(batch.asset_counts)}</p>
+                {batch.assets.length > 0 && (
+                  <div className="mt-3 rounded-2xl bg-white/45 p-3">
+                    <p className="text-sm font-bold text-[#4a321e]">可用创作参考</p>
+                    <div className="mt-2 space-y-2">
+                      {batch.assets.map((asset, index) => (
+                        <article key={`${asset.title}-${index}`}>
+                          <p className="text-sm font-bold text-[#5e3b1c]">{assetReferenceLabel(asset)}</p>
+                          <p className="manuscript mt-1 text-sm text-[#5e3b1c]">{asset.summary}</p>
+                        </article>
+                      ))}
+                    </div>
+                    <p className="manuscript mt-3 text-sm font-bold text-[#5e3b1c]">这些素材只是写作参考，不会自动改写正式设定。</p>
+                  </div>
+                )}
               </article>
             ))}
           </div>

@@ -156,5 +156,16 @@ describe('WorldImportPanel', () => {
     expect(await screen.findByText('最近导入批次')).toBeInTheDocument();
     expect(screen.getByText('旧设定.md')).toBeInTheDocument();
     expect(screen.getByText('候选资产 3 项')).toBeInTheDocument();
+    expect(screen.getByText('可用创作参考')).toBeInTheDocument();
+    expect(screen.getByText('正式设定候选：青岚城密探规则')).toBeInTheDocument();
+    expect(screen.getByText('角色候选：沈微霜')).toBeInTheDocument();
+    expect(screen.getByText('灵感候选：雨夜审讯')).toBeInTheDocument();
+    expect(screen.getByText('密探必须隐藏真实姓名。')).toBeInTheDocument();
+    expect(screen.getByText('这些素材只是写作参考，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('batch #12');
+    expect(document.body).not.toHaveTextContent('asset #1');
+    expect(document.body).not.toHaveTextContent('inspiration');
+    expect(document.body).not.toHaveTextContent('character');
+    expect(document.body).not.toHaveTextContent('canon 候选');
   });
 });
