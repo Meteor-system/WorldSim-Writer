@@ -594,8 +594,11 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(getApprovalReadiness).toHaveBeenCalledTimes(2);
     expect(await screen.findByText('角色弧线报告')).toBeInTheDocument();
     expect(screen.getByText('本章推动林砚从被动等待转向主动追查湿信来源。')).toBeInTheDocument();
-    expect(screen.getByText('林砚 · protagonist')).toBeInTheDocument();
+    expect(screen.getByText('林砚 · 主角')).toBeInTheDocument();
+    expect(screen.getByText('出现：主要登场 · 阶段：做出选择')).toBeInTheDocument();
+    expect(screen.getByText('拟提交变化：状态改为「开始调查密信」；当前目标改为「追查湿信来源」')).toBeInTheDocument();
     expect(screen.getByText('让林砚做出是否相信沈微霜的选择')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('林砚 · protagonist');
   });
 
   it('shows blocked approval readiness without changing approve controls', async () => {

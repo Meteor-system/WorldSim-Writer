@@ -68,11 +68,19 @@ describe('CharacterArcPanel', () => {
 
     expect(screen.getByText('角色弧线报告')).toBeInTheDocument();
     expect(screen.getByText('本章推动林砚从被动等待转向主动追查湿信来源。')).toBeInTheDocument();
+    expect(screen.getByText('这是审核建议，不会自动提交世界状态；只有批准章节才会提交批准预览中列出的变化。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('approval preview');
     expect(screen.getByText('报告来自 v1，当前草稿为 v2，请重新生成。')).toBeInTheDocument();
-    expect(screen.getByText('林砚 · protagonist')).toBeInTheDocument();
-    expect(screen.getByText('出现：major · 阶段：choice')).toBeInTheDocument();
+    expect(screen.getByText('林砚 · 主角')).toBeInTheDocument();
+    expect(screen.getByText('出现：主要登场 · 阶段：做出选择')).toBeInTheDocument();
+    expect(screen.getByText('拟提交变化：状态改为「开始调查密信」；当前目标改为「追查湿信来源」')).toBeInTheDocument();
+    expect(screen.getByText('当前状态：进行中')).toBeInTheDocument();
     expect(screen.getByText('连续性高风险：如果立刻信任沈微霜，需要补足信任建立过程。')).toBeInTheDocument();
-    expect(screen.getByText('林砚 → 沈微霜 · uneasy_ally')).toBeInTheDocument();
+    expect(screen.getByText('林砚 → 沈微霜 · 不稳盟友')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('林砚 · protagonist');
+    expect(document.body).not.toHaveTextContent('出现：major · 阶段：choice');
+    expect(document.body).not.toHaveTextContent('uneasy_ally');
+    expect(document.body).not.toHaveTextContent('{"status":"开始调查密信"');
     expect(screen.getByText('让林砚做出是否相信沈微霜的选择')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '用作下一章目标' }));
