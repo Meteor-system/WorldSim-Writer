@@ -88,7 +88,8 @@ describe('WorldImportPanel', () => {
     render(<WorldImportPanel worldId={7} onPreview={vi.fn()} onConfirm={vi.fn()} onListBatches={vi.fn().mockResolvedValue(emptyBatches)} />);
 
     await user.clear(screen.getByLabelText('素材正文'));
-    await user.click(screen.getByRole('button', { name: '生成结构化预览' }));
+    await user.click(screen.getByRole('button', { name: '生成候选素材预览' }));
+    expect(document.body).not.toHaveTextContent('生成结构化预览');
 
     expect(await screen.findByRole('alert')).toHaveTextContent('请先粘贴一段素材正文。');
     expect(document.body).not.toHaveTextContent('请先粘贴 Markdown、txt 或文本素材。');
@@ -113,7 +114,7 @@ describe('WorldImportPanel', () => {
     await user.clear(screen.getByLabelText('来源标题'));
     await user.type(screen.getByLabelText('来源标题'), '旧设定.md');
     await user.type(screen.getByLabelText('素材正文'), '规则：青岚城密探必须隐藏真实姓名。\n角色：沈微霜：密探，擅长伪装。\n灵感：雨夜审讯从一盏坏灯开始。');
-    await user.click(screen.getByRole('button', { name: '生成结构化预览' }));
+    await user.click(screen.getByRole('button', { name: '生成候选素材预览' }));
 
     await waitFor(() => expect(onPreview).toHaveBeenCalledWith(7, {
       source_type: 'markdown',
@@ -121,7 +122,9 @@ describe('WorldImportPanel', () => {
       content: '规则：青岚城密探必须隐藏真实姓名。\n角色：沈微霜：密探，擅长伪装。\n灵感：雨夜审讯从一盏坏灯开始。',
     }));
 
-    expect(await screen.findByText('正式设定候选')).toBeInTheDocument();
+    expect(await screen.findByText('候选素材预览')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('结构化预览');
+    expect(screen.getByText('正式设定候选')).toBeInTheDocument();
     expect(screen.getByText('正式设定候选 1 · 角色候选 1 · 灵感候选 1，需确认后才写入候选素材。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '确认写入候选素材' })).toBeInTheDocument();
     expect(screen.getByText('角色候选')).toBeInTheDocument();
@@ -134,6 +137,17 @@ describe('WorldImportPanel', () => {
     expect(document.body).not.toHaveTextContent('canon 1');
     expect(document.body).not.toHaveTextContent('canon_overlap');
     expect(document.body).not.toHaveTextContent('导入内容提到已有 canon 关键词');
+  });
+
+  it('shows candidate-material fallback copy when preview generation fails', async () => {
+    const user = userEvent.setup();
+    render(<WorldImportPanel worldId={7} onPreview={vi.fn().mockRejectedValue('preview down')} onConfirm={vi.fn()} onListBatches={vi.fn().mockResolvedValue(emptyBatches)} />);
+
+    await user.type(screen.getByLabelText('素材正文'), '灵感：雨夜审讯从一盏坏灯开始。');
+    await user.click(screen.getByRole('button', { name: '生成候选素材预览' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('候选素材预览生成失败');
+    expect(document.body).not.toHaveTextContent('结构化预览生成失败');
   });
 
   it('confirms preview assets and shows audit batch result', async () => {
@@ -154,7 +168,7 @@ describe('WorldImportPanel', () => {
     await user.clear(screen.getByLabelText('来源标题'));
     await user.type(screen.getByLabelText('来源标题'), '旧设定.md');
     await user.type(screen.getByLabelText('素材正文'), '规则：青岚城密探必须隐藏真实姓名。');
-    await user.click(screen.getByRole('button', { name: '生成结构化预览' }));
+    await user.click(screen.getByRole('button', { name: '生成候选素材预览' }));
     await screen.findByText('正式设定候选');
     await user.click(screen.getByRole('button', { name: '确认写入候选素材' }));
 

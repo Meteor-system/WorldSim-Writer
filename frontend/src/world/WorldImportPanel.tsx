@@ -100,7 +100,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
     try {
       setPreview(await onPreview(worldId, request));
     } catch (err) {
-      setError(err instanceof Error ? err.message : '结构化预览生成失败');
+      setError(err instanceof Error ? err.message : '候选素材预览生成失败');
     } finally {
       setLoadingPreview(false);
     }
@@ -156,7 +156,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
           <textarea className="min-h-36 rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2 leading-7" value={content} onChange={(event) => setContent(event.target.value)} disabled={readOnly} placeholder="粘贴设定文档、旧章节、大纲、角色小传或灵感片段" />
         </label>
         <div className="md:col-span-2 flex flex-wrap gap-3">
-          <button type="submit" className="primary-button motion-soft-lift" disabled={readOnly || loadingPreview}>{loadingPreview ? '解析中…' : '生成结构化预览'}</button>
+          <button type="submit" className="primary-button motion-soft-lift" disabled={readOnly || loadingPreview}>{loadingPreview ? '解析中…' : '生成候选素材预览'}</button>
           <span className="self-center text-xs ink-muted">当前一次只处理一份素材来源，粘贴正文后会先生成候选预览。</span>
         </div>
       </form>
@@ -167,7 +167,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
         <div className="space-y-4" data-testid="import-preview">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-xl font-black text-[#34210f]">结构化预览</h3>
+              <h3 className="text-xl font-black text-[#34210f]">候选素材预览</h3>
               <p className="text-sm ink-muted">{countText(preview.asset_counts)}，需确认后才写入候选素材。</p>
             </div>
             <button type="button" className="secondary-button motion-soft-lift" onClick={confirmPreview} disabled={readOnly || confirming || preview.assets.length === 0}>{confirming ? '写入中…' : '确认写入候选素材'}</button>
