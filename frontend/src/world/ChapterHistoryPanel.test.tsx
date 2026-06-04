@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ApprovedChapterHistoryDetailResponse, ApprovedChapterHistoryResponse } from '../api/types';
 import { ChapterHistoryPanel } from './ChapterHistoryPanel';
 
@@ -95,6 +95,8 @@ const detail: ApprovedChapterHistoryDetailResponse = {
   },
 };
 
+afterEach(() => cleanup());
+
 describe('ChapterHistoryPanel', () => {
   it('renders approved chapter list and loads detail view with changes', async () => {
     const user = userEvent.setup();
@@ -143,6 +145,30 @@ describe('ChapterHistoryPanel', () => {
     expect(screen.getByText('目标：林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
     expect(screen.getByText('优先伏笔：裂纹玉佩')).toBeInTheDocument();
+  });
+
+  it('shows candidate-material empty state when chapter detail used no imported references', async () => {
+    const user = userEvent.setup();
+    const detailWithoutReferences: ApprovedChapterHistoryDetailResponse = {
+      ...detail,
+      execution_context: detail.execution_context
+        ? { ...detail.execution_context, material_references: [] }
+        : detail.execution_context,
+    };
+    const onLoadDetail = vi.fn(async () => detailWithoutReferences);
+
+    render(<ChapterHistoryPanel history={history} loading={false} onLoadDetail={onLoadDetail} />);
+
+    await user.click(screen.getByRole('button', { name: '查看详情' }));
+
+    expect(await screen.findByText('章节详情')).toBeInTheDocument();
+    expect(screen.getByText('本章未使用候选素材参考。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('本章未使用导入素材参考。');
+    expect(document.body).not.toHaveTextContent('正式 canon');
+    expect(document.body).not.toHaveTextContent('asset_id');
+    expect(document.body).not.toHaveTextContent('batch_id');
+    expect(document.body).not.toHaveTextContent('inspiration');
+    expect(document.body).not.toHaveTextContent('markdown');
   });
 
   it('renders empty, loading, and error states', () => {

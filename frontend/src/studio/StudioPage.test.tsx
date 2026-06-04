@@ -754,6 +754,47 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(onApproved).toHaveBeenCalledWith(approvedWorld);
   });
 
+  it('shows candidate-material empty state when settlement used no imported references', async () => {
+    const user = userEvent.setup();
+    const contextWithoutReferences = { ...executionContext, material_references: [] };
+    vi.mocked(createChapter).mockResolvedValueOnce({
+      id: 11,
+      world_id: 7,
+      title: '推进雨巷密谈',
+      status: 'drafting',
+      draft_version: 1,
+      approved_version: null,
+      base_world_version: 1,
+      approved_content: null,
+      chapter_goal: '推进雨巷密谈',
+      outline_beats: [],
+      outline_context: {},
+      critique_report: {},
+      execution_context: contextWithoutReferences,
+    });
+    vi.mocked(writeChapter).mockResolvedValueOnce({
+      ...draftResponse,
+      execution_context: contextWithoutReferences,
+    });
+    vi.mocked(apiRequest).mockResolvedValueOnce(approvedWorld);
+
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
+
+    expect(await screen.findByText('世界推进结算')).toBeInTheDocument();
+    expect(screen.getByText('本章未使用候选素材参考。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('本章未使用导入素材参考。');
+    expect(screen.queryByText('候选素材仍是本章创作参考，没有自动写入正式设定。')).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('asset_id');
+    expect(document.body).not.toHaveTextContent('batch_id');
+    expect(document.body).not.toHaveTextContent('inspiration');
+  });
+
   it('exports the world archive from the settlement panel', async () => {
     const user = userEvent.setup();
     vi.mocked(apiRequest).mockResolvedValueOnce(approvedWorld);

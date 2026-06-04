@@ -194,7 +194,7 @@ export function ChapterHistoryPanel({ history, loading, error, onLoadDetail }: P
                 <p className="manuscript text-sm font-bold text-[#5e3b1c]">这些候选素材只是本章创作参考，不代表已自动进入正式设定。</p>
               </div>
             ) : (
-              <p className="manuscript mt-1 text-sm">本章未使用导入素材参考。</p>
+              <p className="manuscript mt-1 text-sm">本章未使用候选素材参考。</p>
             )}
           </div>
 

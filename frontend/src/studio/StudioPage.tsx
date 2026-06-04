@@ -63,7 +63,7 @@ function materialReferenceTitles(context?: ChapterExecutionContext | null): stri
 }
 
 function materialReferenceSentence(titles: string[]): string {
-  if (titles.length === 0) return '本章未使用导入素材参考。';
+  if (titles.length === 0) return '本章未使用候选素材参考。';
   return `本章使用 ${titles.length} 条候选素材作为写作参考：${titles.join('、')}。`;
 }
 
