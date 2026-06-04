@@ -425,6 +425,13 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getAllByRole('button', { name: '润色本段' })[0]).toBeInTheDocument();
     expect(screen.getByText('版本差异')).toBeInTheDocument();
     expect(screen.getByText('写入正史前确认')).toBeInTheDocument();
+    expect(screen.getByText('候选素材写作参考')).toBeInTheDocument();
+    expect(screen.getByText('本章参考候选素材：雨夜审讯。')).toBeInTheDocument();
+    expect(screen.getByText('候选素材只帮助生成正文，不会作为正式设定变化写入；只有下方勾选的角色或伏笔变化会更新世界。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('asset_id');
+    expect(document.body).not.toHaveTextContent('batch_id');
+    expect(document.body).not.toHaveTextContent('inspiration');
+    expect(document.body).not.toHaveTextContent('正式 canon');
     expect(screen.getByText('世界进度：1 → 2')).toBeInTheDocument();
     expect(screen.getByText('Approval Readiness')).toBeInTheDocument();
     expect(screen.getByText('建议复核后批准')).toBeInTheDocument();

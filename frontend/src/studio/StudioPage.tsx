@@ -67,6 +67,10 @@ function materialReferenceSentence(titles: string[]): string {
   return `本章使用 ${titles.length} 条候选素材作为写作参考：${titles.join('、')}。`;
 }
 
+function materialReferenceListSentence(titles: string[]): string {
+  return `本章参考候选素材：${titles.join('、')}。`;
+}
+
 function MaterialReferenceCards({ context, compact = false }: { context?: ChapterExecutionContext | null; compact?: boolean }) {
   const references = context?.material_references ?? [];
   if (references.length === 0) return null;
@@ -667,6 +671,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const totalPreviewChanges = approvalPreview ? approvalPreview.character_changes.length + approvalPreview.foreshadow_changes.length : 0;
   const selectedPreviewChanges = selectedCharacterChangeIndexes.length + selectedForeshadowChangeIndexes.length;
   const approvalBlockedByConsistency = consistencySummary?.status === 'blocked';
+  const reviewMaterialReferenceTitles = materialReferenceTitles(draft?.execution_context ?? chapter?.execution_context ?? executionContext);
 
   return (
     <section className="mx-auto max-w-6xl">
@@ -903,6 +908,13 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                   <h3 className="font-black text-[#3b2511]">写入正史前确认</h3>
                   <p className="manuscript">世界进度：{approvalPreview.world_version_before} → {approvalPreview.world_version_after}</p>
                   <p className="manuscript text-sm">已选择 {selectedPreviewChanges} / {totalPreviewChanges} 条拟提交变化</p>
+                  {reviewMaterialReferenceTitles.length > 0 && (
+                    <div className="rounded-xl bg-white/45 p-3">
+                      <h4 className="font-black text-[#3b2511]">候选素材写作参考</h4>
+                      <p className="manuscript mt-2 text-sm">{materialReferenceListSentence(reviewMaterialReferenceTitles)}</p>
+                      <p className="manuscript mt-1 text-sm">候选素材只帮助生成正文，不会作为正式设定变化写入；只有下方勾选的角色或伏笔变化会更新世界。</p>
+                    </div>
+                  )}
                   {consistencySummary && (
                     <div className="space-y-2 rounded-xl bg-white/45 p-3">
                       <h4 className="font-black text-[#3b2511]">设定冲突检查</h4>
