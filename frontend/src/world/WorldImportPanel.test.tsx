@@ -174,6 +174,13 @@ describe('WorldImportPanel', () => {
     expect(within(audit).queryByText('canon 1 · 角色 1 · 灵感 1')).not.toBeInTheDocument();
   });
 
+  it('shows readable fallback copy when import records fail to load', async () => {
+    render(<WorldImportPanel worldId={7} onPreview={vi.fn()} onConfirm={vi.fn()} onListBatches={vi.fn().mockRejectedValue('network down')} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('导入记录加载失败');
+    expect(document.body).not.toHaveTextContent('导入批次加载失败');
+  });
+
   it('loads recent import batches as source audit history', async () => {
     const onListBatches = vi.fn().mockResolvedValue({
       world_id: 7,
@@ -182,7 +189,8 @@ describe('WorldImportPanel', () => {
 
     render(<WorldImportPanel worldId={7} onPreview={vi.fn()} onConfirm={vi.fn()} onListBatches={onListBatches} />);
 
-    expect(await screen.findByText('最近导入批次')).toBeInTheDocument();
+    expect(await screen.findByText('最近候选素材记录')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('最近导入批次');
     expect(screen.getByText('旧设定.md')).toBeInTheDocument();
     expect(screen.getByText('候选素材 3 项')).toBeInTheDocument();
     expect(screen.getByText('正式设定候选 1 · 角色候选 1 · 灵感候选 1')).toBeInTheDocument();
