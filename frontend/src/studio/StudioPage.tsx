@@ -135,6 +135,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [localWorld, setLocalWorld] = useState(world);
   const [goal, setGoal] = useState(launchContext?.initialChapterGoal ?? '');
   const [executionContext] = useState(launchContext?.executionContext);
+  const hasMaterialReferences = (executionContext?.material_references ?? []).length > 0;
   const [chapter, setChapter] = useState<ChapterPipelineResponse | null>(null);
   const [outlineBeats, setOutlineBeats] = useState<BeatCard[]>([]);
   const [outlineContext, setOutlineContext] = useState<Record<string, unknown>>({});
@@ -714,7 +715,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
             </div>
             <textarea id="chapter-goal" className="paper-input min-h-28" value={goal} onChange={(event) => setGoal(event.target.value)} aria-label="章节目标" disabled={Boolean(chapter)} placeholder="输入本章要讲什么故事……或者点击「✨ 自动生成」让 AI 帮你写" />
             <div className="mt-4 flex flex-wrap gap-3">
-              <button className="primary-button" disabled={working || Boolean(chapter)} onClick={createChapterSession}>{chapter ? '章节已创建' : '创建章节'}</button>
+              <button className="primary-button" disabled={working || Boolean(chapter)} onClick={createChapterSession}>{chapter ? '章节已创建' : hasMaterialReferences ? '用候选素材参考创建章节' : '创建章节'}</button>
               <button className="secondary-button" disabled={working || !chapter} onClick={runOutliner}>{operationHint === '编剧室正在排布章节骨架…' ? operationHint : '生成大纲'}</button>
               <button className="secondary-button" disabled={working || !chapter || outlineBeats.length === 0} onClick={runWriter}>{operationHint === '导演正在拆场景…' ? operationHint : '基于大纲生成正文'}</button>
               <button className="secondary-button" disabled={working || !draft} onClick={runCritic}>{operationHint === '评论席正在检查节奏与设定…' ? operationHint : '生成 Critic 报告'}</button>

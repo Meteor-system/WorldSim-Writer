@@ -358,7 +358,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     const goal = screen.getByLabelText('章节目标');
     await user.clear(goal);
     await user.type(goal, '用户编辑后的执行目标');
-    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    expect(screen.queryByRole('button', { name: '创建章节' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '用候选素材参考创建章节' }));
 
     expect(createChapter).toHaveBeenCalledWith(7, expect.objectContaining({
       chapter_goal: '用户编辑后的执行目标',
@@ -378,6 +379,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
 
     expect(screen.getByText('本章暂无 NCC 执行上下文。创建章节时会根据当前目标生成手动上下文快照。')).toBeInTheDocument();
     await user.type(screen.getByLabelText('章节目标'), '手动输入章节目标');
+    expect(screen.getByRole('button', { name: '创建章节' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '用候选素材参考创建章节' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '创建章节' }));
 
     expect(createChapter).toHaveBeenCalledWith(7, expect.objectContaining({
@@ -393,7 +396,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     const user = userEvent.setup();
     render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext }} onBack={vi.fn()} onApproved={vi.fn()} />);
 
-    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(screen.getByRole('button', { name: '用候选素材参考创建章节' }));
     await user.click(await screen.findByRole('button', { name: '生成大纲' }));
     await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
 
