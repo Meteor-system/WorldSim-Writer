@@ -143,7 +143,7 @@ function dashboardActions(world: WorldOverview, isArchivedWorld: boolean): Array
   return actions;
 }
 
-function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowForeshadows }: { world: WorldOverview; isArchivedWorld: boolean; onContinue: () => void; onShowForeshadows: () => void }) {
+function WorldOperationsDashboard({ world, isArchivedWorld, materialReferences, onContinue, onShowForeshadows }: { world: WorldOverview; isArchivedWorld: boolean; materialReferences: ImportMaterialReference[]; onContinue: () => void; onShowForeshadows: () => void }) {
   const activeCharacters = world.characters.slice(0, 3);
   const urgentForeshadows = openForeshadows(world).slice(0, 3);
   const actions = dashboardActions(world, isArchivedWorld);
@@ -160,7 +160,13 @@ function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowFo
         <p className="rounded-2xl bg-white/65 p-4 font-black text-[#3b2511]">已写入正史章节：{world.approved_chapter_count}</p>
         <p className="rounded-2xl bg-white/65 p-4 font-black text-[#3b2511]">近期世界历史记录：{world.recent_events.length}</p>
         <p className="rounded-2xl bg-white/65 p-4 font-black text-[#3b2511]">待处理悬念/伏笔：{openForeshadows(world).length}</p>
+        {materialReferences.length > 0 && (
+          <p className="rounded-2xl bg-white/65 p-4 font-black text-[#3b2511]">候选素材参考：{materialReferences.length} 条</p>
+        )}
       </div>
+      {materialReferences.length > 0 && (
+        <p className="manuscript rounded-2xl bg-white/45 p-3 text-sm font-bold text-[#5e3b1c]">只作为下一章写作参考，不会自动写入正式设定。</p>
+      )}
       <section>
         <h3 className="font-black text-[#3b2511]">今天建议处理什么</h3>
         <div className="mt-4 grid gap-4 lg:grid-cols-3" data-testid="world-dashboard-actions">
@@ -773,6 +779,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               <WorldOperationsDashboard
                 world={world}
                 isArchivedWorld={isArchivedWorld}
+                materialReferences={nextPrep?.material_references ?? []}
                 onContinue={() => onEnterStudio(world, {
                   initialChapterGoal: selectedExecutionContext?.goal,
                   executionContext: selectedExecutionContext ?? undefined,

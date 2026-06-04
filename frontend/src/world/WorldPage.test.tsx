@@ -428,6 +428,33 @@ describe('WorldPage operations dashboard', () => {
     expect(dashboard.getByText('待处理悬念/伏笔：1')).toBeInTheDocument();
   });
 
+  it('shows candidate material references as safe operations context', async () => {
+    vi.mocked(getNextChapterPrep).mockResolvedValueOnce({
+      world_id: 7,
+      world_version: 2,
+      next_chapter_number: 2,
+      suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+      recommended_pov_character_id: 1,
+      recommended_pov_character_name: '林砚',
+      source_signals: ['import_material_reference'],
+      priority_characters: [],
+      priority_foreshadows: [],
+      progression_hints: [],
+      continuity_warnings: [],
+      recent_events: [],
+      material_references: [{ asset_id: 9, batch_id: 12, asset_pool: 'inspiration', title: '雨夜审讯', summary: '雨夜审讯从一盏坏灯开始。', raw_text: '灵感：雨夜审讯从一盏坏灯开始。', source_title: '旧设定.md', source_type: 'pasted_text', created_at: '2026-06-04T00:00:01Z', safety_note: '导入素材参考只用于创作提示，不会自动改写正式 canon。' }],
+    });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    const dashboard = within(await screen.findByLabelText('世界运营仪表盘'));
+    expect(await dashboard.findByText('候选素材参考：1 条')).toBeInTheDocument();
+    expect(dashboard.getByText('只作为下一章写作参考，不会自动写入正式设定。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('asset_id');
+    expect(document.body).not.toHaveTextContent('batch_id');
+    expect(document.body).not.toHaveTextContent('inspiration');
+  });
+
   it('recommends explainable next actions from current world data', async () => {
     const onEnterStudio = vi.fn();
     const user = userEvent.setup();
