@@ -12,7 +12,7 @@ const prep: NextChapterPrepResponse = {
   suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
   recommended_pov_character_id: 1,
   recommended_pov_character_name: '林砚',
-  source_signals: ['character_arc_progression_hint', 'story_arc'],
+  source_signals: ['character_arc_progression_hint', 'story_arc', 'import_material_reference'],
   priority_characters: [
     {
       character_id: 1,
@@ -91,6 +91,8 @@ describe('NextChapterPrepPanel', () => {
     expect(document.body).not.toHaveTextContent('Next Chapter Prep');
     expect(screen.getByText('第 2 章建议目标')).toBeInTheDocument();
     expect(screen.getByText('林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
+    expect(screen.getByText('候选素材参考')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('import_material_reference');
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
     expect(screen.getByText('林砚 · 主角')).toBeInTheDocument();
     expect(screen.getByText('裂纹玉佩 · 推进中 · 紧迫度 4')).toBeInTheDocument();

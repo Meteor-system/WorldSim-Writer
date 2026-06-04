@@ -22,7 +22,7 @@ function signalLabel(signal: string): string {
     story_arc: '故事弧线',
     urgent_foreshadow: '紧迫伏笔',
     recent_event_log: '近期事件',
-    import_material_reference: '导入素材参考',
+    import_material_reference: '候选素材参考',
     fallback: '默认推进',
   };
   return labels[signal] ?? signal;
