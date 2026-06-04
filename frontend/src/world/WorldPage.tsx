@@ -292,7 +292,7 @@ type FirstChapterLaunchpadProps = {
 function FirstChapterLaunchpad({ world, nextChapter, arcLoading, materialReferences, onGenerateArc, onLaunchChapter }: FirstChapterLaunchpadProps) {
   return (
     <article className="mt-8 rounded-2xl border border-amber-900/15 bg-amber-100/60 p-4 shadow-sm">
-      <p className="chapter-kicker">First Chapter Launchpad</p>
+      <p className="chapter-kicker">第一章启动台</p>
       {world.story_arc.length === 0 ? (
         <div className="mt-3">
           <p className="manuscript text-sm text-[#5e3b1c]">先生成前 10 章故事弧线，再把下一章目标带入创作台。</p>

@@ -500,8 +500,9 @@ describe('WorldPage world creation', () => {
   it('aligns the first chapter launchpad with the three-minute loop', async () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
-    expect(await screen.findByText('First Chapter Launchpad')).toBeInTheDocument();
+    expect(await screen.findByText('第一章启动台')).toBeInTheDocument();
     expect(screen.getByText('生成第一章 → 写入正史 → 查看世界变化')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('First Chapter Launchpad');
   });
 
   it('creates the built-in sample world and loads its overview', async () => {
@@ -685,7 +686,7 @@ describe('WorldPage bookshelf', () => {
     expect(await screen.findByText('已归档：写作已暂停')).toBeInTheDocument();
     expect(screen.getByText('这本小说已从活跃创作中移出。快照、章节、伏笔和导出都还在。恢复写作后再进入创作台。')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '恢复写作' })).toBeInTheDocument();
-    expect(screen.queryByText('First Chapter Launchpad')).not.toBeInTheDocument();
+    expect(screen.queryByText('第一章启动台')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '进入创作台' })).not.toBeInTheDocument();
   });
 
@@ -705,7 +706,7 @@ describe('WorldPage bookshelf', () => {
     await user.click(await screen.findByRole('button', { name: '恢复写作' }));
 
     expect(updateWorldStatus).toHaveBeenCalledWith(7, { status: 'active' });
-    expect(await screen.findByText('First Chapter Launchpad')).toBeInTheDocument();
+    expect(await screen.findByText('第一章启动台')).toBeInTheDocument();
     expect(screen.queryByText('已归档：写作已暂停')).not.toBeInTheDocument();
   });
 
@@ -755,7 +756,7 @@ describe('WorldPage Story Arc Planner', () => {
 
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
-    expect(await screen.findByText('First Chapter Launchpad')).toBeInTheDocument();
+    expect(await screen.findByText('第一章启动台')).toBeInTheDocument();
     expect(screen.getByText('先生成前 10 章故事弧线，再把下一章目标带入创作台。')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '生成第一轮故事弧线' }));
@@ -788,7 +789,7 @@ describe('WorldPage Story Arc Planner', () => {
 
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
-    expect(await screen.findByText('First Chapter Launchpad')).toBeInTheDocument();
+    expect(await screen.findByText('第一章启动台')).toBeInTheDocument();
     expect(screen.getByText('下一章 · 第 2 章')).toBeInTheDocument();
     expect(screen.getByText('第 2 章标题')).toBeInTheDocument();
     expect(screen.queryByText('下一章 · 第 1 章')).not.toBeInTheDocument();
