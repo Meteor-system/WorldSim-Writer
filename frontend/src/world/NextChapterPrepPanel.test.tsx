@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest';
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NextChapterPrepResponse } from '../api/types';
 import { NextChapterPrepPanel } from './NextChapterPrepPanel';
 
@@ -78,6 +78,8 @@ const prep: NextChapterPrepResponse = {
   ],
 };
 
+afterEach(() => cleanup());
+
 describe('NextChapterPrepPanel', () => {
   it('renders next chapter prep signals and uses suggested goal callback', async () => {
     const user = userEvent.setup();
@@ -120,11 +122,20 @@ describe('NextChapterPrepPanel', () => {
       material_references: expect.arrayContaining([expect.objectContaining({ title: '雨夜审讯' })]),
     }));
 
-    await user.click(screen.getByRole('button', { name: '进入创作台并使用此目标' }));
+    expect(screen.queryByRole('button', { name: '进入创作台并使用此目标' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '带下一章候选素材参考进入创作台' }));
     expect(onEnterStudioWithContext).toHaveBeenCalledWith(expect.objectContaining({
       source: 'next_chapter_prep',
       goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
     }));
+  });
+
+  it('keeps the generic studio CTA when no candidate references exist', () => {
+    render(<NextChapterPrepPanel prep={{ ...prep, material_references: [] }} onEnterStudioWithContext={vi.fn()} />);
+
+    expect(screen.getByRole('button', { name: '进入创作台并使用此目标' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '带下一章候选素材参考进入创作台' })).not.toBeInTheDocument();
+    expect(screen.queryByText('候选素材写作参考')).not.toBeInTheDocument();
   });
 
   it('renders loading and error states', () => {

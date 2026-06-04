@@ -54,6 +54,7 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
   }
 
   const context = buildExecutionContextFromPrep(prep);
+  const hasMaterialReferences = (prep.material_references ?? []).length > 0;
 
   return (
     <section className="book-card space-y-4 p-5">
@@ -81,7 +82,7 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
           )}
           {onEnterStudioWithContext && (
             <button className="primary-button" onClick={() => onEnterStudioWithContext(context)}>
-              进入创作台并使用此目标
+              {hasMaterialReferences ? '带下一章候选素材参考进入创作台' : '进入创作台并使用此目标'}
             </button>
           )}
         </div>
