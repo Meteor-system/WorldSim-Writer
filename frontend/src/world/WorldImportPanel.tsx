@@ -26,13 +26,20 @@ const SOURCE_LABELS: Record<ImportSourceType, string> = {
 };
 
 const POOL_LABELS: Record<ImportCandidateAssetPreview['asset_pool'], string> = {
-  canon: 'canon 候选',
-  character: '角色池候选',
-  inspiration: '灵感池候选',
+  canon: '正式设定候选',
+  character: '角色候选',
+  inspiration: '灵感候选',
 };
 
 function countText(counts: Record<string, number>) {
-  return `canon ${counts.canon ?? 0} · 角色 ${counts.character ?? 0} · 灵感 ${counts.inspiration ?? 0}`;
+  return `正式设定 ${counts.canon ?? 0} · 角色 ${counts.character ?? 0} · 灵感 ${counts.inspiration ?? 0}`;
+}
+
+function conflictText(conflict: ImportPreviewResponse['conflicts'][number]) {
+  const matchedText = conflict.matched_text ? `：${conflict.matched_text}` : '';
+  if (conflict.category === 'canon_overlap') return `这份素材可能和已有正式设定重叠${matchedText}`;
+  if (conflict.category === 'character_duplicate') return `这份素材可能和已有角色设定重叠${matchedText}`;
+  return conflict.message.replace(/canon/g, '正式设定');
 }
 
 function groupAssets(assets: ImportCandidateAssetPreview[]) {
@@ -121,9 +128,9 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
   return (
     <section className="book-card motion-page-enter space-y-5 p-5" data-testid="world-import-panel">
       <div>
-        <p className="chapter-kicker">Material Import</p>
+        <p className="chapter-kicker">素材导入</p>
         <h2 className="mt-2 text-2xl font-black text-[#34210f]">素材导入节点</h2>
-        <p className="manuscript mt-2 text-sm text-[#5e3b1c]">导入素材会先进入候选资产池，不会自动改写正式 canon。</p>
+        <p className="manuscript mt-2 text-sm text-[#5e3b1c]">导入素材会先进入候选资产池，不会自动改写正式设定。</p>
         <p className="manuscript mt-1 text-sm text-[#5e3b1c]">系统会先解析、分类、清洗并提示冲突，确认后只写入候选资产和导入批次审计记录。</p>
       </div>
 
@@ -146,7 +153,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
         </label>
         <div className="md:col-span-2 flex flex-wrap gap-3">
           <button type="submit" className="primary-button motion-soft-lift" disabled={readOnly || loadingPreview}>{loadingPreview ? '解析中…' : '生成结构化预览'}</button>
-          <span className="self-center text-xs ink-muted">P0 只处理单份 Markdown/txt 或粘贴文本。</span>
+          <span className="self-center text-xs ink-muted">当前只处理单份 Markdown/txt 或粘贴文本。</span>
         </div>
       </form>
 
@@ -166,7 +173,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
             <div className="rounded-2xl border border-amber-900/20 bg-amber-100/70 p-4">
               <h4 className="font-black text-[#4a321e]">冲突提示</h4>
               <ul className="mt-2 space-y-2 text-sm text-[#5e3b1c]">
-                {preview.conflicts.map((conflict, index) => <li key={`${conflict.category}-${index}`}>{conflict.message}</li>)}
+                {preview.conflicts.map((conflict, index) => <li key={`${conflict.category}-${index}`}>{conflictText(conflict)}</li>)}
               </ul>
             </div>
           )}
@@ -192,7 +199,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
       {confirmed && (
         <div role="status" className="paper-success p-4" data-testid="import-confirmed-batch">
           <p className="font-bold">已写入候选素材。</p>
-          <p className="mt-1 font-normal">这些素材会作为创作参考出现在下一章准备区，不会自动改写正式 canon。</p>
+          <p className="mt-1 font-normal">这些素材会作为创作参考出现在下一章准备区，不会自动改写正式设定。</p>
           <span className="mt-2 block font-normal">{countText(confirmed.batch.asset_counts)}</span>
         </div>
       )}

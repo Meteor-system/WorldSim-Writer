@@ -79,8 +79,10 @@ describe('WorldImportPanel', () => {
     const onPreview = vi.fn().mockResolvedValue(previewResponse);
     render(<WorldImportPanel worldId={7} onPreview={onPreview} onConfirm={vi.fn()} onListBatches={vi.fn().mockResolvedValue(emptyBatches)} />);
 
-    expect(screen.getByText('素材导入节点')).toBeInTheDocument();
-    expect(screen.getByText('导入素材会先进入候选资产池，不会自动改写正式 canon。')).toBeInTheDocument();
+    expect(screen.getByText('素材导入')).toBeInTheDocument();
+    expect(screen.queryByText('Material Import')).not.toBeInTheDocument();
+    expect(screen.queryByText(/P0/)).not.toBeInTheDocument();
+    expect(screen.getByText('导入素材会先进入候选资产池，不会自动改写正式设定。')).toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText('素材类型'), 'markdown');
     await user.clear(screen.getByLabelText('来源标题'));
@@ -94,11 +96,15 @@ describe('WorldImportPanel', () => {
       content: '规则：青岚城密探必须隐藏真实姓名。\n角色：沈微霜：密探，擅长伪装。\n灵感：雨夜审讯从一盏坏灯开始。',
     }));
 
-    expect(await screen.findByText('canon 候选')).toBeInTheDocument();
-    expect(screen.getByText('角色池候选')).toBeInTheDocument();
-    expect(screen.getByText('灵感池候选')).toBeInTheDocument();
+    expect(await screen.findByText('正式设定候选')).toBeInTheDocument();
+    expect(screen.getByText('角色候选')).toBeInTheDocument();
+    expect(screen.getByText('灵感候选')).toBeInTheDocument();
     expect(screen.getByText('青岚城密探规则')).toBeInTheDocument();
-    expect(screen.getByText('导入内容提到已有 canon 关键词：青岚城')).toBeInTheDocument();
+    expect(screen.getByText('这份素材可能和已有正式设定重叠：青岚城')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('canon 候选');
+    expect(document.body).not.toHaveTextContent('canon 1');
+    expect(document.body).not.toHaveTextContent('canon_overlap');
+    expect(document.body).not.toHaveTextContent('导入内容提到已有 canon 关键词');
   });
 
   it('confirms preview assets and shows audit batch result', async () => {
@@ -120,7 +126,7 @@ describe('WorldImportPanel', () => {
     await user.type(screen.getByLabelText('来源标题'), '旧设定.md');
     await user.type(screen.getByLabelText('素材正文'), '规则：青岚城密探必须隐藏真实姓名。');
     await user.click(screen.getByRole('button', { name: '生成结构化预览' }));
-    await screen.findByText('canon 候选');
+    await screen.findByText('正式设定候选');
     await user.click(screen.getByRole('button', { name: '确认写入候选资产' }));
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(7, {
@@ -132,10 +138,11 @@ describe('WorldImportPanel', () => {
     }));
     expect(onConfirmed).toHaveBeenCalledWith(confirmResponse);
     expect(await screen.findByRole('status')).toHaveTextContent('已写入候选素材。');
-    expect(screen.getByText('这些素材会作为创作参考出现在下一章准备区，不会自动改写正式 canon。')).toBeInTheDocument();
+    expect(screen.getByText('这些素材会作为创作参考出现在下一章准备区，不会自动改写正式设定。')).toBeInTheDocument();
     expect(screen.queryByText(/批次 #12/)).not.toBeInTheDocument();
     const audit = screen.getByTestId('import-confirmed-batch');
-    expect(within(audit).getByText('canon 1 · 角色 1 · 灵感 1')).toBeInTheDocument();
+    expect(within(audit).getByText('正式设定 1 · 角色 1 · 灵感 1')).toBeInTheDocument();
+    expect(within(audit).queryByText('canon 1 · 角色 1 · 灵感 1')).not.toBeInTheDocument();
   });
 
   it('loads recent import batches as source audit history', async () => {
