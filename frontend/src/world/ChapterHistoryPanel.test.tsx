@@ -115,8 +115,15 @@ describe('ChapterHistoryPanel', () => {
     expect(screen.getByText('世界版本：1 → 2')).toBeInTheDocument();
     expect(screen.getByText('林砚停在雨巷口，掌心玉佩微微发烫。')).toBeInTheDocument();
     expect(screen.getByText('审批结算说明')).toBeInTheDocument();
-    expect(screen.getByText('导入素材参考：雨夜审讯（来源：旧设定.md）。')).toBeInTheDocument();
-    expect(screen.getByText('这些导入素材只是本章创作参考，不代表已自动进入正式 canon。')).toBeInTheDocument();
+    expect(screen.getByText('导入素材参考')).toBeInTheDocument();
+    expect(screen.getByText('雨夜审讯（来源：旧设定.md）')).toBeInTheDocument();
+    expect(screen.getByText('雨夜审讯从一盏坏灯开始。')).toBeInTheDocument();
+    expect(screen.getByText('这些导入素材只是本章创作参考，不代表已自动进入正式设定。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('正式 canon');
+    expect(document.body).not.toHaveTextContent('asset_id');
+    expect(document.body).not.toHaveTextContent('batch_id');
+    expect(document.body).not.toHaveTextContent('inspiration');
+    expect(document.body).not.toHaveTextContent('markdown');
     expect(screen.getByText('正式事件：章节已批准并写入世界历史。')).toBeInTheDocument();
     expect(screen.getByText('正式结算：角色变化 1 条，伏笔变化 1 条。')).toBeInTheDocument();
     expect(screen.getByText('角色变化')).toBeInTheDocument();
