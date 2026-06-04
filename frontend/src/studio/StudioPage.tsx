@@ -734,7 +734,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
               <div className="rounded-2xl bg-white/65 p-4 text-emerald-950">
                 <p className="font-bold">{materialReferenceSentence(settlement.materialReferenceTitles)}</p>
                 {settlement.materialReferenceTitles.length > 0 && (
-                  <p className="manuscript mt-2 text-sm">候选素材仍是本章创作参考，没有自动写入正式设定。</p>
+                  <p className="manuscript mt-2 text-sm">候选素材仍只是本章写作参考；本次批准只写入章节正文和世界变化。</p>
                 )}
                 <p className="manuscript mt-2 text-sm">已写入正式章节。</p>
                 <p className="manuscript mt-1 text-sm">

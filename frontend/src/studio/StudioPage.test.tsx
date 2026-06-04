@@ -734,7 +734,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('这一章已写入正式设定，后续章节会继承本次世界变化。')).toBeInTheDocument();
     expect(screen.getByText('本章使用 1 条候选素材作为写作参考：雨夜审讯。')).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('本章参考了 1 条导入素材：雨夜审讯。');
-    expect(screen.getByText('候选素材仍是本章创作参考，没有自动写入正式设定。')).toBeInTheDocument();
+    expect(screen.getByText('候选素材仍只是本章写作参考；本次批准只写入章节正文和世界变化。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('候选素材仍是本章创作参考，没有自动写入正式设定。');
     expect(document.body).not.toHaveTextContent('导入素材仍是本章创作参考，没有自动写入正式设定。');
     expect(document.body).not.toHaveTextContent('正式 canon');
     expect(document.body).not.toHaveTextContent('正史 / canon');
