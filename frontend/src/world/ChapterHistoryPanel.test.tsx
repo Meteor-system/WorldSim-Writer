@@ -78,7 +78,20 @@ const detail: ApprovedChapterHistoryDetailResponse = {
     progression_hints: [],
     continuity_warnings: [{ severity: 'medium', category: 'character_arc', message: '下一章需要补足试探过程。', related_character_ids: [1], related_foreshadow_ids: [] }],
     recent_events: [],
-    material_references: [],
+    material_references: [
+      {
+        asset_id: 9,
+        batch_id: 3,
+        asset_pool: 'inspiration',
+        title: '雨夜审讯',
+        summary: '雨夜审讯从一盏坏灯开始。',
+        raw_text: '灵感：雨夜审讯从一盏坏灯开始。',
+        source_title: '旧设定.md',
+        source_type: 'markdown',
+        created_at: '2026-06-04T00:00:00Z',
+        safety_note: '导入素材参考只用于创作提示，不会自动改写正式 canon。',
+      },
+    ],
   },
 };
 
@@ -101,12 +114,22 @@ describe('ChapterHistoryPanel', () => {
     expect(await screen.findByText('章节详情')).toBeInTheDocument();
     expect(screen.getByText('世界版本：1 → 2')).toBeInTheDocument();
     expect(screen.getByText('林砚停在雨巷口，掌心玉佩微微发烫。')).toBeInTheDocument();
+    expect(screen.getByText('审批结算说明')).toBeInTheDocument();
+    expect(screen.getByText('导入素材参考：雨夜审讯（来源：旧设定.md）。')).toBeInTheDocument();
+    expect(screen.getByText('这些导入素材只是本章创作参考，不代表已自动进入正式 canon。')).toBeInTheDocument();
+    expect(screen.getByText('正式事件：章节已批准并写入世界历史。')).toBeInTheDocument();
+    expect(screen.getByText('正式结算：角色变化 1 条，伏笔变化 1 条。')).toBeInTheDocument();
     expect(screen.getByText('角色变化')).toBeInTheDocument();
-    expect(screen.getByText(/开始调查密信/)).toBeInTheDocument();
+    expect(screen.getByText('角色：林砚')).toBeInTheDocument();
+    expect(screen.getByText('状态：active → 开始调查密信')).toBeInTheDocument();
+    expect(screen.getByText('目标：追查湿信来源')).toBeInTheDocument();
     expect(screen.getByText('伏笔变化')).toBeInTheDocument();
-    expect(screen.getByText(/advanced/)).toBeInTheDocument();
+    expect(screen.getByText('伏笔：裂纹玉佩')).toBeInTheDocument();
+    expect(screen.getByText('状态：planted → advanced')).toBeInTheDocument();
     expect(screen.getByText('正式事件')).toBeInTheDocument();
-    expect(screen.getByText('chapter_approved · 世界 1 → 2')).toBeInTheDocument();
+    expect(screen.queryByText('chapter_approved · 世界 1 → 2')).not.toBeInTheDocument();
+    expect(screen.queryByText(/character_change · character #1/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/foreshadow_change · foreshadow #1/)).not.toBeInTheDocument();
     expect(screen.getByText('Critic：章节冲突清晰，但第二段信息揭示偏快。')).toBeInTheDocument();
     expect(screen.getByText('角色弧线：本章推动林砚从被动等待转向主动追查。')).toBeInTheDocument();
     expect(screen.getByText('执行上下文快照')).toBeInTheDocument();

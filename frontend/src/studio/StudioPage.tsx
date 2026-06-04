@@ -33,6 +33,7 @@ type WorldSettlement = {
   characterChangeCount: number;
   foreshadowChangeCount: number;
   hasChapterApprovedEvent: boolean;
+  materialReferenceTitles: string[];
   overview: WorldOverview;
   exportMessage?: string;
   exportError?: string;
@@ -55,6 +56,15 @@ function sourceLabel(source: ChapterExecutionContext['source']): string {
 
 function names(values: Array<{ name?: string; title?: string }>): string {
   return values.map((value) => value.name ?? value.title).filter(Boolean).join('、') || '无';
+}
+
+function materialReferenceTitles(context?: ChapterExecutionContext | null): string[] {
+  return (context?.material_references ?? []).map((reference) => reference.title).filter(Boolean);
+}
+
+function materialReferenceSentence(titles: string[]): string {
+  if (titles.length === 0) return '本章未使用导入素材参考。';
+  return `本章参考了 ${titles.length} 条导入素材：${titles.join('、')}。`;
 }
 
 function ExecutionContextSummary({ context, frozen }: { context?: ChapterExecutionContext | null; frozen?: boolean }) {
@@ -431,6 +441,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setOperationHint('正在写入正史…');
     setError('');
     try {
+      const settledMaterialReferenceTitles = materialReferenceTitles(draft.execution_context ?? chapter?.execution_context ?? executionContext);
       await approveChapter(draft.chapter_id, {
         draft_version: resolveDraftVersion(draft),
         selected_character_change_indexes: selectedCharacterChangeIndexes,
@@ -445,6 +456,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
         characterChangeCount: selectedCharacterChangeIndexes.length,
         foreshadowChangeCount: selectedForeshadowChangeIndexes.length,
         hasChapterApprovedEvent: overview.recent_events.some((event) => event.event_type === 'chapter_approved'),
+        materialReferenceTitles: settledMaterialReferenceTitles,
         overview,
       });
     } catch (err) {
@@ -709,6 +721,17 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                 <p className="chapter-kicker">Canon Settlement</p>
                 <h2 className="text-2xl font-black text-[#203b20]">世界推进结算</h2>
                 <p className="manuscript mt-2">这一章已写入正史 / canon，后续章节会继承本次世界变化。</p>
+              </div>
+              <div className="rounded-2xl bg-white/65 p-4 text-emerald-950">
+                <p className="font-bold">{materialReferenceSentence(settlement.materialReferenceTitles)}</p>
+                {settlement.materialReferenceTitles.length > 0 && (
+                  <p className="manuscript mt-2 text-sm">导入素材仍是创作参考，没有自动写入正式 canon。</p>
+                )}
+                <p className="manuscript mt-2 text-sm">已写入正式章节。</p>
+                <p className="manuscript mt-1 text-sm">
+                  {settlement.hasChapterApprovedEvent ? '正式事件：章节已批准并写入世界历史。' : '正式事件：正在等待世界历史刷新。'}
+                </p>
+                <p className="manuscript mt-1 text-sm">世界版本：第 {settlement.worldBefore} 版 → 第 {settlement.worldAfter} 版。</p>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
                 <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">世界进度 v{settlement.worldBefore} → v{settlement.worldAfter}</p>

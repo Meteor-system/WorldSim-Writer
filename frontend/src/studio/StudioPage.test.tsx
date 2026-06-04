@@ -714,6 +714,12 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('悬念/伏笔变化：1')).toBeInTheDocument();
     expect(screen.getByText('已写入世界历史记录')).toBeInTheDocument();
     expect(screen.getByText('下一章将基于这些变化继续生成。')).toBeInTheDocument();
+    expect(screen.getByText('本章参考了 1 条导入素材：雨夜审讯。')).toBeInTheDocument();
+    expect(screen.getByText('导入素材仍是创作参考，没有自动写入正式 canon。')).toBeInTheDocument();
+    expect(screen.getByText('已写入正式章节。')).toBeInTheDocument();
+    expect(screen.getByText('正式事件：章节已批准并写入世界历史。')).toBeInTheDocument();
+    expect(screen.getByText('世界版本：第 1 版 → 第 2 版。')).toBeInTheDocument();
+    expect(screen.queryByText('chapter_approved · 世界 1 → 2')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '继续下一章' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '查看世界概览' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '导出世界档案' })).toBeInTheDocument();
