@@ -857,7 +857,8 @@ describe('WorldPage Story Arc Planner', () => {
 
     render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
 
-    expect(await screen.findByText('已准备 1 条导入素材参考。')).toBeInTheDocument();
+    expect(await screen.findByText('已准备 1 条候选素材写作参考。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('已准备 1 条导入素材参考。');
     expect(screen.getAllByText('导入素材参考').length).toBeGreaterThan(0);
     expect(screen.getAllByText('雨夜审讯（来源：旧设定.md）').length).toBeGreaterThan(0);
     expect(screen.getAllByText('雨夜审讯从一盏坏灯开始。').length).toBeGreaterThan(0);

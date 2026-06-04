@@ -313,7 +313,7 @@ function FirstChapterLaunchpad({ world, nextChapter, arcLoading, materialReferen
           {materialReferences.length > 0 && (
             <section className="rounded-2xl bg-white/45 p-3">
               <h3 className="font-black text-[#3b2511]">导入素材参考</h3>
-              <p className="manuscript mt-1 text-sm">已准备 {materialReferences.length} 条导入素材参考。</p>
+              <p className="manuscript mt-1 text-sm">已准备 {materialReferences.length} 条候选素材写作参考。</p>
               <div className="mt-3 space-y-2">
                 {materialReferences.map((reference) => (
                   <article key={`${reference.source_title}-${reference.title}`} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
