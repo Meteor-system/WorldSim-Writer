@@ -184,14 +184,14 @@ export function ChapterHistoryPanel({ history, loading, error, onLoadDetail }: P
             )}
             {(selectedDetail.execution_context?.material_references ?? []).length > 0 ? (
               <div className="mt-3 space-y-2">
-                <h5 className="font-black text-[#3b2511]">导入素材参考</h5>
+                <h5 className="font-black text-[#3b2511]">候选素材写作参考</h5>
                 {selectedDetail.execution_context?.material_references.map((reference) => (
                   <article key={`${reference.source_title}-${reference.title}`} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
                     <p className="font-bold text-[#3b2511]">{reference.title}（来源：{reference.source_title}）</p>
                     <p className="manuscript mt-1 text-sm">{reference.summary}</p>
                   </article>
                 ))}
-                <p className="manuscript text-sm font-bold text-[#5e3b1c]">这些导入素材只是本章创作参考，不代表已自动进入正式设定。</p>
+                <p className="manuscript text-sm font-bold text-[#5e3b1c]">这些候选素材只是本章创作参考，不代表已自动进入正式设定。</p>
               </div>
             ) : (
               <p className="manuscript mt-1 text-sm">本章未使用导入素材参考。</p>
