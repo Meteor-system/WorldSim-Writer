@@ -123,7 +123,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
       setBatches((current) => [{ ...response.batch, assets: response.assets }, ...current]);
       onConfirmed?.(response);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '候选资产写入失败');
+      setError(err instanceof Error ? err.message : '候选素材写入失败');
     } finally {
       setConfirming(false);
     }
@@ -134,8 +134,8 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
       <div>
         <p className="chapter-kicker">素材导入</p>
         <h2 className="mt-2 text-2xl font-black text-[#34210f]">素材导入节点</h2>
-        <p className="manuscript mt-2 text-sm text-[#5e3b1c]">导入素材会先进入候选资产池，不会自动改写正式设定。</p>
-        <p className="manuscript mt-1 text-sm text-[#5e3b1c]">系统会先解析、分类、清洗并提示冲突，确认后只写入候选资产和导入批次审计记录。</p>
+        <p className="manuscript mt-2 text-sm text-[#5e3b1c]">导入素材会先进入候选素材池，不会自动改写正式设定。</p>
+        <p className="manuscript mt-1 text-sm text-[#5e3b1c]">系统会先解析、分类、清洗并提示冲突，确认后只写入候选素材和导入批次审计记录。</p>
       </div>
 
       {readOnly && <p className="rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已归档小说为只读模式，不能导入新素材。</p>}
@@ -168,9 +168,9 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="text-xl font-black text-[#34210f]">结构化预览</h3>
-              <p className="text-sm ink-muted">{countText(preview.asset_counts)}，需确认后才写入候选资产。</p>
+              <p className="text-sm ink-muted">{countText(preview.asset_counts)}，需确认后才写入候选素材。</p>
             </div>
-            <button type="button" className="secondary-button motion-soft-lift" onClick={confirmPreview} disabled={readOnly || confirming || preview.assets.length === 0}>{confirming ? '写入中…' : '确认写入候选资产'}</button>
+            <button type="button" className="secondary-button motion-soft-lift" onClick={confirmPreview} disabled={readOnly || confirming || preview.assets.length === 0}>{confirming ? '写入中…' : '确认写入候选素材'}</button>
           </div>
 
           {preview.conflicts.length > 0 && (
@@ -216,7 +216,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
               <article key={batch.id} className="surface-layer motion-soft-lift rounded-2xl p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h4 className="font-black text-[#34210f]">{batch.source_title}</h4>
-                  <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-[#5e3b1c]">候选资产 {batch.assets.length} 项</span>
+                  <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-[#5e3b1c]">候选素材 {batch.assets.length} 项</span>
                 </div>
                 <p className="mt-2 text-sm ink-muted">{countText(batch.asset_counts)}</p>
                 {batch.assets.length > 0 && (

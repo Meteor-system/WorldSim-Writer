@@ -1090,7 +1090,7 @@ describe('WorldPage Narrative Control Center', () => {
     expect(screen.queryByText('雨夜审讯')).not.toBeInTheDocument();
     await user.type(screen.getByLabelText('素材正文'), '灵感：雨夜审讯从一盏坏灯开始。');
     await user.click(screen.getByRole('button', { name: '生成结构化预览' }));
-    await user.click(await screen.findByRole('button', { name: '确认写入候选资产' }));
+    await user.click(await screen.findByRole('button', { name: '确认写入候选素材' }));
 
     expect(await screen.findByText('已写入候选素材。')).toBeInTheDocument();
     await waitFor(() => expect(getNextChapterPrep).toHaveBeenCalledTimes(2));

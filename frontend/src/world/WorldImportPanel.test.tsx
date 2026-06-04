@@ -102,7 +102,7 @@ describe('WorldImportPanel', () => {
     expect(screen.getByText('素材导入')).toBeInTheDocument();
     expect(screen.queryByText('Material Import')).not.toBeInTheDocument();
     expect(screen.queryByText(/P0/)).not.toBeInTheDocument();
-    expect(screen.getByText('导入素材会先进入候选资产池，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(screen.getByText('导入素材会先进入候选素材池，不会自动改写正式设定。')).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Markdown 文档' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: '纯文本文件' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'txt' })).not.toBeInTheDocument();
@@ -120,12 +120,14 @@ describe('WorldImportPanel', () => {
     }));
 
     expect(await screen.findByText('正式设定候选')).toBeInTheDocument();
-    expect(screen.getByText('正式设定候选 1 · 角色候选 1 · 灵感候选 1，需确认后才写入候选资产。')).toBeInTheDocument();
+    expect(screen.getByText('正式设定候选 1 · 角色候选 1 · 灵感候选 1，需确认后才写入候选素材。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '确认写入候选素材' })).toBeInTheDocument();
     expect(screen.getByText('角色候选')).toBeInTheDocument();
     expect(screen.getByText('灵感候选')).toBeInTheDocument();
     expect(screen.getByText('青岚城密探规则')).toBeInTheDocument();
     expect(screen.getByText('这份素材可能和已有正式设定重叠：青岚城')).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('正式设定 1 · 角色 1 · 灵感 1，需确认后才写入候选资产。');
+    expect(document.body).not.toHaveTextContent('候选资产');
     expect(document.body).not.toHaveTextContent('canon 候选');
     expect(document.body).not.toHaveTextContent('canon 1');
     expect(document.body).not.toHaveTextContent('canon_overlap');
@@ -152,7 +154,7 @@ describe('WorldImportPanel', () => {
     await user.type(screen.getByLabelText('素材正文'), '规则：青岚城密探必须隐藏真实姓名。');
     await user.click(screen.getByRole('button', { name: '生成结构化预览' }));
     await screen.findByText('正式设定候选');
-    await user.click(screen.getByRole('button', { name: '确认写入候选资产' }));
+    await user.click(screen.getByRole('button', { name: '确认写入候选素材' }));
 
     await waitFor(() => expect(onConfirm).toHaveBeenCalledWith(7, {
       source_type: 'pasted_text',
@@ -182,7 +184,7 @@ describe('WorldImportPanel', () => {
 
     expect(await screen.findByText('最近导入批次')).toBeInTheDocument();
     expect(screen.getByText('旧设定.md')).toBeInTheDocument();
-    expect(screen.getByText('候选资产 3 项')).toBeInTheDocument();
+    expect(screen.getByText('候选素材 3 项')).toBeInTheDocument();
     expect(screen.getByText('正式设定候选 1 · 角色候选 1 · 灵感候选 1')).toBeInTheDocument();
     expect(screen.getByText('候选素材写作参考')).toBeInTheDocument();
     expect(screen.getByText('正式设定候选：青岚城密探规则')).toBeInTheDocument();
