@@ -344,7 +344,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
     expect(screen.getByText('优先角色：林砚')).toBeInTheDocument();
     expect(screen.getByText('优先伏笔：裂纹玉佩')).toBeInTheDocument();
-    expect(screen.getByText('导入素材参考：1 条')).toBeInTheDocument();
+    expect(screen.getByText('候选素材参考：1 条')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('导入素材参考：1 条');
     expect(screen.getByText('雨夜审讯（来源：旧设定.md）')).toBeInTheDocument();
     expect(screen.getByText('雨夜审讯从一盏坏灯开始。')).toBeInTheDocument();
     expect(screen.getByText('导入素材只是本章写作参考，不会自动改写正式设定。')).toBeInTheDocument();

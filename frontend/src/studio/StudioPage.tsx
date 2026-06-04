@@ -72,7 +72,7 @@ function MaterialReferenceCards({ context, compact = false }: { context?: Chapte
   if (references.length === 0) return null;
   return (
     <div className={compact ? 'mt-3 space-y-2' : 'mt-3 rounded-2xl bg-white/45 p-3'}>
-      {!compact && <p className="text-sm font-bold text-[#4a321e]">导入素材参考：{references.length} 条</p>}
+      {!compact && <p className="text-sm font-bold text-[#4a321e]">候选素材参考：{references.length} 条</p>}
       {references.map((reference) => (
         <article key={`${reference.source_title}-${reference.title}`} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
           <p className="manuscript text-sm font-bold text-[#5e3b1c]">{reference.title}（来源：{reference.source_title}）</p>
