@@ -21,6 +21,7 @@ function signalLabel(signal: string): string {
     story_arc: '故事弧线',
     urgent_foreshadow: '紧迫伏笔',
     recent_event_log: '近期事件',
+    import_material_reference: '导入素材参考',
     fallback: '默认推进',
   };
   return labels[signal] ?? signal;
@@ -88,6 +89,22 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
       <p className="rounded-2xl bg-white/35 p-3 text-sm font-bold text-[#5e3b1c]">
         推荐 POV：{prep.recommended_pov_character_name ?? '暂无'}
       </p>
+
+      {(prep.material_references ?? []).length > 0 && (
+        <section className="rounded-2xl bg-white/35 p-4">
+          <h3 className="font-black text-[#3b2511]">导入素材参考</h3>
+          <p className="manuscript mt-2 text-sm text-[#5e3b1c]">导入素材只作为创作参考，不会自动改写正式 canon。</p>
+          <div className="mt-3 space-y-3">
+            {(prep.material_references ?? []).map((reference) => (
+              <article key={`${reference.batch_id}-${reference.asset_id}`} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
+                <p className="font-bold text-[#3b2511]">{reference.title}</p>
+                <p className="manuscript mt-1 text-sm">来源：{reference.source_title}</p>
+                <p className="manuscript mt-1 text-sm">{reference.summary}</p>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="rounded-2xl bg-white/35 p-4">

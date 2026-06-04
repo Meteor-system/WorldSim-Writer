@@ -22,6 +22,7 @@ export function buildExecutionContextFromPrep(prep: NextChapterPrepResponse): Ch
       world_version_after,
       created_at,
     })),
+    material_references: prep.material_references,
   };
 }
 
@@ -38,6 +39,7 @@ export function buildManualExecutionContext(world: WorldOverview, goal: string):
     progression_hints: [],
     continuity_warnings: [],
     recent_events: [],
+    material_references: [],
   };
 }
 

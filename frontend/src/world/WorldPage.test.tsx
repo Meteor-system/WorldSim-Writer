@@ -297,6 +297,7 @@ beforeEach(() => {
     progression_hints: [],
     continuity_warnings: [],
     recent_events: [],
+    material_references: [],
   });
   vi.mocked(getNarrativeHealth).mockResolvedValue({
     world_id: 7,

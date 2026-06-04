@@ -276,6 +276,7 @@ function buildStoryArcExecutionContext(world: WorldOverview, chapter: StoryArcCh
     progression_hints: [],
     continuity_warnings: [],
     recent_events: [],
+    material_references: [],
   };
 }
 

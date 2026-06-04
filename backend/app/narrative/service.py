@@ -105,6 +105,7 @@ def build_manual_execution_context(db: Session, world: World, chapter_goal: str)
         'progression_hints': [],
         'continuity_warnings': [],
         'recent_events': [],
+        'material_references': [],
     }
 
 
@@ -147,6 +148,13 @@ def format_execution_context_for_prompt(execution_context: dict | None) -> str:
     recent_events = execution_context.get('recent_events') or []
     if recent_events:
         lines.append('- 近期事件：' + '；'.join(f"{e.get('event_type')} 世界 {e.get('world_version_before')}→{e.get('world_version_after')}" for e in recent_events))
+    material_references = execution_context.get('material_references') or []
+    if material_references:
+        lines.append('- 导入素材参考（非正式 canon）：这些内容只用于创作提示，不会自动改写正式 canon。')
+        lines.extend(
+            f"  · {item.get('title')}（{item.get('asset_pool')}，来源：{item.get('source_title')}）：{item.get('summary')}"
+            for item in material_references
+        )
     return '\n'.join(lines) + '\n'
 
 

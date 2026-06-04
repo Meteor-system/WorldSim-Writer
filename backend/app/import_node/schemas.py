@@ -76,6 +76,19 @@ class ImportCandidateAssetResponse(BaseModel):
     created_at: datetime
 
 
+class ImportMaterialReferenceResponse(BaseModel):
+    asset_id: int
+    batch_id: int
+    asset_pool: AssetPool
+    title: str
+    summary: str
+    raw_text: str
+    source_title: str
+    source_type: SourceType
+    created_at: datetime
+    safety_note: str
+
+
 class ImportBatchResponse(BaseModel):
     id: int
     world_id: int

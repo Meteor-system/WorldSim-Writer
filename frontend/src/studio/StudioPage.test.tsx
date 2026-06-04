@@ -18,6 +18,20 @@ const executionContext: ChapterExecutionContext = {
   progression_hints: [{ hint_type: 'character', priority: 'high', title: '试探沈微霜是否可信', rationale: '上一章已经建立湿信线索。', suggested_next_beat: '林砚带着湿信赴城主府外墙，并设置一次试探。', related_character_ids: [1], related_foreshadow_ids: [1], can_seed_next_chapter_goal: true }],
   continuity_warnings: [{ severity: 'medium', category: 'character_arc', message: '下一章需要补足试探过程。', related_character_ids: [1], related_foreshadow_ids: [] }],
   recent_events: [{ id: 4, event_type: 'chapter_approved', world_version_before: 1, world_version_after: 2, created_at: '2026-05-30T00:00:00Z' }],
+  material_references: [
+    {
+      asset_id: 9,
+      batch_id: 3,
+      asset_pool: 'inspiration',
+      title: '雨夜审讯',
+      summary: '雨夜审讯从一盏坏灯开始。',
+      raw_text: '灵感：雨夜审讯从一盏坏灯开始。',
+      source_title: '旧设定.md',
+      source_type: 'markdown',
+      created_at: '2026-06-04T00:00:00Z',
+      safety_note: '导入素材参考只用于创作提示，不会自动改写正式 canon。',
+    },
+  ],
 };
 
 const draftResponse: DraftResponse = {
@@ -330,6 +344,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
     expect(screen.getByText('优先角色：林砚')).toBeInTheDocument();
     expect(screen.getByText('优先伏笔：裂纹玉佩')).toBeInTheDocument();
+    expect(screen.getByText('导入素材参考：1 条')).toBeInTheDocument();
+    expect(screen.getByText('导入素材只是冻结参考，不会自动改写正式 canon。')).toBeInTheDocument();
 
     const goal = screen.getByLabelText('章节目标');
     await user.clear(goal);
@@ -375,6 +391,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByText('执行上下文快照')).toBeInTheDocument();
     expect(screen.getByText('目标：林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
     expect(screen.getByText('连续性提醒：下一章需要补足试探过程。')).toBeInTheDocument();
+    expect(screen.getByText('导入素材参考：雨夜审讯')).toBeInTheDocument();
+    expect(screen.getByText('素材参考不会自动改写正式 canon。')).toBeInTheDocument();
   });
 
   it('renders version selector, stash, paragraph controls, diff, and approval preview after drafting', async () => {

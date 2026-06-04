@@ -17,6 +17,7 @@ from app.import_node.schemas import (
     ImportCandidateAssetPreview,
     ImportCandidateAssetResponse,
     ImportConfirmRequest,
+    ImportMaterialReferenceResponse,
     ImportConfirmResponse,
     ImportConflict,
     ImportPreviewRequest,
@@ -211,6 +212,35 @@ def _batch_response(batch: ImportBatch) -> ImportBatchResponse:
         created_at=batch.created_at,
         confirmed_at=batch.confirmed_at,
     )
+
+
+MATERIAL_REFERENCE_SAFETY_NOTE = '导入素材参考只用于创作提示，不会自动改写正式 canon。'
+
+
+def material_references_for_world(db: Session, world_id: int, limit: int = 6) -> list[ImportMaterialReferenceResponse]:
+    rows = db.execute(
+        select(ImportCandidateAsset, ImportBatch)
+        .join(ImportBatch, ImportBatch.id == ImportCandidateAsset.batch_id)
+        .where(ImportCandidateAsset.world_id == world_id)
+        .where(ImportCandidateAsset.status == 'candidate')
+        .order_by(desc(ImportCandidateAsset.id))
+        .limit(limit)
+    ).all()
+    return [
+        ImportMaterialReferenceResponse(
+            asset_id=asset.id,
+            batch_id=batch.id,
+            asset_pool=asset.asset_pool,
+            title=asset.title,
+            summary=asset.summary,
+            raw_text=asset.raw_text,
+            source_title=batch.source_title,
+            source_type=batch.source_type,
+            created_at=asset.created_at,
+            safety_note=MATERIAL_REFERENCE_SAFETY_NOTE,
+        )
+        for asset, batch in rows
+    ]
 
 
 def confirm_import(db: Session, user: User, world_id: int, data: ImportConfirmRequest) -> ImportConfirmResponse:

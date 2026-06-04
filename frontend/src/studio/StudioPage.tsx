@@ -78,6 +78,12 @@ function ExecutionContextSummary({ context, frozen }: { context?: ChapterExecuti
       <p className="mt-2 ink-muted">优先伏笔：{names(context.priority_foreshadows)}</p>
       <p className="mt-2 ink-muted">推进提示：{context.progression_hints.length} 条</p>
       <p className="mt-2 ink-muted">连续性提醒：{context.continuity_warnings.length} 条</p>
+      {(context.material_references ?? []).length > 0 && (
+        <>
+          <p className="mt-2 ink-muted">导入素材参考：{context.material_references.length} 条</p>
+          <p className="mt-2 text-sm font-bold text-[#5e3b1c]">导入素材只是冻结参考，不会自动改写正式 canon。</p>
+        </>
+      )}
     </div>
   );
 }
@@ -98,6 +104,10 @@ function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionConte
       {context.continuity_warnings.map((warning, index) => (
         <p key={`${warning.category}-${index}`} className="manuscript text-sm">连续性提醒：{warning.message}</p>
       ))}
+      {(context.material_references ?? []).map((reference) => (
+        <p key={`${reference.batch_id}-${reference.asset_id}`} className="manuscript text-sm">导入素材参考：{reference.title}</p>
+      ))}
+      {(context.material_references ?? []).length > 0 && <p className="manuscript text-sm font-bold text-[#5e3b1c]">素材参考不会自动改写正式 canon。</p>}
     </section>
   );
 }

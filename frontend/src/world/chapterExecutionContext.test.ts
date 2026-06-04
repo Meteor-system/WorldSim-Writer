@@ -34,6 +34,7 @@ const prep: NextChapterPrepResponse = {
   recent_events: [
     { id: 4, event_type: 'chapter_approved', world_version_before: 1, world_version_after: 2, payload: {}, created_at: '2026-05-30T00:00:00Z' },
   ],
+  material_references: [],
 };
 
 const world = {

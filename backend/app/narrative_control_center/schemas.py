@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from app.import_node.schemas import ImportMaterialReferenceResponse
 
 
 class ApprovedChapterHistoryItem(BaseModel):
@@ -102,6 +104,7 @@ class NextChapterPrepResponse(BaseModel):
     progression_hints: list[dict]
     continuity_warnings: list[NextChapterPrepWarning]
     recent_events: list[NextChapterPrepEvent]
+    material_references: list[ImportMaterialReferenceResponse] = Field(default_factory=list)
 
 
 class NarrativeHealthMetric(BaseModel):

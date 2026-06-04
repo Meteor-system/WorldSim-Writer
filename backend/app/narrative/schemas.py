@@ -53,6 +53,19 @@ class ExecutionContextRecentEvent(BaseModel):
     created_at: str
 
 
+class ExecutionContextMaterialReference(BaseModel):
+    asset_id: int
+    batch_id: int
+    asset_pool: Literal['inspiration', 'character', 'canon']
+    title: str
+    summary: str
+    raw_text: str
+    source_title: str
+    source_type: Literal['pasted_text', 'markdown', 'txt']
+    created_at: str
+    safety_note: str
+
+
 class ChapterExecutionContext(BaseModel):
     source: Literal['next_chapter_prep', 'manual'] = 'manual'
     source_world_version: int
@@ -65,6 +78,7 @@ class ChapterExecutionContext(BaseModel):
     progression_hints: list[ExecutionContextProgressionHint] = Field(default_factory=list)
     continuity_warnings: list[ExecutionContextContinuityWarning] = Field(default_factory=list)
     recent_events: list[ExecutionContextRecentEvent] = Field(default_factory=list)
+    material_references: list[ExecutionContextMaterialReference] = Field(default_factory=list)
 
 
 class DraftRequest(BaseModel):

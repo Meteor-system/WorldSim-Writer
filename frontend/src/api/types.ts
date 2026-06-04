@@ -305,6 +305,19 @@ export type ImportCandidateAssetResponse = ImportCandidateAssetPreview & {
   created_at: string;
 };
 
+export type ImportMaterialReference = {
+  asset_id: number;
+  batch_id: number;
+  asset_pool: ImportAssetPool;
+  title: string;
+  summary: string;
+  raw_text: string;
+  source_title: string;
+  source_type: ImportSourceType;
+  created_at: string;
+  safety_note: string;
+};
+
 export type ImportBatchResponse = {
   id: number;
   world_id: number;
@@ -466,6 +479,7 @@ export type ChapterExecutionContext = {
   progression_hints: ChapterProgressionHint[];
   continuity_warnings: NextChapterPrepWarning[];
   recent_events: Array<Omit<NextChapterPrepEvent, 'payload'>>;
+  material_references: ImportMaterialReference[];
 };
 
 export type StudioLaunchContext = {
@@ -701,6 +715,7 @@ export type NextChapterPrepResponse = {
   progression_hints: ChapterProgressionHint[];
   continuity_warnings: NextChapterPrepWarning[];
   recent_events: NextChapterPrepEvent[];
+  material_references: ImportMaterialReference[];
 };
 
 export type NarrativeHealthMetric = {

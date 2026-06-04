@@ -256,6 +256,51 @@ def test_next_chapter_prep_prioritizes_stale_ledger_foreshadows(client, db_sessi
     assert 'urgent_foreshadow' in payload['source_signals']
 
 
+def test_next_chapter_prep_surfaces_imported_candidates_as_safe_material_references(client, db_session):
+    token, world_id = register_and_create_world(client, 'ncc-import-reference@example.com')
+    content = '设定：雨夜审讯从一盏坏灯开始。\n角色：沈微霜：密探，擅长伪装。'
+    preview = client.post(
+        f'/worlds/{world_id}/imports/preview',
+        json={'source_type': 'markdown', 'source_title': '旧设定.md', 'content': content},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+    confirm = client.post(
+        f'/worlds/{world_id}/imports/confirm',
+        json={
+            'source_type': 'markdown',
+            'source_title': '旧设定.md',
+            'content': content,
+            'assets': preview['assets'],
+            'conflicts': preview['conflicts'],
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert confirm.status_code == 200
+    db_session.expire_all()
+    world_before = db_session.get(World, world_id)
+    canon_before = world_before.truth_canon
+    version_before = world_before.world_version
+    event_count_before = db_session.scalar(select(func.count()).select_from(EventLog))
+
+    response = client.get(f'/worlds/{world_id}/next-chapter-prep', headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert 'import_material_reference' in payload['source_signals']
+    assert len(payload['material_references']) >= 2
+    first_reference = payload['material_references'][0]
+    assert first_reference['source_title'] == '旧设定.md'
+    assert first_reference['asset_pool'] in {'canon', 'character'}
+    assert first_reference['title']
+    assert '不会自动改写正式 canon' in first_reference['safety_note']
+
+    db_session.expire_all()
+    world_after = db_session.get(World, world_id)
+    assert world_after.truth_canon == canon_before
+    assert world_after.world_version == version_before
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == event_count_before
+
+
 def test_next_chapter_prep_does_not_mutate_world_version_or_write_events(client, db_session, monkeypatch):
     token, world_id = register_and_create_world(client)
     approve_chapter(client, token, world_id, monkeypatch)

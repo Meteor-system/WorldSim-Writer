@@ -265,6 +265,41 @@ def test_direct_draft_endpoint_accepts_execution_context(client, db_session, mon
     assert '本章执行上下文' in llm.messages[0][-1]['content']
 
 
+def test_direct_draft_prompt_includes_import_material_references_as_non_canon(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client, 'direct-import-reference-context@example.com')
+    context = sample_execution_context()
+    context['material_references'] = [
+        {
+            'asset_id': 9,
+            'batch_id': 3,
+            'asset_pool': 'inspiration',
+            'title': '雨夜审讯',
+            'summary': '雨夜审讯从一盏坏灯开始。',
+            'raw_text': '灵感：雨夜审讯从一盏坏灯开始。',
+            'source_title': '旧设定.md',
+            'source_type': 'markdown',
+            'created_at': '2026-06-04T00:00:00Z',
+            'safety_note': '导入素材参考只用于创作提示，不会自动改写正式 canon。',
+        }
+    ]
+    llm = CapturingLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+
+    response = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': context['goal'], 'execution_context': context},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['execution_context']['material_references'][0]['title'] == '雨夜审讯'
+    prompt = llm.messages[0][-1]['content']
+    assert '导入素材参考（非正式 canon）' in prompt
+    assert '雨夜审讯' in prompt
+    assert '不会自动改写正式 canon' in prompt
+
+
 def test_direct_draft_rejects_stale_execution_context_before_model_call(client, monkeypatch):
     token, world_id = register_and_create_world(client, 'stale-direct-context@example.com')
     context = sample_execution_context(source_world_version=0)

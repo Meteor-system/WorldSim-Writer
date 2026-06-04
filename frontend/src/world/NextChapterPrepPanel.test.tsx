@@ -62,6 +62,20 @@ const prep: NextChapterPrepResponse = {
       created_at: '2026-05-30T00:00:00Z',
     },
   ],
+  material_references: [
+    {
+      asset_id: 9,
+      batch_id: 3,
+      asset_pool: 'inspiration',
+      title: '雨夜审讯',
+      summary: '雨夜审讯从一盏坏灯开始。',
+      raw_text: '灵感：雨夜审讯从一盏坏灯开始。',
+      source_title: '旧设定.md',
+      source_type: 'markdown',
+      created_at: '2026-06-04T00:00:00Z',
+      safety_note: '导入素材参考只用于创作提示，不会自动改写正式 canon。',
+    },
+  ],
 };
 
 describe('NextChapterPrepPanel', () => {
@@ -82,12 +96,16 @@ describe('NextChapterPrepPanel', () => {
     expect(screen.getByText('试探沈微霜是否可信')).toBeInTheDocument();
     expect(screen.getByText('下一章需要补足试探过程。')).toBeInTheDocument();
     expect(screen.getByText('chapter_approved · 世界 1 → 2')).toBeInTheDocument();
+    expect(screen.getByText('导入素材参考')).toBeInTheDocument();
+    expect(screen.getByText('雨夜审讯')).toBeInTheDocument();
+    expect(screen.getByText('导入素材只作为创作参考，不会自动改写正式 canon。')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '用作下一章目标' }));
     expect(onUseContext).toHaveBeenCalledWith(expect.objectContaining({
       source: 'next_chapter_prep',
       goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
       recommended_pov: { character_id: 1, name: '林砚' },
+      material_references: expect.arrayContaining([expect.objectContaining({ title: '雨夜审讯' })]),
     }));
 
     await user.click(screen.getByRole('button', { name: '进入创作台并使用此目标' }));
