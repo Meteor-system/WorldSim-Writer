@@ -859,7 +859,9 @@ describe('WorldPage Story Arc Planner', () => {
     expect(await screen.findByText('已准备 1 条导入素材参考。')).toBeInTheDocument();
     expect(screen.getAllByText('导入素材参考').length).toBeGreaterThan(0);
     expect(screen.getAllByText('雨夜审讯（来源：旧设定.md）').length).toBeGreaterThan(0);
-    expect(screen.getByText('这些素材只会随下一章目标进入创作台，不会自动写入正式 canon。')).toBeInTheDocument();
+    expect(screen.getAllByText('雨夜审讯从一盏坏灯开始。').length).toBeGreaterThan(0);
+    expect(screen.getByText('这些素材只会随下一章目标进入创作台，不会自动写入正式设定。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('正式 canon');
     expect(document.body).not.toHaveTextContent('asset_id');
     expect(document.body).not.toHaveTextContent('batch_id');
     expect(document.body).not.toHaveTextContent('inspiration');

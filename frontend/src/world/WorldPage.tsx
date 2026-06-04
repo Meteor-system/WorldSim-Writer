@@ -314,14 +314,15 @@ function FirstChapterLaunchpad({ world, nextChapter, arcLoading, materialReferen
             <section className="rounded-2xl bg-white/45 p-3">
               <h3 className="font-black text-[#3b2511]">导入素材参考</h3>
               <p className="manuscript mt-1 text-sm">已准备 {materialReferences.length} 条导入素材参考。</p>
-              <div className="mt-2 space-y-1">
+              <div className="mt-3 space-y-2">
                 {materialReferences.map((reference) => (
-                  <p key={`${reference.source_title}-${reference.title}`} className="manuscript text-sm">
-                    {reference.title}（来源：{reference.source_title}）
-                  </p>
+                  <article key={`${reference.source_title}-${reference.title}`} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
+                    <p className="font-bold text-[#3b2511]">{reference.title}（来源：{reference.source_title}）</p>
+                    <p className="manuscript mt-1 text-sm">{reference.summary}</p>
+                  </article>
                 ))}
               </div>
-              <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">这些素材只会随下一章目标进入创作台，不会自动写入正式 canon。</p>
+              <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">这些素材只会随下一章目标进入创作台，不会自动写入正式设定。</p>
             </section>
           )}
           <button className="primary-button" type="button" onClick={() => onLaunchChapter(nextChapter)}>用此目标进入创作台</button>
