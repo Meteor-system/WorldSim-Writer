@@ -86,7 +86,9 @@ describe('NextChapterPrepPanel', () => {
 
     render(<NextChapterPrepPanel prep={prep} onUseContext={onUseContext} onEnterStudioWithContext={onEnterStudioWithContext} />);
 
+    expect(screen.getByText('下一章写作准备')).toBeInTheDocument();
     expect(screen.getByText('下一章准备台')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('Next Chapter Prep');
     expect(screen.getByText('第 2 章建议目标')).toBeInTheDocument();
     expect(screen.getByText('林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();

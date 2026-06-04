@@ -58,7 +58,7 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
   return (
     <section className="book-card space-y-4 p-5">
       <div>
-        <p className="chapter-kicker">Next Chapter Prep</p>
+        <p className="chapter-kicker">下一章写作准备</p>
         <h2 className="text-2xl font-black text-[#34210f]">下一章准备台</h2>
         <p className="manuscript mt-2 text-sm text-[#5e3b1c]">下一章准备台只提供写作建议，不会自动修改世界状态。</p>
       </div>
