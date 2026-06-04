@@ -727,7 +727,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           {settlement && (
             <section className="book-card space-y-4 border-2 border-emerald-500/35 bg-emerald-50/70 p-5" role="status" aria-live="polite">
               <div>
-                <p className="chapter-kicker">Canon Settlement</p>
+                <p className="chapter-kicker">正史结算</p>
                 <h2 className="text-2xl font-black text-[#203b20]">世界推进结算</h2>
                 <p className="manuscript mt-2">这一章已写入正式设定，后续章节会继承本次世界变化。</p>
               </div>

@@ -719,6 +719,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
 
     expect(await screen.findByText('世界推进结算')).toBeInTheDocument();
+    expect(screen.getByText('正史结算')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('Canon Settlement');
     expect(onApproved).not.toHaveBeenCalled();
     expect(screen.getByText('世界进度 v1 → v2')).toBeInTheDocument();
     expect(screen.getByText('已写入正史章节：1')).toBeInTheDocument();
