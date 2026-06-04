@@ -366,7 +366,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
         recommended_pov: { character_id: 1, name: '林砚' },
       }),
     }));
-    expect(await screen.findByText('已冻结执行上下文：next_chapter_prep · v2')).toBeInTheDocument();
+    expect(await screen.findByText('已冻结执行上下文：下一章准备台 · v2')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('已冻结执行上下文：next_chapter_prep · v2');
   });
 
   it('creates manual context when Studio opens without NCC execution context', async () => {

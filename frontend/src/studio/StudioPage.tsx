@@ -96,7 +96,7 @@ function ExecutionContextSummary({ context, frozen }: { context?: ChapterExecuti
   return (
     <div className="book-card p-5">
       <h2 className="font-black text-[#3b2511]">本章执行上下文</h2>
-      {frozen && <p className="mt-2 text-sm font-bold text-[#5e3b1c]">已冻结执行上下文：{context.source} · v{context.source_world_version}</p>}
+      {frozen && <p className="mt-2 text-sm font-bold text-[#5e3b1c]">已冻结执行上下文：{sourceLabel(context.source)} · v{context.source_world_version}</p>}
       <p className="mt-3 ink-muted">来源：{sourceLabel(context.source)}</p>
       <p className="mt-2 ink-muted">源世界版本：v{context.source_world_version}</p>
       <p className="mt-2 ink-muted">建议章节：第 {context.next_chapter_number ?? '?'} 章</p>
