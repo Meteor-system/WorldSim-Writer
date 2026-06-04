@@ -869,7 +869,10 @@ describe('WorldPage Story Arc Planner', () => {
     expect(document.body).not.toHaveTextContent('batch_id');
     expect(document.body).not.toHaveTextContent('inspiration');
 
-    await user.click(screen.getByRole('button', { name: '用此目标进入创作台' }));
+    expect(screen.getByRole('button', { name: '带候选素材参考进入创作台' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '用此目标进入创作台' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '带候选素材参考进入创作台' }));
 
     expect(onEnterStudio).toHaveBeenCalledWith(storyArcWorld, {
       initialChapterGoal: '第 2 章标题：第 2 章摘要：林砚推进裂纹玉佩线索。',

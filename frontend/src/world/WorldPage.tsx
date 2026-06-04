@@ -325,7 +325,9 @@ function FirstChapterLaunchpad({ world, nextChapter, arcLoading, materialReferen
               <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">这些候选素材只会随下一章目标进入创作台，不会自动写入正式设定。</p>
             </section>
           )}
-          <button className="primary-button" type="button" onClick={() => onLaunchChapter(nextChapter)}>用此目标进入创作台</button>
+          <button className="primary-button" type="button" onClick={() => onLaunchChapter(nextChapter)}>
+            {materialReferences.length > 0 ? '带候选素材参考进入创作台' : '用此目标进入创作台'}
+          </button>
         </div>
       ) : (
         <div className="mt-3">
