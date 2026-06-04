@@ -67,6 +67,23 @@ function materialReferenceSentence(titles: string[]): string {
   return `本章参考了 ${titles.length} 条导入素材：${titles.join('、')}。`;
 }
 
+function MaterialReferenceCards({ context, compact = false }: { context?: ChapterExecutionContext | null; compact?: boolean }) {
+  const references = context?.material_references ?? [];
+  if (references.length === 0) return null;
+  return (
+    <div className={compact ? 'mt-3 space-y-2' : 'mt-3 rounded-2xl bg-white/45 p-3'}>
+      {!compact && <p className="text-sm font-bold text-[#4a321e]">导入素材参考：{references.length} 条</p>}
+      {references.map((reference) => (
+        <article key={`${reference.source_title}-${reference.title}`} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
+          <p className="manuscript text-sm font-bold text-[#5e3b1c]">{reference.title}（来源：{reference.source_title}）</p>
+          <p className="manuscript mt-1 text-sm text-[#5e3b1c]">{reference.summary}</p>
+        </article>
+      ))}
+      <p className="manuscript text-sm font-bold text-[#5e3b1c]">{compact ? '素材参考不会自动改写正式设定。' : '导入素材只是本章写作参考，不会自动改写正式设定。'}</p>
+    </div>
+  );
+}
+
 function ExecutionContextSummary({ context, frozen }: { context?: ChapterExecutionContext | null; frozen?: boolean }) {
   if (!context) {
     return (
@@ -88,12 +105,7 @@ function ExecutionContextSummary({ context, frozen }: { context?: ChapterExecuti
       <p className="mt-2 ink-muted">优先伏笔：{names(context.priority_foreshadows)}</p>
       <p className="mt-2 ink-muted">推进提示：{context.progression_hints.length} 条</p>
       <p className="mt-2 ink-muted">连续性提醒：{context.continuity_warnings.length} 条</p>
-      {(context.material_references ?? []).length > 0 && (
-        <>
-          <p className="mt-2 ink-muted">导入素材参考：{context.material_references.length} 条</p>
-          <p className="mt-2 text-sm font-bold text-[#5e3b1c]">导入素材只是冻结参考，不会自动改写正式 canon。</p>
-        </>
-      )}
+      <MaterialReferenceCards context={context} />
     </div>
   );
 }
@@ -114,10 +126,7 @@ function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionConte
       {context.continuity_warnings.map((warning, index) => (
         <p key={`${warning.category}-${index}`} className="manuscript text-sm">连续性提醒：{warning.message}</p>
       ))}
-      {(context.material_references ?? []).map((reference) => (
-        <p key={`${reference.batch_id}-${reference.asset_id}`} className="manuscript text-sm">导入素材参考：{reference.title}</p>
-      ))}
-      {(context.material_references ?? []).length > 0 && <p className="manuscript text-sm font-bold text-[#5e3b1c]">素材参考不会自动改写正式 canon。</p>}
+      <MaterialReferenceCards context={context} compact />
     </section>
   );
 }

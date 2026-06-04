@@ -345,7 +345,13 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('优先角色：林砚')).toBeInTheDocument();
     expect(screen.getByText('优先伏笔：裂纹玉佩')).toBeInTheDocument();
     expect(screen.getByText('导入素材参考：1 条')).toBeInTheDocument();
-    expect(screen.getByText('导入素材只是冻结参考，不会自动改写正式 canon。')).toBeInTheDocument();
+    expect(screen.getByText('雨夜审讯（来源：旧设定.md）')).toBeInTheDocument();
+    expect(screen.getByText('雨夜审讯从一盏坏灯开始。')).toBeInTheDocument();
+    expect(screen.getByText('导入素材只是本章写作参考，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('正式 canon');
+    expect(document.body).not.toHaveTextContent('asset_id');
+    expect(document.body).not.toHaveTextContent('batch_id');
+    expect(document.body).not.toHaveTextContent('inspiration');
 
     const goal = screen.getByLabelText('章节目标');
     await user.clear(goal);
@@ -391,8 +397,10 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByText('执行上下文快照')).toBeInTheDocument();
     expect(screen.getByText('目标：林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
     expect(screen.getByText('连续性提醒：下一章需要补足试探过程。')).toBeInTheDocument();
-    expect(screen.getByText('导入素材参考：雨夜审讯')).toBeInTheDocument();
-    expect(screen.getByText('素材参考不会自动改写正式 canon。')).toBeInTheDocument();
+    expect(screen.getAllByText('雨夜审讯（来源：旧设定.md）').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('雨夜审讯从一盏坏灯开始。').length).toBeGreaterThan(0);
+    expect(screen.getByText('素材参考不会自动改写正式设定。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('素材参考不会自动改写正式 canon。');
   });
 
   it('renders version selector, stash, paragraph controls, diff, and approval preview after drafting', async () => {
