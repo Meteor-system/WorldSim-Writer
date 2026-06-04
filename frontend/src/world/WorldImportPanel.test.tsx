@@ -163,7 +163,8 @@ describe('WorldImportPanel', () => {
     }));
     expect(onConfirmed).toHaveBeenCalledWith(confirmResponse);
     expect(await screen.findByRole('status')).toHaveTextContent('已写入候选素材。');
-    expect(screen.getByText('这些素材会作为创作参考出现在下一章准备区，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(screen.getByText('这些候选素材会作为写作参考出现在下一章准备区，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('这些素材会作为创作参考出现在下一章准备区，不会自动改写正式设定。');
     expect(screen.queryByText(/批次 #12/)).not.toBeInTheDocument();
     const audit = screen.getByTestId('import-confirmed-batch');
     expect(within(audit).getByText('正式设定候选 1 · 角色候选 1 · 灵感候选 1')).toBeInTheDocument();

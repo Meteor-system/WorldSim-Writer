@@ -203,7 +203,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
       {confirmed && (
         <div role="status" className="paper-success p-4" data-testid="import-confirmed-batch">
           <p className="font-bold">已写入候选素材。</p>
-          <p className="mt-1 font-normal">这些素材会作为创作参考出现在下一章准备区，不会自动改写正式设定。</p>
+          <p className="mt-1 font-normal">这些候选素材会作为写作参考出现在下一章准备区，不会自动改写正式设定。</p>
           <span className="mt-2 block font-normal">{countText(confirmed.batch.asset_counts)}</span>
         </div>
       )}
