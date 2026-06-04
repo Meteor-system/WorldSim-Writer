@@ -32,7 +32,7 @@ const POOL_LABELS: Record<ImportCandidateAssetPreview['asset_pool'], string> = {
 };
 
 function countText(counts: Record<string, number>) {
-  return `正式设定 ${counts.canon ?? 0} · 角色 ${counts.character ?? 0} · 灵感 ${counts.inspiration ?? 0}`;
+  return `正式设定候选 ${counts.canon ?? 0} · 角色候选 ${counts.character ?? 0} · 灵感候选 ${counts.inspiration ?? 0}`;
 }
 
 function conflictText(conflict: ImportPreviewResponse['conflicts'][number]) {

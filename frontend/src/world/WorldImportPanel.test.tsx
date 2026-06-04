@@ -97,10 +97,12 @@ describe('WorldImportPanel', () => {
     }));
 
     expect(await screen.findByText('正式设定候选')).toBeInTheDocument();
+    expect(screen.getByText('正式设定候选 1 · 角色候选 1 · 灵感候选 1，需确认后才写入候选资产。')).toBeInTheDocument();
     expect(screen.getByText('角色候选')).toBeInTheDocument();
     expect(screen.getByText('灵感候选')).toBeInTheDocument();
     expect(screen.getByText('青岚城密探规则')).toBeInTheDocument();
     expect(screen.getByText('这份素材可能和已有正式设定重叠：青岚城')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('正式设定 1 · 角色 1 · 灵感 1，需确认后才写入候选资产。');
     expect(document.body).not.toHaveTextContent('canon 候选');
     expect(document.body).not.toHaveTextContent('canon 1');
     expect(document.body).not.toHaveTextContent('canon_overlap');
@@ -141,7 +143,8 @@ describe('WorldImportPanel', () => {
     expect(screen.getByText('这些素材会作为创作参考出现在下一章准备区，不会自动改写正式设定。')).toBeInTheDocument();
     expect(screen.queryByText(/批次 #12/)).not.toBeInTheDocument();
     const audit = screen.getByTestId('import-confirmed-batch');
-    expect(within(audit).getByText('正式设定 1 · 角色 1 · 灵感 1')).toBeInTheDocument();
+    expect(within(audit).getByText('正式设定候选 1 · 角色候选 1 · 灵感候选 1')).toBeInTheDocument();
+    expect(within(audit).queryByText('正式设定 1 · 角色 1 · 灵感 1')).not.toBeInTheDocument();
     expect(within(audit).queryByText('canon 1 · 角色 1 · 灵感 1')).not.toBeInTheDocument();
   });
 
@@ -156,12 +159,14 @@ describe('WorldImportPanel', () => {
     expect(await screen.findByText('最近导入批次')).toBeInTheDocument();
     expect(screen.getByText('旧设定.md')).toBeInTheDocument();
     expect(screen.getByText('候选资产 3 项')).toBeInTheDocument();
+    expect(screen.getByText('正式设定候选 1 · 角色候选 1 · 灵感候选 1')).toBeInTheDocument();
     expect(screen.getByText('可用创作参考')).toBeInTheDocument();
     expect(screen.getByText('正式设定候选：青岚城密探规则')).toBeInTheDocument();
     expect(screen.getByText('角色候选：沈微霜')).toBeInTheDocument();
     expect(screen.getByText('灵感候选：雨夜审讯')).toBeInTheDocument();
     expect(screen.getByText('密探必须隐藏真实姓名。')).toBeInTheDocument();
     expect(screen.getByText('这些素材只是写作参考，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('正式设定 1 · 角色 1 · 灵感 1');
     expect(document.body).not.toHaveTextContent('batch #12');
     expect(document.body).not.toHaveTextContent('asset #1');
     expect(document.body).not.toHaveTextContent('inspiration');
