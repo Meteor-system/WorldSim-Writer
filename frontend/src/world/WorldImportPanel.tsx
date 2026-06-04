@@ -21,8 +21,8 @@ type Props = {
 
 const SOURCE_LABELS: Record<ImportSourceType, string> = {
   pasted_text: '粘贴文本',
-  markdown: 'Markdown',
-  txt: 'txt',
+  markdown: 'Markdown 文档',
+  txt: '纯文本文件',
 };
 
 const POOL_LABELS: Record<ImportCandidateAssetPreview['asset_pool'], string> = {
