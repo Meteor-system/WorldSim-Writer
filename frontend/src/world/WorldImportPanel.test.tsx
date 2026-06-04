@@ -103,6 +103,8 @@ describe('WorldImportPanel', () => {
     expect(screen.queryByText('Material Import')).not.toBeInTheDocument();
     expect(screen.queryByText(/P0/)).not.toBeInTheDocument();
     expect(screen.getByText('导入素材会先进入候选素材池，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(screen.getByText('系统会先解析、分类、清洗并提示冲突，确认后只写入候选素材记录，不会改动正式设定。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('导入批次审计记录');
     expect(screen.getByRole('option', { name: 'Markdown 文档' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: '纯文本文件' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'txt' })).not.toBeInTheDocument();

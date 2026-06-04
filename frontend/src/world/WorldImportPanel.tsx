@@ -135,7 +135,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
         <p className="chapter-kicker">素材导入</p>
         <h2 className="mt-2 text-2xl font-black text-[#34210f]">素材导入节点</h2>
         <p className="manuscript mt-2 text-sm text-[#5e3b1c]">导入素材会先进入候选素材池，不会自动改写正式设定。</p>
-        <p className="manuscript mt-1 text-sm text-[#5e3b1c]">系统会先解析、分类、清洗并提示冲突，确认后只写入候选素材和导入批次审计记录。</p>
+        <p className="manuscript mt-1 text-sm text-[#5e3b1c]">系统会先解析、分类、清洗并提示冲突，确认后只写入候选素材记录，不会改动正式设定。</p>
       </div>
 
       {readOnly && <p className="rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已归档小说为只读模式，不能导入新素材。</p>}
