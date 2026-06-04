@@ -1094,7 +1094,7 @@ describe('WorldPage Narrative Control Center', () => {
 
     expect(await screen.findByText('已写入候选素材。')).toBeInTheDocument();
     await waitFor(() => expect(getNextChapterPrep).toHaveBeenCalledTimes(2));
-    expect(await screen.findByText('这些素材只是下一章写作参考，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(await screen.findByText('这些候选素材只是下一章写作参考，不会自动改写正式设定。')).toBeInTheDocument();
     expect(screen.getByText('雨夜审讯（来源：旧设定.md）')).toBeInTheDocument();
   });
 

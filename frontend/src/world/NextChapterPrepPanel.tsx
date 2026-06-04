@@ -93,8 +93,8 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
 
       {(prep.material_references ?? []).length > 0 && (
         <section className="rounded-2xl bg-white/35 p-4">
-          <h3 className="font-black text-[#3b2511]">导入素材参考</h3>
-          <p className="manuscript mt-2 text-sm text-[#5e3b1c]">这些素材只是下一章写作参考，不会自动改写正式设定。</p>
+          <h3 className="font-black text-[#3b2511]">候选素材写作参考</h3>
+          <p className="manuscript mt-2 text-sm text-[#5e3b1c]">这些候选素材只是下一章写作参考，不会自动改写正式设定。</p>
           <div className="mt-3 space-y-3">
             {(prep.material_references ?? []).map((reference) => (
               <article key={`${reference.source_title}-${reference.title}`} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">

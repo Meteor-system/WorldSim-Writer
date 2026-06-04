@@ -101,10 +101,10 @@ describe('NextChapterPrepPanel', () => {
     expect(document.body).not.toHaveTextContent('林砚 · protagonist');
     expect(document.body).not.toHaveTextContent('裂纹玉佩 · advanced · urgency 4');
     expect(document.body).not.toHaveTextContent('chapter_approved · 世界 1 → 2');
-    expect(screen.getByText('导入素材参考')).toBeInTheDocument();
+    expect(screen.getByText('候选素材写作参考')).toBeInTheDocument();
     expect(screen.getByText('雨夜审讯（来源：旧设定.md）')).toBeInTheDocument();
     expect(screen.getByText('雨夜审讯从一盏坏灯开始。')).toBeInTheDocument();
-    expect(screen.getByText('这些素材只是下一章写作参考，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(screen.getByText('这些候选素材只是下一章写作参考，不会自动改写正式设定。')).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('正式 canon');
     expect(document.body).not.toHaveTextContent('asset_id');
     expect(document.body).not.toHaveTextContent('batch_id');
