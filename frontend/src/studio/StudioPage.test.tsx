@@ -348,7 +348,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(document.body).not.toHaveTextContent('导入素材参考：1 条');
     expect(screen.getByText('雨夜审讯（来源：旧设定.md）')).toBeInTheDocument();
     expect(screen.getByText('雨夜审讯从一盏坏灯开始。')).toBeInTheDocument();
-    expect(screen.getByText('导入素材只是本章写作参考，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(screen.getByText('候选素材只是本章写作参考，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('导入素材只是本章写作参考，不会自动改写正式设定。');
     expect(document.body).not.toHaveTextContent('正式 canon');
     expect(document.body).not.toHaveTextContent('asset_id');
     expect(document.body).not.toHaveTextContent('batch_id');
@@ -401,7 +402,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('连续性提醒：下一章需要补足试探过程。')).toBeInTheDocument();
     expect(screen.getAllByText('雨夜审讯（来源：旧设定.md）').length).toBeGreaterThan(0);
     expect(screen.getAllByText('雨夜审讯从一盏坏灯开始。').length).toBeGreaterThan(0);
-    expect(screen.getByText('素材参考不会自动改写正式设定。')).toBeInTheDocument();
+    expect(screen.getByText('候选素材参考不会自动改写正式设定。')).toBeInTheDocument();
+    expect(screen.queryByText('素材参考不会自动改写正式设定。')).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('素材参考不会自动改写正式 canon。');
   });
 
@@ -732,7 +734,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('这一章已写入正式设定，后续章节会继承本次世界变化。')).toBeInTheDocument();
     expect(screen.getByText('本章使用 1 条候选素材作为写作参考：雨夜审讯。')).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('本章参考了 1 条导入素材：雨夜审讯。');
-    expect(screen.getByText('导入素材仍是本章创作参考，没有自动写入正式设定。')).toBeInTheDocument();
+    expect(screen.getByText('候选素材仍是本章创作参考，没有自动写入正式设定。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('导入素材仍是本章创作参考，没有自动写入正式设定。');
     expect(document.body).not.toHaveTextContent('正式 canon');
     expect(document.body).not.toHaveTextContent('正史 / canon');
     expect(document.body).not.toHaveTextContent('asset_id');

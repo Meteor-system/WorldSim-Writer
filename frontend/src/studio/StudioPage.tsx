@@ -79,7 +79,7 @@ function MaterialReferenceCards({ context, compact = false }: { context?: Chapte
           <p className="manuscript mt-1 text-sm text-[#5e3b1c]">{reference.summary}</p>
         </article>
       ))}
-      <p className="manuscript text-sm font-bold text-[#5e3b1c]">{compact ? '素材参考不会自动改写正式设定。' : '导入素材只是本章写作参考，不会自动改写正式设定。'}</p>
+      <p className="manuscript text-sm font-bold text-[#5e3b1c]">{compact ? '候选素材参考不会自动改写正式设定。' : '候选素材只是本章写作参考，不会自动改写正式设定。'}</p>
     </div>
   );
 }
@@ -734,7 +734,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
               <div className="rounded-2xl bg-white/65 p-4 text-emerald-950">
                 <p className="font-bold">{materialReferenceSentence(settlement.materialReferenceTitles)}</p>
                 {settlement.materialReferenceTitles.length > 0 && (
-                  <p className="manuscript mt-2 text-sm">导入素材仍是本章创作参考，没有自动写入正式设定。</p>
+                  <p className="manuscript mt-2 text-sm">候选素材仍是本章创作参考，没有自动写入正式设定。</p>
                 )}
                 <p className="manuscript mt-2 text-sm">已写入正式章节。</p>
                 <p className="manuscript mt-1 text-sm">
