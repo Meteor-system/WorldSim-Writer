@@ -90,7 +90,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
     event.preventDefault();
     if (readOnly) return;
     if (!content.trim()) {
-      setError('请先粘贴 Markdown、txt 或文本素材。');
+      setError('请先粘贴一段素材正文。');
       return;
     }
     setError('');
@@ -157,7 +157,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
         </label>
         <div className="md:col-span-2 flex flex-wrap gap-3">
           <button type="submit" className="primary-button motion-soft-lift" disabled={readOnly || loadingPreview}>{loadingPreview ? '解析中…' : '生成结构化预览'}</button>
-          <span className="self-center text-xs ink-muted">当前只处理单份 Markdown/txt 或粘贴文本。</span>
+          <span className="self-center text-xs ink-muted">当前一次只处理一份素材来源，粘贴正文后会先生成候选预览。</span>
         </div>
       </form>
 

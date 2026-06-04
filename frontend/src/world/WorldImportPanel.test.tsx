@@ -78,7 +78,20 @@ describe('WorldImportPanel', () => {
     render(<WorldImportPanel worldId={7} onPreview={vi.fn()} onConfirm={vi.fn()} onListBatches={vi.fn().mockResolvedValue(emptyBatches)} />);
 
     expect(await screen.findByText('还没有导入素材参考。导入后会先作为候选素材出现在下一章准备区，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(screen.getByText('当前一次只处理一份素材来源，粘贴正文后会先生成候选预览。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('当前只处理单份 Markdown/txt 或粘贴文本。');
     expect(document.body).not.toHaveTextContent('还没有导入批次。');
+  });
+
+  it('shows readable empty-content validation copy', async () => {
+    const user = userEvent.setup();
+    render(<WorldImportPanel worldId={7} onPreview={vi.fn()} onConfirm={vi.fn()} onListBatches={vi.fn().mockResolvedValue(emptyBatches)} />);
+
+    await user.clear(screen.getByLabelText('素材正文'));
+    await user.click(screen.getByRole('button', { name: '生成结构化预览' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('请先粘贴一段素材正文。');
+    expect(document.body).not.toHaveTextContent('请先粘贴 Markdown、txt 或文本素材。');
   });
 
   it('previews imported material as grouped candidate assets with canon safety copy', async () => {
