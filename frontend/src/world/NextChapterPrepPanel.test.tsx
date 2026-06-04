@@ -90,12 +90,15 @@ describe('NextChapterPrepPanel', () => {
     expect(screen.getByText('第 2 章建议目标')).toBeInTheDocument();
     expect(screen.getByText('林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
-    expect(screen.getByText('林砚 · protagonist')).toBeInTheDocument();
-    expect(screen.getByText('裂纹玉佩 · advanced · urgency 4')).toBeInTheDocument();
+    expect(screen.getByText('林砚 · 主角')).toBeInTheDocument();
+    expect(screen.getByText('裂纹玉佩 · 推进中 · 紧迫度 4')).toBeInTheDocument();
     expect(screen.getByText('理由：高紧迫度：5；已埋设 6 章未推进')).toBeInTheDocument();
     expect(screen.getByText('试探沈微霜是否可信')).toBeInTheDocument();
     expect(screen.getByText('下一章需要补足试探过程。')).toBeInTheDocument();
-    expect(screen.getByText('chapter_approved · 世界 1 → 2')).toBeInTheDocument();
+    expect(screen.getByText('章节写入正史 · 世界第 1 版 → 第 2 版')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('林砚 · protagonist');
+    expect(document.body).not.toHaveTextContent('裂纹玉佩 · advanced · urgency 4');
+    expect(document.body).not.toHaveTextContent('chapter_approved · 世界 1 → 2');
     expect(screen.getByText('导入素材参考')).toBeInTheDocument();
     expect(screen.getByText('雨夜审讯（来源：旧设定.md）')).toBeInTheDocument();
     expect(screen.getByText('雨夜审讯从一盏坏灯开始。')).toBeInTheDocument();

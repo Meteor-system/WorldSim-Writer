@@ -1,5 +1,6 @@
 import type { ChapterExecutionContext, NextChapterPrepResponse } from '../api/types';
 import { buildExecutionContextFromPrep } from './chapterExecutionContext';
+import { labelEventType, labelStatus, labelWorldVersion } from './displayLabels';
 
 type Props = {
   prep: NextChapterPrepResponse | null;
@@ -112,7 +113,7 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
           <div className="mt-3 space-y-3">
             {prep.priority_characters.map((character) => (
               <article key={character.character_id} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
-                <p className="font-bold text-[#3b2511]">{character.name} · {character.role_type}</p>
+                <p className="font-bold text-[#3b2511]">{character.name} · {labelStatus(character.role_type)}</p>
                 <p className="manuscript mt-1 text-sm">状态：{character.status}</p>
                 <p className="manuscript mt-1 text-sm">理由：{character.reason}</p>
               </article>
@@ -126,7 +127,7 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
           <div className="mt-3 space-y-3">
             {prep.priority_foreshadows.map((foreshadow) => (
               <article key={foreshadow.foreshadow_id} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
-                <p className="font-bold text-[#3b2511]">{foreshadow.title} · {foreshadow.status} · urgency {foreshadow.urgency_level}</p>
+                <p className="font-bold text-[#3b2511]">{foreshadow.title} · {labelStatus(foreshadow.status)} · 紧迫度 {foreshadow.urgency_level}</p>
                 <p className="manuscript mt-1 text-sm">理由：{foreshadow.reason}</p>
               </article>
             ))}
@@ -168,7 +169,7 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
           <div className="mt-3 space-y-2">
             {prep.recent_events.map((event) => (
               <p key={event.id} className="manuscript text-sm">
-                {event.event_type} · 世界 {event.world_version_before} → {event.world_version_after}
+                {labelEventType(event.event_type)} · 世界{labelWorldVersion(event.world_version_before)} → {labelWorldVersion(event.world_version_after)}
               </p>
             ))}
           </div>
