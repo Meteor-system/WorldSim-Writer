@@ -74,6 +74,13 @@ const emptyBatches: ImportBatchListResponse = { world_id: 7, batches: [] };
 afterEach(() => cleanup());
 
 describe('WorldImportPanel', () => {
+  it('shows empty import history as safe reference guidance', async () => {
+    render(<WorldImportPanel worldId={7} onPreview={vi.fn()} onConfirm={vi.fn()} onListBatches={vi.fn().mockResolvedValue(emptyBatches)} />);
+
+    expect(await screen.findByText('还没有导入素材参考。导入后会先作为候选素材出现在下一章准备区，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('还没有导入批次。');
+  });
+
   it('previews imported material as grouped candidate assets with canon safety copy', async () => {
     const user = userEvent.setup();
     const onPreview = vi.fn().mockResolvedValue(previewResponse);

@@ -210,7 +210,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
 
       <div className="space-y-3">
         <h3 className="text-lg font-black text-[#34210f]">最近导入批次</h3>
-        {loadingBatches ? <p className="text-sm ink-muted">正在读取导入记录…</p> : batches.length === 0 ? <p className="text-sm ink-muted">还没有导入批次。</p> : (
+        {loadingBatches ? <p className="text-sm ink-muted">正在读取导入记录…</p> : batches.length === 0 ? <p className="text-sm ink-muted">还没有导入素材参考。导入后会先作为候选素材出现在下一章准备区，不会自动改写正式设定。</p> : (
           <div className="grid gap-3 md:grid-cols-2">
             {batches.map((batch) => (
               <article key={batch.id} className="surface-layer motion-soft-lift rounded-2xl p-4">
