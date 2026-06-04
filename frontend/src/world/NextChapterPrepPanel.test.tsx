@@ -97,8 +97,13 @@ describe('NextChapterPrepPanel', () => {
     expect(screen.getByText('下一章需要补足试探过程。')).toBeInTheDocument();
     expect(screen.getByText('chapter_approved · 世界 1 → 2')).toBeInTheDocument();
     expect(screen.getByText('导入素材参考')).toBeInTheDocument();
-    expect(screen.getByText('雨夜审讯')).toBeInTheDocument();
-    expect(screen.getByText('导入素材只作为创作参考，不会自动改写正式 canon。')).toBeInTheDocument();
+    expect(screen.getByText('雨夜审讯（来源：旧设定.md）')).toBeInTheDocument();
+    expect(screen.getByText('雨夜审讯从一盏坏灯开始。')).toBeInTheDocument();
+    expect(screen.getByText('这些素材只是下一章写作参考，不会自动改写正式设定。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('正式 canon');
+    expect(document.body).not.toHaveTextContent('asset_id');
+    expect(document.body).not.toHaveTextContent('batch_id');
+    expect(document.body).not.toHaveTextContent('inspiration');
 
     await user.click(screen.getByRole('button', { name: '用作下一章目标' }));
     expect(onUseContext).toHaveBeenCalledWith(expect.objectContaining({
