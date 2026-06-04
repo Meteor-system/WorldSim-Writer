@@ -16,6 +16,7 @@ type Props = {
   onPreview: (worldId: number, data: ImportPreviewRequest) => Promise<ImportPreviewResponse>;
   onConfirm: (worldId: number, data: ImportConfirmRequest) => Promise<ImportConfirmResponse>;
   onListBatches: (worldId: number) => Promise<ImportBatchListResponse>;
+  onConfirmed?: (response: ImportConfirmResponse) => void;
 };
 
 const SOURCE_LABELS: Record<ImportSourceType, string> = {
@@ -42,7 +43,7 @@ function groupAssets(assets: ImportCandidateAssetPreview[]) {
   };
 }
 
-export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfirm, onListBatches }: Props) {
+export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfirm, onListBatches, onConfirmed }: Props) {
   const [sourceType, setSourceType] = useState<ImportSourceType>('pasted_text');
   const [sourceTitle, setSourceTitle] = useState('粘贴素材');
   const [content, setContent] = useState('');
@@ -109,6 +110,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
       const response = await onConfirm(worldId, request);
       setConfirmed(response);
       setBatches((current) => [{ ...response.batch, assets: response.assets }, ...current]);
+      onConfirmed?.(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : '候选资产写入失败');
     } finally {
@@ -189,8 +191,9 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
 
       {confirmed && (
         <div role="status" className="paper-success p-4" data-testid="import-confirmed-batch">
-          已写入候选资产批次 #{confirmed.batch.id}
-          <span className="ml-2 font-normal">{countText(confirmed.batch.asset_counts)}</span>
+          <p className="font-bold">已写入候选素材。</p>
+          <p className="mt-1 font-normal">这些素材会作为创作参考出现在下一章准备区，不会自动改写正式 canon。</p>
+          <span className="mt-2 block font-normal">{countText(confirmed.batch.asset_counts)}</span>
         </div>
       )}
 

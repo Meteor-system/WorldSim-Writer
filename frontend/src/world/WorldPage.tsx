@@ -34,7 +34,7 @@ import {
   updateWorldStatus,
   updateWorldTag,
 } from '../api/client';
-import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
+import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, ImportMaterialReference, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
@@ -263,7 +263,7 @@ function buildStoryArcGoal(chapter: StoryArcChapter) {
   return `${chapter.title}：${chapter.summary}`;
 }
 
-function buildStoryArcExecutionContext(world: WorldOverview, chapter: StoryArcChapter): ChapterExecutionContext {
+function buildStoryArcExecutionContext(world: WorldOverview, chapter: StoryArcChapter, materialReferences: ImportMaterialReference[] = []): ChapterExecutionContext {
   return {
     source: 'manual',
     source_world_version: world.world_version,
@@ -276,7 +276,7 @@ function buildStoryArcExecutionContext(world: WorldOverview, chapter: StoryArcCh
     progression_hints: [],
     continuity_warnings: [],
     recent_events: [],
-    material_references: [],
+    material_references: materialReferences,
   };
 }
 
@@ -284,11 +284,12 @@ type FirstChapterLaunchpadProps = {
   world: WorldOverview;
   nextChapter: StoryArcChapter | null;
   arcLoading: boolean;
+  materialReferences: ImportMaterialReference[];
   onGenerateArc: () => void;
   onLaunchChapter: (chapter: StoryArcChapter) => void;
 };
 
-function FirstChapterLaunchpad({ world, nextChapter, arcLoading, onGenerateArc, onLaunchChapter }: FirstChapterLaunchpadProps) {
+function FirstChapterLaunchpad({ world, nextChapter, arcLoading, materialReferences, onGenerateArc, onLaunchChapter }: FirstChapterLaunchpadProps) {
   return (
     <article className="mt-8 rounded-2xl border border-amber-900/15 bg-amber-100/60 p-4 shadow-sm">
       <p className="chapter-kicker">First Chapter Launchpad</p>
@@ -309,6 +310,20 @@ function FirstChapterLaunchpad({ world, nextChapter, arcLoading, onGenerateArc, 
             <p className="rounded-xl bg-white/45 p-3"><span className="font-bold text-[#5e3b1c]">POV：</span>{nextChapter.pov_suggestion}</p>
             <p className="rounded-xl bg-white/45 p-3"><span className="font-bold text-[#5e3b1c]">冲突：</span>{nextChapter.core_conflict}</p>
           </div>
+          {materialReferences.length > 0 && (
+            <section className="rounded-2xl bg-white/45 p-3">
+              <h3 className="font-black text-[#3b2511]">导入素材参考</h3>
+              <p className="manuscript mt-1 text-sm">已准备 {materialReferences.length} 条导入素材参考。</p>
+              <div className="mt-2 space-y-1">
+                {materialReferences.map((reference) => (
+                  <p key={`${reference.source_title}-${reference.title}`} className="manuscript text-sm">
+                    {reference.title}（来源：{reference.source_title}）
+                  </p>
+                ))}
+              </div>
+              <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">这些素材只会随下一章目标进入创作台，不会自动写入正式 canon。</p>
+            </section>
+          )}
           <button className="primary-button" type="button" onClick={() => onLaunchChapter(nextChapter)}>用此目标进入创作台</button>
         </div>
       ) : (
@@ -608,7 +623,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
 
   function launchStoryArcChapter(chapter: StoryArcChapter) {
     if (!world) return;
-    const executionContext = buildStoryArcExecutionContext(world, chapter);
+    const executionContext = buildStoryArcExecutionContext(world, chapter, nextPrep?.material_references ?? []);
     onEnterStudio(world, {
       initialChapterGoal: executionContext.goal,
       executionContext,
@@ -772,6 +787,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   world={world}
                   nextChapter={nextStoryArcChapter}
                   arcLoading={arcLoading}
+                  materialReferences={nextPrep?.material_references ?? []}
                   onGenerateArc={runStoryArcPlanner}
                   onLaunchChapter={launchStoryArcChapter}
                 />
@@ -906,6 +922,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 onPreview={previewWorldImport}
                 onConfirm={confirmWorldImport}
                 onListBatches={listWorldImports}
+                onConfirmed={() => void loadNarrativeControlCenter(world.id)}
               />
               <WorldTagsPanel
                 worldId={world.id}

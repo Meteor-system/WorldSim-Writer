@@ -818,6 +818,62 @@ describe('WorldPage Story Arc Planner', () => {
     });
   });
 
+  it('shows imported references in the first chapter launchpad and carries them into Studio context', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
+    vi.mocked(getNextChapterPrep).mockResolvedValueOnce({
+      world_id: 7,
+      world_version: 2,
+      next_chapter_number: 2,
+      suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+      recommended_pov_character_id: 1,
+      recommended_pov_character_name: '林砚',
+      source_signals: ['import_material_reference'],
+      priority_characters: [],
+      priority_foreshadows: [],
+      progression_hints: [],
+      continuity_warnings: [],
+      recent_events: [],
+      material_references: [
+        {
+          asset_id: 9,
+          batch_id: 3,
+          asset_pool: 'inspiration',
+          title: '雨夜审讯',
+          summary: '雨夜审讯从一盏坏灯开始。',
+          raw_text: '灵感：雨夜审讯从一盏坏灯开始。',
+          source_title: '旧设定.md',
+          source_type: 'markdown',
+          created_at: '2026-06-04T00:00:00Z',
+          safety_note: '导入素材参考只用于创作提示，不会自动改写正式 canon。',
+        },
+      ],
+    });
+
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('已准备 1 条导入素材参考。')).toBeInTheDocument();
+    expect(screen.getAllByText('导入素材参考').length).toBeGreaterThan(0);
+    expect(screen.getByText('雨夜审讯（来源：旧设定.md）')).toBeInTheDocument();
+    expect(screen.getByText('这些素材只会随下一章目标进入创作台，不会自动写入正式 canon。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('asset_id');
+    expect(document.body).not.toHaveTextContent('batch_id');
+    expect(document.body).not.toHaveTextContent('inspiration');
+
+    await user.click(screen.getByRole('button', { name: '用此目标进入创作台' }));
+
+    expect(onEnterStudio).toHaveBeenCalledWith(storyArcWorld, {
+      initialChapterGoal: '第 2 章标题：第 2 章摘要：林砚推进裂纹玉佩线索。',
+      executionContext: expect.objectContaining({
+        material_references: expect.arrayContaining([expect.objectContaining({ title: '雨夜审讯', source_title: '旧设定.md' })]),
+      }),
+    });
+  });
+
   it('renders ten story arc chapters as a dense collapsed index by default', async () => {
     vi.mocked(apiRequest).mockReset();
     vi.mocked(apiRequest)
@@ -963,6 +1019,79 @@ describe('WorldPage Narrative Control Center', () => {
 
     await user.click(screen.getByRole('button', { name: '用作下一章目标' }));
     expect(screen.getByText('已设为下一章目标：林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
+  });
+
+  it('refreshes next chapter references after confirming imported material', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getNextChapterPrep)
+      .mockResolvedValueOnce({
+        world_id: 7,
+        world_version: 2,
+        next_chapter_number: 2,
+        suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+        recommended_pov_character_id: 1,
+        recommended_pov_character_name: '林砚',
+        source_signals: [],
+        priority_characters: [],
+        priority_foreshadows: [],
+        progression_hints: [],
+        continuity_warnings: [],
+        recent_events: [],
+        material_references: [],
+      })
+      .mockResolvedValueOnce({
+        world_id: 7,
+        world_version: 2,
+        next_chapter_number: 2,
+        suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+        recommended_pov_character_id: 1,
+        recommended_pov_character_name: '林砚',
+        source_signals: ['import_material_reference'],
+        priority_characters: [],
+        priority_foreshadows: [],
+        progression_hints: [],
+        continuity_warnings: [],
+        recent_events: [],
+        material_references: [{ asset_id: 9, batch_id: 12, asset_pool: 'inspiration', title: '雨夜审讯', summary: '雨夜审讯从一盏坏灯开始。', raw_text: '灵感：雨夜审讯从一盏坏灯开始。', source_title: '旧设定.md', source_type: 'pasted_text', created_at: '2026-06-04T00:00:01Z', safety_note: '导入素材参考只用于创作提示，不会自动改写正式 canon。' }],
+      });
+    vi.mocked(previewWorldImport).mockResolvedValueOnce({
+      world_id: 7,
+      source_type: 'pasted_text',
+      source_title: '粘贴素材',
+      cleaned_excerpt: '灵感：雨夜审讯从一盏坏灯开始。',
+      asset_counts: { canon: 0, character: 0, inspiration: 1 },
+      conflicts: [],
+      assets: [{ asset_pool: 'inspiration', title: '雨夜审讯', summary: '雨夜审讯从一盏坏灯开始。', raw_text: '灵感：雨夜审讯从一盏坏灯开始。', metadata: {} }],
+    });
+    vi.mocked(confirmWorldImport).mockResolvedValueOnce({
+      batch: {
+        id: 12,
+        world_id: 7,
+        source_type: 'pasted_text',
+        source_title: '粘贴素材',
+        original_excerpt: '灵感：雨夜审讯从一盏坏灯开始。',
+        cleaned_excerpt: '灵感：雨夜审讯从一盏坏灯开始。',
+        status: 'confirmed',
+        asset_counts: { canon: 0, character: 0, inspiration: 1 },
+        conflicts: [],
+        created_at: '2026-06-04T00:00:00Z',
+        confirmed_at: '2026-06-04T00:00:01Z',
+      },
+      assets: [{ id: 9, world_id: 7, batch_id: 12, status: 'candidate', asset_pool: 'inspiration', title: '雨夜审讯', summary: '雨夜审讯从一盏坏灯开始。', raw_text: '灵感：雨夜审讯从一盏坏灯开始。', metadata: {}, created_at: '2026-06-04T00:00:01Z' }],
+    });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await screen.findByText('素材导入节点');
+    expect(screen.queryByText('雨夜审讯')).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText('素材正文'), '灵感：雨夜审讯从一盏坏灯开始。');
+    await user.click(screen.getByRole('button', { name: '生成结构化预览' }));
+    await user.click(await screen.findByRole('button', { name: '确认写入候选资产' }));
+
+    expect(await screen.findByText('已写入候选素材。')).toBeInTheDocument();
+    await waitFor(() => expect(getNextChapterPrep).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('导入素材只作为创作参考，不会自动改写正式 canon。')).toBeInTheDocument();
+    expect(screen.getAllByText('雨夜审讯').length).toBeGreaterThan(1);
   });
 
   it('shows degraded Narrative Control Center messages when panel APIs fail', async () => {

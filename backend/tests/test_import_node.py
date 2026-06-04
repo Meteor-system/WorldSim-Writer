@@ -91,6 +91,12 @@ def test_import_confirm_writes_candidates_and_audit_without_mutating_canon_or_wo
     assert event.world_version_before == original_version
     assert event.world_version_after == original_version
 
+    event_types = list(db_session.scalars(select(EventLog.event_type).where(EventLog.world_id == world.id).order_by(EventLog.id)))
+    assert 'material_import_confirmed' in event_types
+    assert 'chapter_approved' not in event_types
+    assert 'character_change' not in event_types
+    assert 'foreshadow_change' not in event_types
+
 
 def test_import_list_returns_recent_batches_with_candidates(client):
     token = register(client, 'import-list@example.com')

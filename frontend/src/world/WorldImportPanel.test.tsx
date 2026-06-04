@@ -105,7 +105,16 @@ describe('WorldImportPanel', () => {
     const user = userEvent.setup();
     const onPreview = vi.fn().mockResolvedValue(previewResponse);
     const onConfirm = vi.fn().mockResolvedValue(confirmResponse);
-    render(<WorldImportPanel worldId={7} onPreview={onPreview} onConfirm={onConfirm} onListBatches={vi.fn().mockResolvedValue(emptyBatches)} />);
+    const onConfirmed = vi.fn();
+    render(
+      <WorldImportPanel
+        worldId={7}
+        onPreview={onPreview}
+        onConfirm={onConfirm}
+        onListBatches={vi.fn().mockResolvedValue(emptyBatches)}
+        onConfirmed={onConfirmed}
+      />,
+    );
 
     await user.clear(screen.getByLabelText('来源标题'));
     await user.type(screen.getByLabelText('来源标题'), '旧设定.md');
@@ -121,7 +130,10 @@ describe('WorldImportPanel', () => {
       assets: previewResponse.assets,
       conflicts: previewResponse.conflicts,
     }));
-    expect(await screen.findByRole('status')).toHaveTextContent('已写入候选资产批次 #12');
+    expect(onConfirmed).toHaveBeenCalledWith(confirmResponse);
+    expect(await screen.findByRole('status')).toHaveTextContent('已写入候选素材。');
+    expect(screen.getByText('这些素材会作为创作参考出现在下一章准备区，不会自动改写正式 canon。')).toBeInTheDocument();
+    expect(screen.queryByText(/批次 #12/)).not.toBeInTheDocument();
     const audit = screen.getByTestId('import-confirmed-batch');
     expect(within(audit).getByText('canon 1 · 角色 1 · 灵感 1')).toBeInTheDocument();
   });
