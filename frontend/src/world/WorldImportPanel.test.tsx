@@ -131,6 +131,9 @@ describe('WorldImportPanel', () => {
     expect(screen.getByText('灵感候选')).toBeInTheDocument();
     expect(screen.getByText('青岚城密探规则')).toBeInTheDocument();
     expect(screen.getByText('这份素材可能和已有正式设定重叠：青岚城')).toBeInTheDocument();
+    expect(screen.getByText('候选素材冲突提示')).toBeInTheDocument();
+    expect(screen.getByText('这些提示只帮助你审阅候选素材，不会自动合并或改写正式设定。')).toBeInTheDocument();
+    expect(screen.queryByText('冲突提示', { exact: true })).not.toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('正式设定 1 · 角色 1 · 灵感 1，需确认后才写入候选资产。');
     expect(document.body).not.toHaveTextContent('候选资产');
     expect(document.body).not.toHaveTextContent('canon 候选');

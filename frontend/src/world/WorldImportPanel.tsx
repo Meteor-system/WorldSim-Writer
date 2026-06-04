@@ -175,7 +175,8 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
 
           {preview.conflicts.length > 0 && (
             <div className="rounded-2xl border border-amber-900/20 bg-amber-100/70 p-4">
-              <h4 className="font-black text-[#4a321e]">冲突提示</h4>
+              <h4 className="font-black text-[#4a321e]">候选素材冲突提示</h4>
+              <p className="manuscript mt-1 text-sm font-bold text-[#5e3b1c]">这些提示只帮助你审阅候选素材，不会自动合并或改写正式设定。</p>
               <ul className="mt-2 space-y-2 text-sm text-[#5e3b1c]">
                 {preview.conflicts.map((conflict, index) => <li key={`${conflict.category}-${index}`}>{conflictText(conflict)}</li>)}
               </ul>
