@@ -455,6 +455,43 @@ describe('WorldPage operations dashboard', () => {
     expect(document.body).not.toHaveTextContent('inspiration');
   });
 
+  it('carries candidate references into Studio from the operations continue action', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    vi.mocked(getNextChapterPrep).mockResolvedValueOnce({
+      world_id: 7,
+      world_version: 2,
+      next_chapter_number: 2,
+      suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+      recommended_pov_character_id: 1,
+      recommended_pov_character_name: '林砚',
+      source_signals: ['import_material_reference'],
+      priority_characters: [],
+      priority_foreshadows: [],
+      progression_hints: [],
+      continuity_warnings: [],
+      recent_events: [],
+      material_references: [{ asset_id: 9, batch_id: 12, asset_pool: 'inspiration', title: '雨夜审讯', summary: '雨夜审讯从一盏坏灯开始。', raw_text: '灵感：雨夜审讯从一盏坏灯开始。', source_title: '旧设定.md', source_type: 'pasted_text', created_at: '2026-06-04T00:00:01Z', safety_note: '导入素材参考只用于创作提示，不会自动改写正式 canon。' }],
+    });
+
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    const dashboard = within(await screen.findByLabelText('世界运营仪表盘'));
+    expect(await dashboard.findByText('候选素材参考：1 条')).toBeInTheDocument();
+    await user.click(dashboard.getByRole('button', { name: '继续下一章' }));
+
+    expect(onEnterStudio).toHaveBeenCalledWith(world, {
+      initialChapterGoal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+      executionContext: expect.objectContaining({
+        source: 'next_chapter_prep',
+        material_references: expect.arrayContaining([expect.objectContaining({ title: '雨夜审讯', source_title: '旧设定.md' })]),
+      }),
+    });
+    expect(document.body).not.toHaveTextContent('asset_id');
+    expect(document.body).not.toHaveTextContent('batch_id');
+    expect(document.body).not.toHaveTextContent('inspiration');
+  });
+
   it('recommends explainable next actions from current world data', async () => {
     const onEnterStudio = vi.fn();
     const user = userEvent.setup();

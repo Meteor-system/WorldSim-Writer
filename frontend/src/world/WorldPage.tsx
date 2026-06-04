@@ -36,6 +36,7 @@ import {
 } from '../api/client';
 import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, ImportMaterialReference, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
+import { buildExecutionContextFromPrep } from './chapterExecutionContext';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
 import { ArcPlanPanel } from './ArcPlanPanel';
@@ -653,6 +654,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     ? (world.story_arc.find((chapter) => chapter.chapter_number === world.approved_chapter_count + 1) ?? world.story_arc[0] ?? null)
     : null;
   const isArchivedWorld = world?.status === 'archived';
+  const operationsExecutionContext = selectedExecutionContext
+    ?? (nextPrep && (nextPrep.material_references ?? []).length > 0 ? buildExecutionContextFromPrep(nextPrep) : undefined);
 
   if (loading)
     return (
@@ -781,8 +784,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 isArchivedWorld={isArchivedWorld}
                 materialReferences={nextPrep?.material_references ?? []}
                 onContinue={() => onEnterStudio(world, {
-                  initialChapterGoal: selectedExecutionContext?.goal,
-                  executionContext: selectedExecutionContext ?? undefined,
+                  initialChapterGoal: operationsExecutionContext?.goal,
+                  executionContext: operationsExecutionContext,
                 })}
                 onShowForeshadows={() => setTab('foreshadows')}
               />
