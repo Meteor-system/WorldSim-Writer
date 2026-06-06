@@ -77,6 +77,39 @@ class WorldCreateRequest(BaseModel):
         return _strip_required(value)
 
 
+class WorldBriefExpandRequest(BaseModel):
+    brief: str = Field(min_length=6, max_length=800)
+
+    @field_validator('brief')
+    @classmethod
+    def validate_brief(cls, value: str) -> str:
+        stripped = _strip_required(value)
+        if len(stripped) < 6:
+            raise ValueError('brief is too short')
+        return stripped
+
+
+class WorldBriefExpansion(BaseModel):
+    payload: WorldCreateRequest
+    rationale: str = ''
+    assumptions: list[str] = Field(default_factory=list)
+    safety_notes: list[str] = Field(default_factory=list)
+
+    @field_validator('rationale')
+    @classmethod
+    def validate_rationale(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator('assumptions', 'safety_notes')
+    @classmethod
+    def validate_text_list(cls, value: list[str]) -> list[str]:
+        return [item.strip() for item in value if item.strip()]
+
+
+class WorldBriefExpandResponse(WorldBriefExpansion):
+    pass
+
+
 class WorldStatusUpdateRequest(BaseModel):
     status: str
 

@@ -2,21 +2,117 @@ import json
 from uuid import uuid4
 
 from fastapi import HTTPException, status
+from pydantic import ValidationError
 from sqlalchemy import desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.auth.models import User
+from app.core.config import get_settings
 from app.character.models import Character, CharacterRelation
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow, ForeshadowEvent
+from app.llm.client import LLMClient
 from app.narrative.models import Chapter
 from app.tags.models import ObjectTag, Tag
 from app.world.models import World
-from app.world.schemas import WorldCreateRequest
+from app.world.schemas import WorldBriefExpansion, WorldCreateRequest
 from app.world.seed_library import WORLD_SEEDS, seed_detail, seed_summary
 from app.world.templates import SAMPLE_WORLD
 
 FORESHADOW_STATUSES = {'planted', 'advanced', 'resolved', 'expired'}
+PROTECTED_REFERENCE_TERMS = {
+    '哈利·波特',
+    '哈利波特',
+    '霍格沃茨',
+    '伏地魔',
+    '赫敏',
+    '邓布利多',
+}
+
+
+SAFE_MODEL_RUNTIME_ERRORS = {'MODEL_REQUEST_FAILED', 'MODEL_AUTH_FAILED', 'MODEL_RATE_LIMITED'}
+
+
+def _model_client(llm_client: LLMClient | None = None) -> LLMClient:
+    settings = get_settings()
+    client = llm_client or LLMClient()
+    if hasattr(client, 'mock'):
+        client.mock = settings.llm_mock
+    return client
+
+
+def _map_model_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, TimeoutError):
+        return HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail='MODEL_TIMEOUT')
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+    if isinstance(exc, RuntimeError) and str(exc) in SAFE_MODEL_RUNTIME_ERRORS:
+        return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_REQUEST_FAILED')
+
+
+def build_world_brief_messages(brief: str) -> list[dict[str, str]]:
+    return [
+        {
+            'role': 'system',
+            'content': (
+                '你是 WorldSim-Writer 的世界创建草稿助手。必须只返回合法 JSON，结构为：'
+                '{"payload":{"title":"标题","genre_template":"题材键",'
+                '"truth_canon":"世界核心设定","tone_profile":{},'
+                '"starter_assets":{"characters":[{"name":"角色名","role_type":"protagonist",'
+                '"status":"初始状态","public_profile":{},"hidden_traits":{},'
+                '"destiny_flag":"命运标记","current_goals":["目标"]}],'
+                '"relations":[{"source_index":0,"target_index":1,"relation_type":"关系",'
+                '"intensity":3,"visibility":"public"}],'
+                '"foreshadows":[{"title":"伏笔","description":"说明","foreshadow_type":"类型",'
+                '"status":"planted","urgency_level":4,"related_character_indexes":[0],'
+                '"expected_resolution_window":"第2-5章"}]}},'
+                '"rationale":"补全理由","assumptions":["假设"],'
+                '"safety_notes":["这是创建草稿，不会自动创建世界或写入正史"]}。'
+                '必须生成原创世界，不复用受保护作品的角色名、专有设定、原句或标志性桥段。'
+            ),
+        },
+        {
+            'role': 'user',
+            'content': (
+                f'一句话故事想法：{brief}\n'
+                '请补全为可审阅、可编辑的 WorldCreateRequest 草稿。'
+                '草稿只用于填表，用户确认前不得创建世界、不得生成第一章、不得写入 canon。'
+            ),
+        },
+    ]
+
+
+def _protected_text_blob(expansion: WorldBriefExpansion) -> str:
+    payload = expansion.payload.model_dump(mode='json')
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
+def _reject_protected_reference_terms(expansion: WorldBriefExpansion) -> None:
+    text = _protected_text_blob(expansion)
+    if any(term in text for term in PROTECTED_REFERENCE_TERMS):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='PROTECTED_REFERENCE_TERMS')
+
+
+def _validate_brief_expansion(raw: object) -> WorldBriefExpansion:
+    try:
+        expansion = WorldBriefExpansion.model_validate(raw)
+        _validate_starter_assets(expansion.payload)
+    except (ValidationError, HTTPException) as exc:
+        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+    _reject_protected_reference_terms(expansion)
+    return expansion
+
+
+def expand_world_brief(brief: str, llm_client: LLMClient | None = None) -> WorldBriefExpansion:
+    client = _model_client(llm_client)
+    try:
+        raw = client.expand_world_brief(build_world_brief_messages(brief))
+        return _validate_brief_expansion(raw)
+    except HTTPException:
+        raise
+    except (TimeoutError, ValueError, RuntimeError) as exc:
+        raise _map_model_error(exc) from exc
 
 
 def _sample_world_request() -> WorldCreateRequest:

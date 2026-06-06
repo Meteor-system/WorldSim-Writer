@@ -338,6 +338,62 @@ class LLMClient:
             return {'goal': parsed['goal']}
         return {'goal': raw}
 
+    def expand_world_brief(self, messages: list[dict[str, str]]) -> dict:
+        if self.mock:
+            return {
+                'payload': {
+                    'title': '死因王国',
+                    'genre_template': 'political_fantasy',
+                    'truth_canon': '赫洛王国用命簿为每个新生儿分配死因，贵族以荣耀死因为荣，平民常被分配为灾荒与矿难。命簿从未出错，但它最近开始出现空白页。',
+                    'tone_profile': {'style': '政治奇幻、命运反抗', 'pacing': '制度压力与个人选择交替推进'},
+                    'starter_assets': {
+                        'characters': [
+                            {
+                                'name': '莉塔',
+                                'role_type': 'protagonist',
+                                'status': '命簿抄录员',
+                                'public_profile': {'identity': '王国命簿抄录员', 'skill': '解读死因文书'},
+                                'hidden_traits': {'secret': '她的死因栏是空白'},
+                                'destiny_flag': '空白死因持有者',
+                                'current_goals': ['查清空白死因是否意味着不受命簿管辖'],
+                            },
+                            {
+                                'name': '维克托公爵',
+                                'role_type': 'rival',
+                                'status': '荣耀死因贵族',
+                                'public_profile': {'identity': '王国公爵', 'skill': '操控命簿审判'},
+                                'hidden_traits': {'secret': '他的荣耀死因被篡改过'},
+                                'destiny_flag': '命簿利益维护者',
+                                'current_goals': ['夺回空白命簿页'],
+                            },
+                        ],
+                        'relations': [{'source_index': 0, 'target_index': 1, 'relation_type': 'rival', 'intensity': 4, 'visibility': 'public'}],
+                        'foreshadows': [
+                            {
+                                'title': '空白命簿页',
+                                'description': '命簿中出现没有名字也没有死因的空白页，但每晚都会多出一道血痕。',
+                                'foreshadow_type': 'fate_clue',
+                                'status': 'planted',
+                                'urgency_level': 4,
+                                'related_character_indexes': [0, 1],
+                                'expected_resolution_window': '第2-5章',
+                            }
+                        ],
+                    },
+                },
+                'rationale': '从死因制度补全政治奇幻世界、核心角色冲突和初始伏笔。',
+                'assumptions': ['主角需要能接触命簿制度。', '对手代表制度既得利益。'],
+                'safety_notes': ['这是创建草稿，不会自动创建世界或写入正史。'],
+            }
+        raw = self._post_json(messages, temperature=0.5)
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ValueError('MODEL_RESPONSE_INVALID') from exc
+        if not isinstance(parsed, dict):
+            raise ValueError('MODEL_RESPONSE_INVALID')
+        return parsed
+
     def critique_chapter(self, messages: list[dict[str, str]]) -> CritiqueReport:
         if self.mock:
             return CritiqueReport.model_validate(MOCK_CRITIQUE)

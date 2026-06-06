@@ -7,6 +7,8 @@ from app.core.database import get_db
 from app.event.schemas import EventLogListResponse
 from app.world.schemas import (
     StoryArcResponse,
+    WorldBriefExpandRequest,
+    WorldBriefExpandResponse,
     WorldCreateRequest,
     WorldOverviewResponse,
     WorldResponse,
@@ -19,6 +21,7 @@ from app.world.service import (
     create_sample_world,
     create_world_from_seed,
     create_world_from_template,
+    expand_world_brief,
     get_world_overview,
     get_world_seed,
     list_user_worlds,
@@ -45,6 +48,11 @@ def create_world(
 @router.post('/from-template', response_model=WorldResponse)
 def create_from_template(current_user: User = Depends(require_user), db: Session = Depends(get_db)) -> WorldResponse:
     return WorldResponse.model_validate(create_sample_world(db, current_user))
+
+
+@router.post('/brief/expand', response_model=WorldBriefExpandResponse)
+def expand_brief(data: WorldBriefExpandRequest, current_user: User = Depends(require_user)) -> WorldBriefExpandResponse:
+    return WorldBriefExpandResponse.model_validate(expand_world_brief(data.brief).model_dump())
 
 
 @router.get('/seeds', response_model=WorldSeedListResponse)
