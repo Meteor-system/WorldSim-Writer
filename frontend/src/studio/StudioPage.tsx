@@ -138,7 +138,7 @@ function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionConte
 export function StudioPage({ world, launchContext, onBack, onApproved }: Props) {
   const [localWorld, setLocalWorld] = useState(world);
   const [goal, setGoal] = useState(launchContext?.initialChapterGoal ?? '');
-  const [executionContext] = useState(launchContext?.executionContext);
+  const [executionContext, setExecutionContext] = useState(launchContext?.executionContext);
   const hasMaterialReferences = (executionContext?.material_references ?? []).length > 0;
   const [chapter, setChapter] = useState<ChapterPipelineResponse | null>(null);
   const [outlineBeats, setOutlineBeats] = useState<BeatCard[]>([]);
@@ -521,6 +521,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setRevisionInstruction('');
     setEditMode(false);
     setEditContent('');
+    setExecutionContext(undefined);
     setSettlement(null);
   }
 

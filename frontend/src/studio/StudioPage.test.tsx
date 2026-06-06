@@ -842,6 +842,41 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('世界进度：2')).toBeInTheDocument();
   });
 
+  it('clears stale candidate references when continuing to a fresh next chapter', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockResolvedValueOnce(approvedWorld);
+    render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext }} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: '用候选素材参考创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
+    await user.click(await screen.findByRole('button', { name: '继续下一章' }));
+
+    expect(screen.queryByText('雨夜审讯（来源：旧设定.md）')).not.toBeInTheDocument();
+    expect(screen.queryByText('候选素材参考：1 条')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '用候选素材参考创建章节' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '创建章节' })).toBeEnabled();
+
+    await user.type(screen.getByLabelText('章节目标'), '下一章调查城主府密道');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+
+    expect(createChapter).toHaveBeenLastCalledWith(7, expect.objectContaining({
+      chapter_goal: '下一章调查城主府密道',
+      execution_context: expect.objectContaining({
+        source: 'manual',
+        source_world_version: 2,
+        next_chapter_number: 2,
+        goal: '下一章调查城主府密道',
+        material_references: [],
+      }),
+    }));
+    expect(document.body).not.toHaveTextContent('asset_id');
+    expect(document.body).not.toHaveTextContent('batch_id');
+    expect(document.body).not.toHaveTextContent('inspiration');
+    expect(document.body).not.toHaveTextContent('正式 canon');
+  });
+
   it('renders approval consistency warnings from the preview', async () => {
     const user = userEvent.setup();
     render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
