@@ -802,6 +802,15 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
             </div>
           </div>
 
+          {launchContext?.autoStartFirstDraft && !settlement && (
+            <section className="book-card border-2 border-sky-500/25 bg-sky-50/70 p-5" role="status" aria-live="polite">
+              <p className="chapter-kicker">开书草稿</p>
+              <h2 className="text-xl font-black text-[#203045]">世界已创建，第一章正在草稿审阅中</h2>
+              <p className="manuscript mt-2 text-sm text-[#26364d]">这章尚未写入正史；只有点击「写入正史并更新世界」后，世界进度、事件历史和正式设定才会更新。</p>
+              <p className="manuscript mt-1 text-sm text-[#26364d]">当前世界进度仍为 v{localWorld.world_version}，草稿基准为 v{chapter?.base_world_version ?? localWorld.world_version}。</p>
+            </section>
+          )}
+
           {error && <p className="paper-error" role="alert">{error}</p>}
 
           {settlement && (

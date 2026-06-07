@@ -352,10 +352,17 @@ describe('StudioPage Review Studio 2.0 controls', () => {
   });
 
   it('auto-generates the first draft for review when launched with auto-start intent', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockResolvedValueOnce(approvedWorld);
+
     render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext, autoStartFirstDraft: true }} onBack={vi.fn()} onApproved={vi.fn()} />);
 
     expect(await screen.findByText('Writer Draft')).toBeInTheDocument();
+    expect(screen.getByText('世界已创建，第一章正在草稿审阅中')).toBeInTheDocument();
+    expect(screen.getByText('这章尚未写入正史；只有点击「写入正史并更新世界」后，世界进度、事件历史和正式设定才会更新。')).toBeInTheDocument();
+    expect(screen.getByText('当前世界进度仍为 v1，草稿基准为 v1。')).toBeInTheDocument();
     expect(screen.getByText('写入正史前确认')).toBeInTheDocument();
+    expect(screen.queryByText('世界推进结算')).not.toBeInTheDocument();
     expect(createChapter).toHaveBeenCalledWith(7, expect.objectContaining({
       chapter_goal: executionContext.goal,
       execution_context: expect.objectContaining({ goal: executionContext.goal }),
@@ -364,6 +371,11 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(writeChapter).toHaveBeenCalledWith(11, { outline_beats: expect.arrayContaining([expect.objectContaining({ beat_id: 'beat-1' })]) });
     expect(approveChapter).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
+
+    expect(await screen.findByText('世界推进结算')).toBeInTheDocument();
+    expect(screen.queryByText('世界已创建，第一章正在草稿审阅中')).not.toBeInTheDocument();
   });
 
   it('shows a friendly retry path when auto-start first draft fails', async () => {
@@ -462,6 +474,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
 
     expect(await screen.findByLabelText('草稿版本')).toBeInTheDocument();
+    expect(screen.queryByText('世界已创建，第一章正在草稿审阅中')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '暂存当前草稿' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '重写本段' })[0]).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: '润色本段' })[0]).toBeInTheDocument();
