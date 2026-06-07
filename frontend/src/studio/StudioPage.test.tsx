@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest';
+import { StrictMode } from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -307,7 +308,8 @@ afterEach(() => {
   vi.mocked(approveChapter).mockClear();
   vi.mocked(checkApprovalConsistency).mockClear();
   vi.mocked(exportWorldArchiveMarkdown).mockClear();
-  vi.mocked(writeChapter).mockClear();
+  vi.mocked(writeChapter).mockReset();
+  vi.mocked(writeChapter).mockResolvedValue(draftResponse);
   vi.mocked(createChapter).mockReset();
   vi.mocked(createChapter).mockResolvedValue({
     id: 11,
@@ -324,7 +326,22 @@ afterEach(() => {
     critique_report: {},
     execution_context: executionContext,
   });
-  vi.mocked(generateOutline).mockClear();
+  vi.mocked(generateOutline).mockReset();
+  vi.mocked(generateOutline).mockResolvedValue({
+    chapter_id: 11,
+    outline_beats: [
+      {
+        beat_id: 'beat-1',
+        summary: '雨巷交换线索',
+        pov_character: '林砚',
+        location: '雨巷',
+        emotional_arc: '警觉 -> 犹疑',
+        key_dialogue_hints: ['这封信不该在你手里。'],
+      },
+    ],
+    outline_context: { core_conflict: '林砚判断沈微霜是否可信' },
+    status: 'outlined',
+  });
   vi.mocked(generateCriticReport).mockClear();
   vi.mocked(getApprovalReadiness).mockClear();
   vi.mocked(reviseDraft).mockClear();
@@ -379,6 +396,22 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.queryByText('世界已创建，第一章正在草稿审阅中')).not.toBeInTheDocument();
   });
 
+  it('completes auto-start first draft under StrictMode effect replay', async () => {
+    render(
+      <StrictMode>
+        <StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext, autoStartFirstDraft: true }} onBack={vi.fn()} onApproved={vi.fn()} />
+      </StrictMode>,
+    );
+
+    expect(await screen.findByText('Writer Draft')).toBeInTheDocument();
+    expect(screen.getByText('世界已创建，第一章正在草稿审阅中')).toBeInTheDocument();
+    expect(createChapter).toHaveBeenCalledWith(7, expect.objectContaining({ chapter_goal: executionContext.goal }));
+    expect(generateOutline).toHaveBeenCalledWith(11, {});
+    expect(writeChapter).toHaveBeenCalledWith(11, { outline_beats: expect.arrayContaining([expect.objectContaining({ beat_id: 'beat-1' })]) });
+    expect(screen.queryByText('世界已创建，正在生成第一章草稿')).not.toBeInTheDocument();
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
   it('times out a non-settling auto-start chapter creation with a retry path', async () => {
     vi.useFakeTimers();
     vi.mocked(createChapter).mockImplementationOnce(async () => new Promise<Awaited<ReturnType<typeof createChapter>>>(() => {}));
@@ -407,7 +440,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext, autoStartFirstDraft: true }} onBack={vi.fn()} onApproved={vi.fn()} />);
 
     await act(async () => {
-      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(0);
     });
     expect(screen.getByText('推进雨巷密谈')).toBeInTheDocument();
     expect(screen.getByText('世界已创建，正在生成第一章草稿')).toBeInTheDocument();

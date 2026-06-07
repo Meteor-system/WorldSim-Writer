@@ -356,12 +356,16 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     if (!launchContext?.autoStartFirstDraft || autoStartFirstDraftRef.current) return;
     const initialGoal = goal.trim();
     if (!initialGoal) return;
-    autoStartFirstDraftRef.current = true;
     let cancelled = false;
+    const startId = setTimeout(() => {
+      if (cancelled || autoStartFirstDraftRef.current) return;
+      autoStartFirstDraftRef.current = true;
+      void runAutoStartFirstDraftPipeline(initialGoal, () => cancelled);
+    }, 0);
 
-    void runAutoStartFirstDraftPipeline(initialGoal, () => cancelled);
     return () => {
       cancelled = true;
+      clearTimeout(startId);
     };
   }, [launchContext?.autoStartFirstDraft]);
 
