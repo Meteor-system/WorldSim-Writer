@@ -49,6 +49,8 @@ import type {
   TagMergeResponse,
   TagResponse,
   TagUpdateRequest,
+  WorldBriefExpandRequest,
+  WorldBriefExpandResponse,
   WorldCreateRequest,
   WorldMarkdownExportResponse,
   WorldPulseResponse,
@@ -116,6 +118,13 @@ export function createSampleWorld() {
   return apiRequest<{ id: number }>('/worlds/from-template', {
     method: 'POST',
     body: '{}',
+  });
+}
+
+export function expandWorldBrief(data: WorldBriefExpandRequest) {
+  return apiRequest<WorldBriefExpandResponse>('/worlds/brief/expand', {
+    method: 'POST',
+    body: JSON.stringify(data),
   });
 }
 

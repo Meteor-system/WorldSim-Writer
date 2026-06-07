@@ -197,6 +197,17 @@ export type WorldCreateRequest = {
   starter_assets: StarterAssetsCreate;
 };
 
+export type WorldBriefExpandRequest = {
+  brief: string;
+};
+
+export type WorldBriefExpandResponse = {
+  payload: WorldCreateRequest;
+  rationale?: string;
+  assumptions?: string[];
+  safety_notes?: string[];
+};
+
 export type WorldSeedSummary = {
   key: string;
   label: string;

@@ -7,6 +7,7 @@ import {
   createWorld,
   createWorldFromSeed,
   createWorldTag,
+  expandWorldBrief,
   updateWorldTag,
   mergeWorldTag,
   assignWorldTag,
@@ -91,6 +92,33 @@ describe('world creation API helpers', () => {
       'http://localhost:8000/worlds/from-template',
       expect.objectContaining({ method: 'POST', body: '{}' }),
     );
+  });
+
+  it('calls the one-sentence world draft endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      payload: {
+        title: '死因王国',
+        genre_template: 'political_fantasy',
+        truth_canon: '每个人出生时都会被分配未来死因。',
+        starter_assets: { characters: [{ name: '莉塔', role_type: 'protagonist' }], relations: [], foreshadows: [] },
+      },
+      rationale: '从一句话补全世界草稿。',
+      assumptions: ['主角需要接触制度。'],
+      safety_notes: ['不会自动创建世界。'],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const response = await expandWorldBrief({ brief: '一个所有人出生时都会被分配未来死因的王国' });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/worlds/brief/expand',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ brief: '一个所有人出生时都会被分配未来死因的王国' }),
+      }),
+    );
+    expect(response.payload.title).toBe('死因王国');
+    expect(response.safety_notes).toEqual(['不会自动创建世界。']);
   });
 
   it('calls world seed library endpoints', async () => {

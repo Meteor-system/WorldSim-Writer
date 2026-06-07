@@ -11,6 +11,7 @@ import {
   createWorldSnapshot,
   createWorldTag,
   deleteWorldTag,
+  expandWorldBrief,
   exportWorldArchiveMarkdown,
   generateStoryArc,
   getArcPlan,
@@ -733,6 +734,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
           creating={creating}
           onCreate={submitWorld}
           onCreateSample={submitSampleWorld}
+          onExpandBrief={expandWorldBrief}
           seeds={seedLibrary}
           seedLoading={seedLibraryLoading}
           seedError={seedLibraryError}

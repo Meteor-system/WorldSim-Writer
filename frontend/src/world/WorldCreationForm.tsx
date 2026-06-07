@@ -1,9 +1,10 @@
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type {
   StarterCharacterCreate,
   StarterForeshadowCreate,
   StarterRelationCreate,
+  WorldBriefExpandResponse,
   WorldCreateRequest,
   WorldSeedDetail,
   WorldSeedSummary,
@@ -21,6 +22,7 @@ type Props = {
   seedError?: string;
   onLoadSeed?: (seedKey: string) => Promise<WorldSeedDetail>;
   onCreateSeed?: (seedKey: string) => Promise<void> | void;
+  onExpandBrief?: (data: { brief: string }) => Promise<WorldBriefExpandResponse>;
 };
 
 function goalsToText(goals: string[] | undefined): string {
@@ -65,10 +67,17 @@ export function WorldCreationForm({
   seedError = '',
   onLoadSeed,
   onCreateSeed,
+  onExpandBrief,
 }: Props) {
   const [selectedPresetKey, setSelectedPresetKey] = useState(GENRE_PRESETS[0].key);
   const [activeSeedKey, setActiveSeedKey] = useState<string | null>(selectedSeedKey);
   const [form, setForm] = useState<WorldCreateRequest>(() => clonePreset(GENRE_PRESETS[0]));
+  const [brief, setBrief] = useState('');
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [briefError, setBriefError] = useState('');
+  const [briefSuccess, setBriefSuccess] = useState('');
+  const [briefNotes, setBriefNotes] = useState<Pick<WorldBriefExpandResponse, 'rationale' | 'assumptions' | 'safety_notes'>>({});
+  const briefRequestIdRef = useRef(0);
 
   function selectPreset(key: string) {
     const preset = GENRE_PRESETS.find((item) => item.key === key) ?? GENRE_PRESETS[0];
@@ -253,6 +262,52 @@ export function WorldCreationForm({
     });
   }
 
+  function friendlyBriefError(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('PROTECTED_REFERENCE_TERMS')) return '草稿里可能包含受保护作品的专有名称或设定，请换成更原创的一句话后重试。';
+    if (message.includes('brief') || message.includes('too short') || message.includes('String should have at least')) return '请写得再具体一点，比如一句包含主角、世界规则或核心冲突的话。';
+    return '草稿生成失败，请稍后重试，或先用模板手动创建。';
+  }
+
+  async function submitBriefDraft() {
+    if (!onExpandBrief || briefLoading) return;
+    const trimmed = brief.trim();
+    if (trimmed.length < 6) {
+      setBriefError('请写得再具体一点，比如一句包含主角、世界规则或核心冲突的话。');
+      setBriefSuccess('');
+      setBriefNotes({});
+      return;
+    }
+    const requestId = briefRequestIdRef.current + 1;
+    briefRequestIdRef.current = requestId;
+    setBriefLoading(true);
+    setBriefError('');
+    setBriefSuccess('');
+    setBriefNotes({});
+    try {
+      const response = await onExpandBrief({ brief: trimmed });
+      if (briefRequestIdRef.current !== requestId) return;
+      setSelectedPresetKey('');
+      setActiveSeedKey(null);
+      setForm(JSON.parse(JSON.stringify(response.payload)) as WorldCreateRequest);
+      setBriefNotes({ rationale: response.rationale, assumptions: response.assumptions, safety_notes: response.safety_notes });
+      setBriefSuccess('草稿已填入下方表单。请检查标题、设定、角色和伏笔，确认后再创建世界。');
+    } catch (error) {
+      if (briefRequestIdRef.current !== requestId) return;
+      setBriefError(friendlyBriefError(error));
+    } finally {
+      if (briefRequestIdRef.current === requestId) setBriefLoading(false);
+    }
+  }
+
+  function cancelBriefDraft() {
+    briefRequestIdRef.current += 1;
+    setBriefLoading(false);
+    setBriefError('');
+    setBriefSuccess('已取消生成，可以修改一句话后重新尝试。');
+    setBriefNotes({});
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     await onCreate(form);
@@ -286,6 +341,55 @@ export function WorldCreationForm({
           创建内置示例世界
         </button>
       </div>
+
+      <section className="book-card mt-8 p-5" data-testid="brief-world-entry-panel">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="chapter-kicker">一句话创建故事世界</p>
+            <h2 className="mt-2 text-2xl font-black text-[#34210f]">一句话开书</h2>
+            <p className="manuscript mt-2 text-sm text-[#5e3b1c]">写下一个故事点子，系统会生成可编辑的创建草稿。</p>
+            <p className="manuscript mt-1 text-sm font-bold text-[#5e3b1c]">生成草稿只会填入下方表单，不会创建世界，也不会写入正史。</p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+          <label className="block">
+            <span className="text-sm font-semibold text-[#4a321e]">一句话故事想法</span>
+            <textarea
+              className="mt-1 min-h-24 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3"
+              value={brief}
+              onChange={(event) => setBrief(event.target.value)}
+              placeholder="例如：一个所有人出生时都会被分配未来死因的王国"
+              disabled={briefLoading}
+            />
+          </label>
+          <div className="flex items-end gap-2">
+            <button className="primary-button" type="button" disabled={briefLoading || !onExpandBrief} onClick={() => void submitBriefDraft()}>
+              {briefLoading ? '正在生成可编辑草稿…' : '生成创建草稿'}
+            </button>
+            {briefLoading && <button className="secondary-button" type="button" onClick={cancelBriefDraft}>取消生成</button>}
+          </div>
+        </div>
+        {briefError && <p className="paper-error mt-4 text-left" role="alert">{briefError}</p>}
+        {briefSuccess && (
+          <section className="mt-4 rounded-2xl bg-amber-50/70 p-4" aria-live="polite">
+            <p className="font-black text-[#3b2511]">{briefSuccess}</p>
+            <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">现在还没有创建世界，也没有写入正史。只有点击“创建自定义世界”后才会创建。</p>
+            {briefNotes.rationale && <p className="manuscript mt-3 text-sm">{briefNotes.rationale}</p>}
+            {(briefNotes.assumptions?.length ?? 0) > 0 && (
+              <div className="mt-3">
+                <p className="text-sm font-bold text-[#5e3b1c]">草稿补全时采用的假设</p>
+                <ul className="manuscript mt-1 list-disc space-y-1 pl-5 text-sm">{briefNotes.assumptions?.map((item) => <li key={item}>{item}</li>)}</ul>
+              </div>
+            )}
+            {(briefNotes.safety_notes?.length ?? 0) > 0 && (
+              <div className="mt-3">
+                <p className="text-sm font-bold text-[#5e3b1c]">安全提示</p>
+                <ul className="manuscript mt-1 list-disc space-y-1 pl-5 text-sm">{briefNotes.safety_notes?.map((item) => <li key={item}>{item}</li>)}</ul>
+              </div>
+            )}
+          </section>
+        )}
+      </section>
 
       {seeds.length > 0 || seedLoading || seedError ? (
         <section className="mt-8">
