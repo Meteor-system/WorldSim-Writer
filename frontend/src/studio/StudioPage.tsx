@@ -746,6 +746,16 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const selectedPreviewChanges = selectedCharacterChangeIndexes.length + selectedForeshadowChangeIndexes.length;
   const approvalBlockedByConsistency = consistencySummary?.status === 'blocked';
   const reviewMaterialReferenceTitles = materialReferenceTitles(draft?.execution_context ?? chapter?.execution_context ?? executionContext);
+  const autoStartNoticeTitle = error && !draft
+    ? '世界已创建，第一章草稿尚未生成'
+    : !draft
+      ? '世界已创建，正在生成第一章草稿'
+      : '世界已创建，第一章正在草稿审阅中';
+  const autoStartNoticeDetail = error && !draft
+    ? '世界已经保留；请检查章节目标后点击下方创建章节按钮手动重试。'
+    : !draft
+      ? '系统正在创建章节、大纲和正文草稿；这一步不会写入正史，也不会推进世界进度。'
+      : '这章尚未写入正史；只有点击「写入正史并更新世界」后，世界进度、事件历史和正式设定才会更新。';
 
   return (
     <section className="mx-auto max-w-6xl">
@@ -805,9 +815,9 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           {launchContext?.autoStartFirstDraft && !settlement && (
             <section className="book-card border-2 border-sky-500/25 bg-sky-50/70 p-5" role="status" aria-live="polite">
               <p className="chapter-kicker">开书草稿</p>
-              <h2 className="text-xl font-black text-[#203045]">世界已创建，第一章正在草稿审阅中</h2>
-              <p className="manuscript mt-2 text-sm text-[#26364d]">这章尚未写入正史；只有点击「写入正史并更新世界」后，世界进度、事件历史和正式设定才会更新。</p>
-              <p className="manuscript mt-1 text-sm text-[#26364d]">当前世界进度仍为 v{localWorld.world_version}，草稿基准为 v{chapter?.base_world_version ?? localWorld.world_version}。</p>
+              <h2 className="text-xl font-black text-[#203045]">{autoStartNoticeTitle}</h2>
+              <p className="manuscript mt-2 text-sm text-[#26364d]">{autoStartNoticeDetail}</p>
+              {draft && <p className="manuscript mt-1 text-sm text-[#26364d]">当前世界进度仍为 v{localWorld.world_version}，草稿基准为 v{chapter?.base_world_version ?? localWorld.world_version}。</p>}
             </section>
           )}
 

@@ -378,12 +378,26 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.queryByText('世界已创建，第一章正在草稿审阅中')).not.toBeInTheDocument();
   });
 
+  it('shows generating copy while auto-start first draft is still running', async () => {
+    vi.mocked(createChapter).mockImplementationOnce(async () => new Promise<Awaited<ReturnType<typeof createChapter>>>(() => {}));
+
+    render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext, autoStartFirstDraft: true }} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    expect(await screen.findByText('世界已创建，正在生成第一章草稿')).toBeInTheDocument();
+    expect(screen.getByText('系统正在创建章节、大纲和正文草稿；这一步不会写入正史，也不会推进世界进度。')).toBeInTheDocument();
+    expect(screen.queryByText('世界已创建，第一章正在草稿审阅中')).not.toBeInTheDocument();
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
   it('shows a friendly retry path when auto-start first draft fails', async () => {
     vi.mocked(createChapter).mockRejectedValueOnce(new Error('模型暂不可用'));
 
     render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext, autoStartFirstDraft: true }} onBack={vi.fn()} onApproved={vi.fn()} />);
 
     expect(await screen.findByRole('alert')).toHaveTextContent('自动生成第一章草稿失败，请检查章节目标后手动重试。');
+    expect(screen.getByText('世界已创建，第一章草稿尚未生成')).toBeInTheDocument();
+    expect(screen.getByText('世界已经保留；请检查章节目标后点击下方创建章节按钮手动重试。')).toBeInTheDocument();
+    expect(screen.queryByText('世界已创建，第一章正在草稿审阅中')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '用候选素材参考创建章节' })).toBeEnabled();
     expect(writeChapter).not.toHaveBeenCalled();
     expect(approveChapter).not.toHaveBeenCalled();
