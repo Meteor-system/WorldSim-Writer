@@ -389,7 +389,21 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(approveChapter).not.toHaveBeenCalled();
   });
 
+  it('keeps generating copy visible after auto-start creates the chapter but before the draft exists', async () => {
+    vi.mocked(generateOutline).mockImplementationOnce(async () => new Promise<Awaited<ReturnType<typeof generateOutline>>>(() => {}));
+
+    render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext, autoStartFirstDraft: true }} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    expect(await screen.findByText('推进雨巷密谈')).toBeInTheDocument();
+    expect(screen.getByText('世界已创建，正在生成第一章草稿')).toBeInTheDocument();
+    expect(screen.getByText('系统正在创建章节、大纲和正文草稿；这一步不会写入正史，也不会推进世界进度。')).toBeInTheDocument();
+    expect(screen.queryByText('世界已创建，第一章正在草稿审阅中')).not.toBeInTheDocument();
+    expect(writeChapter).not.toHaveBeenCalled();
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
   it('shows a friendly retry path when auto-start first draft fails', async () => {
+    const user = userEvent.setup();
     vi.mocked(createChapter).mockRejectedValueOnce(new Error('模型暂不可用'));
 
     render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext, autoStartFirstDraft: true }} onBack={vi.fn()} onApproved={vi.fn()} />);
@@ -398,9 +412,36 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('世界已创建，第一章草稿尚未生成')).toBeInTheDocument();
     expect(screen.getByText('世界已经保留；请检查章节目标后点击下方创建章节按钮手动重试。')).toBeInTheDocument();
     expect(screen.queryByText('世界已创建，第一章正在草稿审阅中')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重新创建第一章草稿' })).toBeEnabled();
     expect(screen.getByRole('button', { name: '用候选素材参考创建章节' })).toBeEnabled();
     expect(writeChapter).not.toHaveBeenCalled();
     expect(approveChapter).not.toHaveBeenCalled();
+
+    vi.mocked(createChapter).mockClear();
+    vi.mocked(createChapter).mockResolvedValueOnce({
+      id: 12,
+      world_id: 7,
+      title: '重试第一章',
+      status: 'drafting',
+      draft_version: 1,
+      approved_version: null,
+      base_world_version: 1,
+      approved_content: null,
+      chapter_goal: executionContext.goal,
+      outline_beats: [],
+      outline_context: {},
+      critique_report: {},
+      execution_context: executionContext,
+    });
+
+    await user.click(screen.getByRole('button', { name: '重新创建第一章草稿' }));
+
+    expect(createChapter).toHaveBeenCalledWith(7, expect.objectContaining({
+      chapter_goal: executionContext.goal,
+      execution_context: expect.objectContaining({ goal: executionContext.goal }),
+    }));
+    expect(await screen.findByText('重试第一章')).toBeInTheDocument();
+    expect(screen.queryByText('世界已创建，第一章草稿尚未生成')).not.toBeInTheDocument();
   });
 
   it('shows launch execution context summary and submits edited context when creating chapter', async () => {

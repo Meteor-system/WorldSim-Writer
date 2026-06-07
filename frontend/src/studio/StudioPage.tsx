@@ -161,6 +161,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [operationHint, setOperationHint] = useState('');
   const [suggestingGoal, setSuggestingGoal] = useState(false);
   const [error, setError] = useState('');
+  const [autoStartRetryCreatedChapter, setAutoStartRetryCreatedChapter] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [editContent, setEditContent] = useState('');
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -365,6 +366,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function createChapterSession() {
+    const wasAutoStartFailureRetry = Boolean(launchContext?.autoStartFirstDraft && error && !draft);
     setWorking(true);
     setError('');
     try {
@@ -385,6 +387,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setCritique(null);
       setCharacterArcReport(null);
       setSettlement(null);
+      if (wasAutoStartFailureRetry) setAutoStartRetryCreatedChapter(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建章节失败');
     } finally {
@@ -592,6 +595,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setCharacterArcReport(null);
     setLatestDraftVersion(null);
     setRevisionInstruction('');
+    setAutoStartRetryCreatedChapter(false);
     setEditMode(false);
     setEditContent('');
     setExecutionContext(undefined);
@@ -746,6 +750,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const selectedPreviewChanges = selectedCharacterChangeIndexes.length + selectedForeshadowChangeIndexes.length;
   const approvalBlockedByConsistency = consistencySummary?.status === 'blocked';
   const reviewMaterialReferenceTitles = materialReferenceTitles(draft?.execution_context ?? chapter?.execution_context ?? executionContext);
+  const autoStartFailedWithoutDraft = Boolean(launchContext?.autoStartFirstDraft && error && !draft);
   const autoStartNoticeTitle = error && !draft
     ? '世界已创建，第一章草稿尚未生成'
     : !draft
@@ -812,11 +817,14 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
             </div>
           </div>
 
-          {launchContext?.autoStartFirstDraft && !settlement && (
+          {launchContext?.autoStartFirstDraft && !settlement && !autoStartRetryCreatedChapter && (
             <section className="book-card border-2 border-sky-500/25 bg-sky-50/70 p-5" role="status" aria-live="polite">
               <p className="chapter-kicker">开书草稿</p>
               <h2 className="text-xl font-black text-[#203045]">{autoStartNoticeTitle}</h2>
               <p className="manuscript mt-2 text-sm text-[#26364d]">{autoStartNoticeDetail}</p>
+              {autoStartFailedWithoutDraft && (
+                <button className="primary-button mt-4" disabled={working || Boolean(chapter)} onClick={createChapterSession}>重新创建第一章草稿</button>
+              )}
               {draft && <p className="manuscript mt-1 text-sm text-[#26364d]">当前世界进度仍为 v{localWorld.world_version}，草稿基准为 v{chapter?.base_world_version ?? localWorld.world_version}。</p>}
             </section>
           )}
