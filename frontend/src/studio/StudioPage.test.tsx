@@ -410,7 +410,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('自动生成第一章草稿失败，请检查章节目标后手动重试。');
     expect(screen.getByText('世界已创建，第一章草稿尚未生成')).toBeInTheDocument();
-    expect(screen.getByText('世界已经保留；请检查章节目标后点击下方创建章节按钮手动重试。')).toBeInTheDocument();
+    expect(screen.getByText('世界已经保留；请检查章节目标后点击“重新创建第一章草稿”重试。')).toBeInTheDocument();
+    expect(screen.queryByText('世界已经保留；请检查章节目标后点击下方创建章节按钮手动重试。')).not.toBeInTheDocument();
     expect(screen.queryByText('世界已创建，第一章正在草稿审阅中')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '重新创建第一章草稿' })).toBeEnabled();
     expect(screen.getByRole('button', { name: '用候选素材参考创建章节' })).toBeEnabled();

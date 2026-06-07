@@ -757,7 +757,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       ? '世界已创建，正在生成第一章草稿'
       : '世界已创建，第一章正在草稿审阅中';
   const autoStartNoticeDetail = error && !draft
-    ? '世界已经保留；请检查章节目标后点击下方创建章节按钮手动重试。'
+    ? '世界已经保留；请检查章节目标后点击“重新创建第一章草稿”重试。'
     : !draft
       ? '系统正在创建章节、大纲和正文草稿；这一步不会写入正史，也不会推进世界进度。'
       : '这章尚未写入正史；只有点击「写入正史并更新世界」后，世界进度、事件历史和正式设定才会更新。';
