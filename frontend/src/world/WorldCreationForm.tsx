@@ -382,7 +382,8 @@ export function WorldCreationForm({
         {briefSuccess && (
           <section className="mt-4 rounded-2xl bg-amber-50/70 p-4" aria-live="polite">
             <p className="font-black text-[#3b2511]">{briefSuccess}</p>
-            <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">现在还没有创建世界，也没有写入正史。只有点击“创建自定义世界”后才会创建。</p>
+            <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">现在还没有创建世界，也没有写入正史。只有点击“创建世界并生成第一章草稿”后才会创建。</p>
+            <p className="manuscript mt-1 text-sm font-bold text-[#5e3b1c]">确认创建后会进入第一章草稿审阅；第一章仍需在创作台点击“写入正史并更新世界”才会正式生效。</p>
             {briefNotes.rationale && <p className="manuscript mt-3 text-sm">{briefNotes.rationale}</p>}
             {(briefNotes.assumptions?.length ?? 0) > 0 && (
               <div className="mt-3">
@@ -581,7 +582,7 @@ export function WorldCreationForm({
 
       <div className="mt-8 text-center">
         <button className="primary-button" disabled={creating} type="submit">
-          {creating ? '正在冻结初始真理库...' : '创建自定义世界'}
+          {creating ? '正在冻结初始真理库...' : briefDraftApplied ? '创建世界并生成第一章草稿' : '创建自定义世界'}
         </button>
       </div>
     </form>

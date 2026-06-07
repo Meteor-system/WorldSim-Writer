@@ -54,6 +54,10 @@ describe('WorldCreationForm', () => {
     await user.type(screen.getByLabelText('世界标题'), '自定义群星边境');
     await user.click(screen.getByRole('button', { name: '添加关系' }));
     await user.click(screen.getByRole('button', { name: '添加伏笔' }));
+    expect(screen.getByRole('button', { name: '创建自定义世界' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建世界并生成第一章草稿' })).not.toBeInTheDocument();
+    expect(screen.queryByText('确认创建后会进入第一章草稿审阅；第一章仍需在创作台点击“写入正史并更新世界”才会正式生效。')).not.toBeInTheDocument();
+
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
 
     expect(onCreate).toHaveBeenCalledOnce();
@@ -150,7 +154,10 @@ describe('WorldCreationForm', () => {
     expect(screen.getByLabelText('真理库 / 世界底层设定')).toHaveValue('赫洛王国会在每个孩子出生时分配未来死因，命簿最近出现空白页。');
     expect(screen.getAllByDisplayValue('莉塔').length).toBeGreaterThan(0);
     expect(screen.getByText('草稿已填入下方表单。请检查标题、设定、角色和伏笔，确认后再创建世界。')).toBeInTheDocument();
-    expect(screen.getByText('现在还没有创建世界，也没有写入正史。只有点击“创建自定义世界”后才会创建。')).toBeInTheDocument();
+    expect(screen.getByText('现在还没有创建世界，也没有写入正史。只有点击“创建世界并生成第一章草稿”后才会创建。')).toBeInTheDocument();
+    expect(screen.getByText('确认创建后会进入第一章草稿审阅；第一章仍需在创作台点击“写入正史并更新世界”才会正式生效。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '创建世界并生成第一章草稿' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建自定义世界' })).not.toBeInTheDocument();
     expect(screen.getByText('从死因制度补全政治奇幻世界。')).toBeInTheDocument();
     expect(screen.getByText('主角需要能接触命簿制度。')).toBeInTheDocument();
     expect(screen.getByText('这是原创世界创建草稿，不会自动创建世界或写入正史。')).toBeInTheDocument();
@@ -165,7 +172,7 @@ describe('WorldCreationForm', () => {
 
     await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配未来死因的王国');
     await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
-    await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
+    await user.click(screen.getByRole('button', { name: '创建世界并生成第一章草稿' }));
 
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国' }), { autoStartFirstDraft: true });
   });

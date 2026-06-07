@@ -626,7 +626,7 @@ describe('WorldPage world creation', () => {
     expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
     await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配未来死因的王国');
     await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
-    await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
+    await user.click(screen.getByRole('button', { name: '创建世界并生成第一章草稿' }));
 
     expect(createWorld).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国' }));
     expect(onEnterStudio).toHaveBeenCalledWith(createdWorld, expect.objectContaining({
