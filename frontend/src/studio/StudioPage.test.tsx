@@ -419,10 +419,12 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(approveChapter).not.toHaveBeenCalled();
 
     vi.mocked(createChapter).mockClear();
+    vi.mocked(generateOutline).mockClear();
+    vi.mocked(writeChapter).mockClear();
     vi.mocked(createChapter).mockResolvedValueOnce({
       id: 12,
       world_id: 7,
-      title: '重试第一章',
+      title: '重试第一章目标',
       status: 'drafting',
       draft_version: 1,
       approved_version: null,
@@ -441,8 +443,13 @@ describe('StudioPage Review Studio 2.0 controls', () => {
       chapter_goal: executionContext.goal,
       execution_context: expect.objectContaining({ goal: executionContext.goal }),
     }));
-    expect(await screen.findByText('重试第一章')).toBeInTheDocument();
+    expect(generateOutline).toHaveBeenCalledWith(12, {});
+    expect(writeChapter).toHaveBeenCalledWith(12, { outline_beats: expect.arrayContaining([expect.objectContaining({ beat_id: 'beat-1' })]) });
+    expect(await screen.findByText('Writer Draft')).toBeInTheDocument();
+    expect(screen.getByText('世界已创建，第一章正在草稿审阅中')).toBeInTheDocument();
+    expect(screen.getByText('这章尚未写入正史；只有点击「写入正史并更新世界」后，世界进度、事件历史和正式设定才会更新。')).toBeInTheDocument();
     expect(screen.queryByText('世界已创建，第一章草稿尚未生成')).not.toBeInTheDocument();
+    expect(approveChapter).not.toHaveBeenCalled();
   });
 
   it('shows launch execution context summary and submits edited context when creating chapter', async () => {

@@ -280,6 +280,66 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     }
   }
 
+  async function runAutoStartFirstDraftPipeline(initialGoal: string, isCancelled: () => boolean = () => false) {
+    setWorking(true);
+    setOperationHint('正在生成第一章草稿…');
+    setError('');
+    try {
+      const frozenContext = withEditedGoal(executionContext, localWorld, initialGoal);
+      const created = await createChapterRequest(localWorld.id, {
+        chapter_goal: initialGoal,
+        title: initialGoal.slice(0, 40),
+        execution_context: frozenContext,
+      });
+      if (isCancelled()) return;
+      setChapter(created);
+      setOutlineBeats(created.outline_beats);
+      setOutlineContext(created.outline_context);
+      setDraft(null);
+      setApprovalPreview(null);
+      clearApprovalSelection();
+      clearApprovalConsistency();
+      setApprovalReadiness(null);
+      setCritique(null);
+      setCharacterArcReport(null);
+      setSettlement(null);
+
+      const outline = await generateOutline(created.id, {});
+      if (isCancelled()) return;
+      setOutlineBeats(outline.outline_beats);
+      setOutlineContext(outline.outline_context);
+      setChapter({ ...created, status: outline.status, outline_beats: outline.outline_beats, outline_context: outline.outline_context });
+
+      const nextDraft = normalizeDraft(await writeChapter(created.id, { outline_beats: outline.outline_beats }));
+      if (isCancelled()) return;
+      setDraft(nextDraft);
+      setDraftVersions([nextDraft.draft_version]);
+      setLatestDraftVersion(nextDraft.draft_version);
+      await refreshReviewStudioPanels(nextDraft);
+      if (isCancelled()) return;
+      setCritique(null);
+      setCharacterArcReport(null);
+      setEditMode(false);
+      setEditContent('');
+      setChapter({
+        ...created,
+        title: nextDraft.title,
+        status: nextDraft.status ?? 'reviewing',
+        outline_beats: nextDraft.outline_beats ?? outline.outline_beats,
+        outline_context: nextDraft.outline_context ?? outline.outline_context,
+        critique_report: nextDraft.critique_report ?? {},
+      });
+      setAutoStartRetryCreatedChapter(false);
+    } catch {
+      if (!isCancelled()) setError('自动生成第一章草稿失败，请检查章节目标后手动重试。');
+    } finally {
+      if (!isCancelled()) {
+        setWorking(false);
+        setOperationHint('');
+      }
+    }
+  }
+
   useEffect(() => {
     if (!launchContext?.autoStartFirstDraft || autoStartFirstDraftRef.current) return;
     const initialGoal = goal.trim();
@@ -287,66 +347,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     autoStartFirstDraftRef.current = true;
     let cancelled = false;
 
-    async function runAutoStartFirstDraft() {
-      setWorking(true);
-      setOperationHint('正在生成第一章草稿…');
-      setError('');
-      try {
-        const frozenContext = withEditedGoal(executionContext, localWorld, initialGoal);
-        const created = await createChapterRequest(localWorld.id, {
-          chapter_goal: initialGoal,
-          title: initialGoal.slice(0, 40),
-          execution_context: frozenContext,
-        });
-        if (cancelled) return;
-        setChapter(created);
-        setOutlineBeats(created.outline_beats);
-        setOutlineContext(created.outline_context);
-        setDraft(null);
-        setApprovalPreview(null);
-        clearApprovalSelection();
-        clearApprovalConsistency();
-        setApprovalReadiness(null);
-        setCritique(null);
-        setCharacterArcReport(null);
-        setSettlement(null);
-
-        const outline = await generateOutline(created.id, {});
-        if (cancelled) return;
-        setOutlineBeats(outline.outline_beats);
-        setOutlineContext(outline.outline_context);
-        setChapter({ ...created, status: outline.status, outline_beats: outline.outline_beats, outline_context: outline.outline_context });
-
-        const nextDraft = normalizeDraft(await writeChapter(created.id, { outline_beats: outline.outline_beats }));
-        if (cancelled) return;
-        setDraft(nextDraft);
-        setDraftVersions([nextDraft.draft_version]);
-        setLatestDraftVersion(nextDraft.draft_version);
-        await refreshReviewStudioPanels(nextDraft);
-        if (cancelled) return;
-        setCritique(null);
-        setCharacterArcReport(null);
-        setEditMode(false);
-        setEditContent('');
-        setChapter({
-          ...created,
-          title: nextDraft.title,
-          status: nextDraft.status ?? 'reviewing',
-          outline_beats: nextDraft.outline_beats ?? outline.outline_beats,
-          outline_context: nextDraft.outline_context ?? outline.outline_context,
-          critique_report: nextDraft.critique_report ?? {},
-        });
-      } catch {
-        if (!cancelled) setError('自动生成第一章草稿失败，请检查章节目标后手动重试。');
-      } finally {
-        if (!cancelled) {
-          setWorking(false);
-          setOperationHint('');
-        }
-      }
-    }
-
-    void runAutoStartFirstDraft();
+    void runAutoStartFirstDraftPipeline(initialGoal, () => cancelled);
     return () => {
       cancelled = true;
     };
@@ -363,6 +364,16 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     } finally {
       setSuggestingGoal(false);
     }
+  }
+
+  async function retryAutoStartFirstDraft() {
+    const retryGoal = goal.trim();
+    if (!retryGoal) {
+      setError('请先填写章节目标，再重新创建第一章草稿。');
+      return;
+    }
+    setAutoStartRetryCreatedChapter(false);
+    await runAutoStartFirstDraftPipeline(retryGoal);
   }
 
   async function createChapterSession() {
@@ -823,7 +834,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
               <h2 className="text-xl font-black text-[#203045]">{autoStartNoticeTitle}</h2>
               <p className="manuscript mt-2 text-sm text-[#26364d]">{autoStartNoticeDetail}</p>
               {autoStartFailedWithoutDraft && (
-                <button className="primary-button mt-4" disabled={working || Boolean(chapter)} onClick={createChapterSession}>重新创建第一章草稿</button>
+                <button className="primary-button mt-4" disabled={working} onClick={() => void retryAutoStartFirstDraft()}>重新创建第一章草稿</button>
               )}
               {draft && <p className="manuscript mt-1 text-sm text-[#26364d]">当前世界进度仍为 v{localWorld.world_version}，草稿基准为 v{chapter?.base_world_version ?? localWorld.world_version}。</p>}
             </section>
