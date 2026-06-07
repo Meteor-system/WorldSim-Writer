@@ -1,3 +1,4 @@
+from copy import deepcopy
 import json
 from uuid import uuid4
 
@@ -11,7 +12,7 @@ from app.core.config import get_settings
 from app.character.models import Character, CharacterRelation
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow, ForeshadowEvent
-from app.llm.client import LLMClient
+from app.llm.client import LLMClient, parse_model_json_object
 from app.narrative.models import Chapter
 from app.tags.models import ObjectTag, Tag
 from app.world.models import World
@@ -99,9 +100,68 @@ def _reject_protected_reference_terms(expansion: WorldBriefExpansion) -> None:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='PROTECTED_REFERENCE_TERMS')
 
 
+def _normalize_int(value: object) -> object:
+    if isinstance(value, str) and value.strip().lstrip('-').isdigit():
+        return int(value.strip())
+    return value
+
+
+def _normalize_brief_expansion(raw: object) -> object:
+    parsed = parse_model_json_object(raw) if isinstance(raw, str) else raw
+    if not isinstance(parsed, dict):
+        return parsed
+
+    normalized = deepcopy(parsed)
+    payload = normalized.get('payload')
+    if not isinstance(payload, dict):
+        return normalized
+
+    payload.setdefault('tone_profile', {})
+    starter_assets = payload.get('starter_assets')
+    if not isinstance(starter_assets, dict):
+        return normalized
+
+    starter_assets.setdefault('relations', [])
+    starter_assets.setdefault('foreshadows', [])
+
+    characters = starter_assets.get('characters')
+    if isinstance(characters, list):
+        for character in characters:
+            if not isinstance(character, dict):
+                continue
+            goals = character.get('current_goals')
+            if isinstance(goals, str):
+                stripped = goals.strip()
+                character['current_goals'] = [stripped] if stripped else []
+
+    relations = starter_assets.get('relations')
+    if isinstance(relations, list):
+        for relation in relations:
+            if not isinstance(relation, dict):
+                continue
+            for key in ('source_index', 'target_index', 'intensity'):
+                if key in relation:
+                    relation[key] = _normalize_int(relation[key])
+
+    foreshadows = starter_assets.get('foreshadows')
+    if isinstance(foreshadows, list):
+        for foreshadow in foreshadows:
+            if not isinstance(foreshadow, dict):
+                continue
+            if 'urgency_level' in foreshadow:
+                foreshadow['urgency_level'] = _normalize_int(foreshadow['urgency_level'])
+            indexes = foreshadow.get('related_character_indexes')
+            if isinstance(indexes, list):
+                foreshadow['related_character_indexes'] = [_normalize_int(index) for index in indexes]
+            elif isinstance(indexes, str):
+                foreshadow['related_character_indexes'] = [_normalize_int(indexes)]
+
+    return normalized
+
+
 def _validate_brief_expansion(raw: object) -> WorldBriefExpansion:
     try:
-        expansion = WorldBriefExpansion.model_validate(raw)
+        expansion = WorldBriefExpansion.model_validate(_normalize_brief_expansion(raw))
         _validate_starter_assets(expansion.payload)
     except (ValidationError, HTTPException) as exc:
         raise ValueError('MODEL_RESPONSE_INVALID') from exc

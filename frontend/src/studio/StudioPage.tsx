@@ -26,6 +26,18 @@ import { CriticReportPanel } from './CriticReportPanel';
 
 type Props = { world: WorldOverview; launchContext?: StudioLaunchContext; onBack: () => void; onApproved: (world: WorldOverview) => void };
 
+const AUTO_START_FIRST_DRAFT_TIMEOUT_MS = 20_000;
+
+function withAutoStartTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('AUTO_START_FIRST_DRAFT_TIMEOUT')), AUTO_START_FIRST_DRAFT_TIMEOUT_MS);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  });
+}
+
 type WorldSettlement = {
   worldBefore: number;
   worldAfter: number;
@@ -286,11 +298,11 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setError('');
     try {
       const frozenContext = withEditedGoal(executionContext, localWorld, initialGoal);
-      const created = await createChapterRequest(localWorld.id, {
+      const created = await withAutoStartTimeout(createChapterRequest(localWorld.id, {
         chapter_goal: initialGoal,
         title: initialGoal.slice(0, 40),
         execution_context: frozenContext,
-      });
+      }));
       if (isCancelled()) return;
       setChapter(created);
       setOutlineBeats(created.outline_beats);
@@ -304,18 +316,18 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setCharacterArcReport(null);
       setSettlement(null);
 
-      const outline = await generateOutline(created.id, {});
+      const outline = await withAutoStartTimeout(generateOutline(created.id, {}));
       if (isCancelled()) return;
       setOutlineBeats(outline.outline_beats);
       setOutlineContext(outline.outline_context);
       setChapter({ ...created, status: outline.status, outline_beats: outline.outline_beats, outline_context: outline.outline_context });
 
-      const nextDraft = normalizeDraft(await writeChapter(created.id, { outline_beats: outline.outline_beats }));
+      const nextDraft = normalizeDraft(await withAutoStartTimeout(writeChapter(created.id, { outline_beats: outline.outline_beats })));
       if (isCancelled()) return;
       setDraft(nextDraft);
       setDraftVersions([nextDraft.draft_version]);
       setLatestDraftVersion(nextDraft.draft_version);
-      await refreshReviewStudioPanels(nextDraft);
+      await withAutoStartTimeout(refreshReviewStudioPanels(nextDraft));
       if (isCancelled()) return;
       setCritique(null);
       setCharacterArcReport(null);

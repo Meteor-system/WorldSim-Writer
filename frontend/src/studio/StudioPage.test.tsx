@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
@@ -301,6 +301,7 @@ const approvedWorld: WorldOverview = {
 };
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   vi.mocked(apiRequest).mockClear();
   vi.mocked(approveChapter).mockClear();
@@ -378,26 +379,46 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.queryByText('世界已创建，第一章正在草稿审阅中')).not.toBeInTheDocument();
   });
 
-  it('shows generating copy while auto-start first draft is still running', async () => {
+  it('times out a non-settling auto-start chapter creation with a retry path', async () => {
+    vi.useFakeTimers();
     vi.mocked(createChapter).mockImplementationOnce(async () => new Promise<Awaited<ReturnType<typeof createChapter>>>(() => {}));
 
     render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext, autoStartFirstDraft: true }} onBack={vi.fn()} onApproved={vi.fn()} />);
 
-    expect(await screen.findByText('世界已创建，正在生成第一章草稿')).toBeInTheDocument();
+    expect(screen.getByText('世界已创建，正在生成第一章草稿')).toBeInTheDocument();
     expect(screen.getByText('系统正在创建章节、大纲和正文草稿；这一步不会写入正史，也不会推进世界进度。')).toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(25_000);
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('自动生成第一章草稿失败，请检查章节目标后手动重试。');
+    expect(screen.getByText('世界已创建，第一章草稿尚未生成')).toBeInTheDocument();
+    expect(screen.getByText('世界已经保留；请检查章节目标后点击“重新创建第一章草稿”重试。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重新创建第一章草稿' })).toBeEnabled();
     expect(screen.queryByText('世界已创建，第一章正在草稿审阅中')).not.toBeInTheDocument();
     expect(approveChapter).not.toHaveBeenCalled();
   });
 
-  it('keeps generating copy visible after auto-start creates the chapter but before the draft exists', async () => {
+  it('times out a non-settling auto-start outline before draft generation with a retry path', async () => {
+    vi.useFakeTimers();
     vi.mocked(generateOutline).mockImplementationOnce(async () => new Promise<Awaited<ReturnType<typeof generateOutline>>>(() => {}));
 
     render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext, autoStartFirstDraft: true }} onBack={vi.fn()} onApproved={vi.fn()} />);
 
-    expect(await screen.findByText('推进雨巷密谈')).toBeInTheDocument();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText('推进雨巷密谈')).toBeInTheDocument();
     expect(screen.getByText('世界已创建，正在生成第一章草稿')).toBeInTheDocument();
-    expect(screen.getByText('系统正在创建章节、大纲和正文草稿；这一步不会写入正史，也不会推进世界进度。')).toBeInTheDocument();
-    expect(screen.queryByText('世界已创建，第一章正在草稿审阅中')).not.toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(25_000);
+    });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('自动生成第一章草稿失败，请检查章节目标后手动重试。');
+    expect(screen.getByText('世界已创建，第一章草稿尚未生成')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重新创建第一章草稿' })).toBeEnabled();
     expect(writeChapter).not.toHaveBeenCalled();
     expect(approveChapter).not.toHaveBeenCalled();
   });

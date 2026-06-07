@@ -14,7 +14,11 @@ if config.config_file_name is not None:
 
 import_models()
 target_metadata = Base.metadata
-config.set_main_option('sqlalchemy.url', get_settings().database_url)
+
+DEFAULT_ALEMBIC_URL = 'postgresql+psycopg://worldsim:worldsim@localhost:5432/worldsim_writer'
+configured_url = config.get_main_option('sqlalchemy.url')
+if configured_url == DEFAULT_ALEMBIC_URL:
+    config.set_main_option('sqlalchemy.url', get_settings().database_url)
 
 
 def run_migrations_offline() -> None:
@@ -37,7 +41,7 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
-    with connectable.connect() as connection:
+    with connectable.begin() as connection:
         ensure_alembic_version_table_capacity(connection)
         context.configure(connection=connection, target_metadata=target_metadata)
 

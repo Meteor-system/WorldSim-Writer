@@ -1,4 +1,6 @@
+import ast
 import json
+import re
 
 import httpx
 
@@ -148,6 +150,61 @@ MOCK_CHARACTER_ARC_REPORT = {
         }
     ],
 }
+
+
+def _extract_balanced_json_object(text: str) -> str:
+    cleaned = text.strip()
+    fence_match = re.search(r'```(?:json)?\s*(.*?)\s*```', cleaned, re.DOTALL | re.IGNORECASE)
+    if fence_match:
+        cleaned = fence_match.group(1).strip()
+    start = cleaned.find('{')
+    if start == -1:
+        raise ValueError('MODEL_RESPONSE_INVALID')
+
+    depth = 0
+    in_string = False
+    quote = ''
+    escaped = False
+    for index in range(start, len(cleaned)):
+        char = cleaned[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == '\\':
+                escaped = True
+            elif char == quote:
+                in_string = False
+            continue
+        if char in {'"', "'"}:
+            in_string = True
+            quote = char
+        elif char == '{':
+            depth += 1
+        elif char == '}':
+            depth -= 1
+            if depth == 0:
+                return cleaned[start : index + 1]
+    raise ValueError('MODEL_RESPONSE_INVALID')
+
+
+def parse_model_json_object(raw: object) -> dict:
+    if isinstance(raw, dict):
+        return raw
+    if not isinstance(raw, str):
+        raise ValueError('MODEL_RESPONSE_INVALID')
+
+    json_text = _extract_balanced_json_object(raw)
+    repaired = re.sub(r',\s*([}\]])', r'\1', json_text)
+    try:
+        parsed = json.loads(repaired)
+    except json.JSONDecodeError:
+        try:
+            parsed = ast.literal_eval(repaired)
+        except (ValueError, SyntaxError) as exc:
+            raise ValueError('MODEL_RESPONSE_INVALID') from exc
+    if not isinstance(parsed, dict):
+        raise ValueError('MODEL_RESPONSE_INVALID')
+    return parsed
 
 
 MOCK_STORY_ARC = [
@@ -387,13 +444,7 @@ class LLMClient:
                 'safety_notes': ['这是创建草稿，不会自动创建世界或写入正史。'],
             }
         raw = self._post_json(messages, temperature=0.5)
-        try:
-            parsed = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            raise ValueError('MODEL_RESPONSE_INVALID') from exc
-        if not isinstance(parsed, dict):
-            raise ValueError('MODEL_RESPONSE_INVALID')
-        return parsed
+        return parse_model_json_object(raw)
 
     def critique_chapter(self, messages: list[dict[str, str]]) -> CritiqueReport:
         if self.mock:

@@ -1,3 +1,5 @@
+import json
+
 from sqlalchemy import select
 
 from app.event.models import EventLog
@@ -59,7 +61,7 @@ def draft_payload() -> dict:
 
 
 class FakeBriefLLMClient:
-    def __init__(self, result: dict | None = None):
+    def __init__(self, result: object | None = None):
         self.result = result or {
             'payload': draft_payload(),
             'first_chapter_goal': '莉塔在命簿归档夜发现自己的死因栏是空白，并带走第一张空白命簿页。',
@@ -100,6 +102,102 @@ def test_expand_world_brief_returns_valid_world_create_payload_without_persisten
     assert fake_client.messages is not None
     assert '所有人出生时都会被分配未来死因' in fake_client.messages[-1]['content']
 
+    assert db_session.scalars(select(World)).all() == []
+    assert db_session.scalars(select(EventLog)).all() == []
+
+
+def test_expand_world_brief_accepts_markdown_wrapped_model_json(client, db_session, monkeypatch):
+    token = register(client, 'brief-wrapped@example.com')
+    wrapped = (
+        '下面是可编辑草稿：\n\n'
+        '```json\n'
+        f"{json.dumps({'payload': draft_payload(), 'first_chapter_goal': '莉塔发现自己的死因栏是空白。'}, ensure_ascii=False)}\n"
+        '```\n'
+        '请用户确认后再创建世界。'
+    )
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: FakeBriefLLMClient(wrapped))
+
+    response = client.post(
+        '/worlds/brief/expand',
+        headers=auth_headers(token),
+        json={'brief': '一个所有人出生时都会被分配未来死因的王国'},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data['payload']['title'] == '死因王国'
+    assert data['first_chapter_goal'] == '莉塔发现自己的死因栏是空白。'
+    assert db_session.scalars(select(World)).all() == []
+    assert db_session.scalars(select(EventLog)).all() == []
+
+
+def test_expand_world_brief_repairs_light_json_formatting(client, monkeypatch):
+    token = register(client, 'brief-json-repair@example.com')
+    repaired_payload = draft_payload()
+    repaired_payload['title'] = '单引号死因王国'
+    raw = repr({'payload': repaired_payload, 'first_chapter_goal': '莉塔发现自己的死因栏是空白。'})
+    raw = raw[:-1] + ',}'
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: FakeBriefLLMClient(raw))
+
+    response = client.post(
+        '/worlds/brief/expand',
+        headers=auth_headers(token),
+        json={'brief': '一个所有人出生时都会被分配未来死因的王国'},
+    )
+
+    assert response.status_code == 200
+    assert response.json()['payload']['title'] == '单引号死因王国'
+
+
+def test_expand_world_brief_normalizes_light_missing_fields_and_types(client, monkeypatch):
+    token = register(client, 'brief-normalize@example.com')
+    light = draft_payload()
+    light.pop('tone_profile')
+    light['starter_assets'].pop('relations')
+    light['starter_assets'].pop('foreshadows')
+    light['starter_assets']['characters'][0]['current_goals'] = '查清空白死因'
+    light['starter_assets']['characters'][1].pop('status')
+    light['starter_assets']['relations'] = [{'source_index': '0', 'target_index': '1', 'relation_type': 'rival', 'intensity': '4', 'visibility': 'public'}]
+    light['starter_assets']['foreshadows'] = [
+        {
+            'title': '空白命簿页',
+            'description': '命簿中出现没有名字也没有死因的空白页。',
+            'foreshadow_type': 'fate_clue',
+            'status': 'planted',
+            'urgency_level': '4',
+            'related_character_indexes': ['0', '1'],
+        }
+    ]
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: FakeBriefLLMClient({'payload': light}))
+
+    response = client.post(
+        '/worlds/brief/expand',
+        headers=auth_headers(token),
+        json={'brief': '一个所有人出生时都会被分配未来死因的王国'},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()['payload']
+    assert payload['tone_profile'] == {}
+    assert payload['starter_assets']['characters'][0]['current_goals'] == ['查清空白死因']
+    assert payload['starter_assets']['relations'][0]['source_index'] == 0
+    assert payload['starter_assets']['relations'][0]['intensity'] == 4
+    assert payload['starter_assets']['foreshadows'][0]['urgency_level'] == 4
+    assert payload['starter_assets']['foreshadows'][0]['related_character_indexes'] == [0, 1]
+
+
+def test_expand_world_brief_rejects_unrepairable_model_text(client, db_session, monkeypatch):
+    token = register(client, 'brief-unrepairable@example.com')
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: FakeBriefLLMClient('我无法给出结构化草稿。'))
+
+    response = client.post(
+        '/worlds/brief/expand',
+        headers=auth_headers(token),
+        json={'brief': '一个所有人出生时都会被分配未来死因的王国'},
+    )
+
+    assert response.status_code == 502
+    assert response.json()['detail'] == 'MODEL_RESPONSE_INVALID'
     assert db_session.scalars(select(World)).all() == []
     assert db_session.scalars(select(EventLog)).all() == []
 
