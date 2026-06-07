@@ -28,6 +28,8 @@ const seedPayload: WorldCreateRequest = {
   },
 };
 
+const briefFirstChapterGoal = '莉塔在命簿归档夜发现自己的死因栏是空白，并带走第一张空白命簿页。';
+
 const briefDraftPayload: WorldCreateRequest = {
   title: '死因王国',
   genre_template: 'political_fantasy',
@@ -139,6 +141,7 @@ describe('WorldCreationForm', () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     const onExpandBrief = vi.fn().mockResolvedValue({
       payload: briefDraftPayload,
+      first_chapter_goal: briefFirstChapterGoal,
       rationale: '从死因制度补全政治奇幻世界。',
       assumptions: ['主角需要能接触命簿制度。'],
       safety_notes: ['这是原创世界创建草稿，不会自动创建世界或写入正史。'],
@@ -167,14 +170,14 @@ describe('WorldCreationForm', () => {
   it('starts a first-draft review path only after creating a brief-autofilled world', async () => {
     const user = userEvent.setup();
     const onCreate = vi.fn().mockResolvedValue(undefined);
-    const onExpandBrief = vi.fn().mockResolvedValue({ payload: briefDraftPayload });
+    const onExpandBrief = vi.fn().mockResolvedValue({ payload: briefDraftPayload, first_chapter_goal: briefFirstChapterGoal });
     render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} onExpandBrief={onExpandBrief} />);
 
     await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配未来死因的王国');
     await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
     await user.click(screen.getByRole('button', { name: '创建世界并生成第一章草稿' }));
 
-    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国' }), { autoStartFirstDraft: true });
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国' }), { autoStartFirstDraft: true, firstChapterGoal: briefFirstChapterGoal });
   });
 
   it('shows a friendly retry message when brief expansion fails and keeps current form data', async () => {

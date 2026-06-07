@@ -91,13 +91,14 @@ class WorldBriefExpandRequest(BaseModel):
 
 class WorldBriefExpansion(BaseModel):
     payload: WorldCreateRequest
+    first_chapter_goal: str = ''
     rationale: str = ''
     assumptions: list[str] = Field(default_factory=list)
     safety_notes: list[str] = Field(default_factory=list)
 
-    @field_validator('rationale')
+    @field_validator('first_chapter_goal', 'rationale')
     @classmethod
-    def validate_rationale(cls, value: str) -> str:
+    def validate_optional_text(cls, value: str) -> str:
         return value.strip()
 
     @field_validator('assumptions', 'safety_notes')

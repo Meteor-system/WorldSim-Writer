@@ -534,7 +534,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
       if (options.autoStartFirstDraft) {
-        const initialChapterGoal = buildFirstChapterGoal(overview);
+        const initialChapterGoal = options.firstChapterGoal?.trim() || buildFirstChapterGoal(overview);
         onEnterStudio(overview, {
           autoStartFirstDraft: true,
           initialChapterGoal,

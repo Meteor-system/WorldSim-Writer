@@ -203,6 +203,7 @@ export type WorldBriefExpandRequest = {
 
 export type WorldBriefExpandResponse = {
   payload: WorldCreateRequest;
+  first_chapter_goal?: string;
   rationale?: string;
   assumptions?: string[];
   safety_notes?: string[];
@@ -210,6 +211,7 @@ export type WorldBriefExpandResponse = {
 
 export type WorldCreationOptions = {
   autoStartFirstDraft?: boolean;
+  firstChapterGoal?: string;
 };
 
 export type WorldSeedSummary = {

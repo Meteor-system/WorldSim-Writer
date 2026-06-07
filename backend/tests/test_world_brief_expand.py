@@ -62,6 +62,7 @@ class FakeBriefLLMClient:
     def __init__(self, result: dict | None = None):
         self.result = result or {
             'payload': draft_payload(),
+            'first_chapter_goal': '莉塔在命簿归档夜发现自己的死因栏是空白，并带走第一张空白命簿页。',
             'rationale': '从死因制度补全政治奇幻世界、核心角色冲突和初始伏笔。',
             'assumptions': ['主角需要能接触命簿制度。', '对手代表制度既得利益。'],
             'safety_notes': ['这是原创世界创建草稿，不会自动创建世界或写入正史。'],
@@ -92,6 +93,7 @@ def test_expand_world_brief_returns_valid_world_create_payload_without_persisten
     assert payload['genre_template'] == 'political_fantasy'
     assert len(payload['starter_assets']['characters']) == 2
     assert len(payload['starter_assets']['foreshadows']) == 1
+    assert data['first_chapter_goal'] == '莉塔在命簿归档夜发现自己的死因栏是空白，并带走第一张空白命簿页。'
     assert data['rationale'] == '从死因制度补全政治奇幻世界、核心角色冲突和初始伏笔。'
     assert data['assumptions'] == ['主角需要能接触命簿制度。', '对手代表制度既得利益。']
     assert data['safety_notes'] == ['这是原创世界创建草稿，不会自动创建世界或写入正史。']
@@ -159,6 +161,27 @@ def test_expand_world_brief_blocks_obvious_protected_reference_terms(client, db_
     unsafe['starter_assets']['characters'][0]['name'] = '哈利·波特'
     unsafe['truth_canon'] = '霍格沃茨收到一封新的入学信。'
     monkeypatch.setattr(world_service, 'LLMClient', lambda: FakeBriefLLMClient({'payload': unsafe}))
+
+    response = client.post(
+        '/worlds/brief/expand',
+        headers=auth_headers(token),
+        json={'brief': '一个魔法学校里的少年冒险故事'},
+    )
+
+    assert response.status_code == 422
+    assert response.json()['detail'] == 'PROTECTED_REFERENCE_TERMS'
+    assert db_session.scalars(select(World)).all() == []
+    assert db_session.scalars(select(EventLog)).all() == []
+
+
+def test_expand_world_brief_blocks_protected_reference_terms_in_first_chapter_goal(client, db_session, monkeypatch):
+    token = register(client, 'brief-goal-safety@example.com')
+    unsafe = {
+        'payload': draft_payload(),
+        'first_chapter_goal': '让莉塔收到霍格沃茨来信并发现空白命簿页。',
+        'safety_notes': ['这是原创世界创建草稿，不会自动创建世界或写入正史。'],
+    }
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: FakeBriefLLMClient(unsafe))
 
     response = client.post(
         '/worlds/brief/expand',

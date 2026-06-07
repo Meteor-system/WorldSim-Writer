@@ -117,6 +117,8 @@ const archivedWorld: WorldOverview = {
   status: 'archived',
 };
 
+const briefFirstChapterGoal = '莉塔在命簿归档夜发现自己的死因栏是空白，并带走第一张空白命簿页。';
+
 afterEach(() => cleanup());
 
 beforeEach(() => {
@@ -618,6 +620,7 @@ describe('WorldPage world creation', () => {
         tone_profile: { style: '政治奇幻' },
         starter_assets: { characters: [{ name: '莉塔', role_type: 'protagonist', current_goals: ['查清空白死因'] }], relations: [], foreshadows: [] },
       },
+      first_chapter_goal: briefFirstChapterGoal,
     });
     vi.mocked(createWorld).mockResolvedValue({ id: 7 });
 
@@ -631,12 +634,12 @@ describe('WorldPage world creation', () => {
     expect(createWorld).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国' }));
     expect(onEnterStudio).toHaveBeenCalledWith(createdWorld, expect.objectContaining({
       autoStartFirstDraft: true,
-      initialChapterGoal: expect.stringContaining('死因王国'),
+      initialChapterGoal: briefFirstChapterGoal,
       executionContext: expect.objectContaining({
         source: 'manual',
         source_world_version: 1,
         next_chapter_number: 1,
-        goal: expect.stringContaining('每个人出生时都会被分配未来死因'),
+        goal: briefFirstChapterGoal,
       }),
     }));
     expect(screen.queryByText('世界推进结算')).not.toBeInTheDocument();

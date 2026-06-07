@@ -78,6 +78,7 @@ export function WorldCreationForm({
   const [briefError, setBriefError] = useState('');
   const [briefSuccess, setBriefSuccess] = useState('');
   const [briefNotes, setBriefNotes] = useState<Pick<WorldBriefExpandResponse, 'rationale' | 'assumptions' | 'safety_notes'>>({});
+  const [briefFirstChapterGoal, setBriefFirstChapterGoal] = useState('');
   const [briefDraftApplied, setBriefDraftApplied] = useState(false);
   const briefRequestIdRef = useRef(0);
 
@@ -86,6 +87,7 @@ export function WorldCreationForm({
     setSelectedPresetKey(preset.key);
     setActiveSeedKey(null);
     setBriefDraftApplied(false);
+    setBriefFirstChapterGoal('');
     setForm(clonePreset(preset));
   }
 
@@ -95,6 +97,7 @@ export function WorldCreationForm({
     setSelectedPresetKey('');
     setActiveSeedKey(seedKey);
     setBriefDraftApplied(false);
+    setBriefFirstChapterGoal('');
     setForm(JSON.parse(JSON.stringify(seed.payload)) as WorldCreateRequest);
   }
 
@@ -280,6 +283,7 @@ export function WorldCreationForm({
       setBriefError('请写得再具体一点，比如一句包含主角、世界规则或核心冲突的话。');
       setBriefSuccess('');
       setBriefNotes({});
+      setBriefFirstChapterGoal('');
       return;
     }
     const requestId = briefRequestIdRef.current + 1;
@@ -295,10 +299,12 @@ export function WorldCreationForm({
       setActiveSeedKey(null);
       setBriefDraftApplied(true);
       setForm(JSON.parse(JSON.stringify(response.payload)) as WorldCreateRequest);
+      setBriefFirstChapterGoal(response.first_chapter_goal?.trim() ?? '');
       setBriefNotes({ rationale: response.rationale, assumptions: response.assumptions, safety_notes: response.safety_notes });
       setBriefSuccess('草稿已填入下方表单。请检查标题、设定、角色和伏笔，确认后再创建世界。');
     } catch (error) {
       if (briefRequestIdRef.current !== requestId) return;
+      setBriefFirstChapterGoal('');
       setBriefError(friendlyBriefError(error));
     } finally {
       if (briefRequestIdRef.current === requestId) setBriefLoading(false);
@@ -311,12 +317,14 @@ export function WorldCreationForm({
     setBriefError('');
     setBriefSuccess('已取消生成，可以修改一句话后重新尝试。');
     setBriefNotes({});
+    setBriefFirstChapterGoal('');
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (briefDraftApplied) {
-      await onCreate(form, { autoStartFirstDraft: true });
+      const firstChapterGoal = briefFirstChapterGoal.trim();
+      await onCreate(form, firstChapterGoal ? { autoStartFirstDraft: true, firstChapterGoal } : { autoStartFirstDraft: true });
       return;
     }
     await onCreate(form);

@@ -67,6 +67,7 @@ def build_world_brief_messages(brief: str) -> list[dict[str, str]]:
                 '"foreshadows":[{"title":"伏笔","description":"说明","foreshadow_type":"类型",'
                 '"status":"planted","urgency_level":4,"related_character_indexes":[0],'
                 '"expected_resolution_window":"第2-5章"}]}},'
+                '"first_chapter_goal":"第一章草稿目标",'
                 '"rationale":"补全理由","assumptions":["假设"],'
                 '"safety_notes":["这是创建草稿，不会自动创建世界或写入正史"]}。'
                 '必须生成原创世界，不复用受保护作品的角色名、专有设定、原句或标志性桥段。'
@@ -76,7 +77,7 @@ def build_world_brief_messages(brief: str) -> list[dict[str, str]]:
             'role': 'user',
             'content': (
                 f'一句话故事想法：{brief}\n'
-                '请补全为可审阅、可编辑的 WorldCreateRequest 草稿。'
+                '请补全为可审阅、可编辑的 WorldCreateRequest 草稿，并给出第一章草稿目标 first_chapter_goal。'
                 '草稿只用于填表，用户确认前不得创建世界、不得生成第一章、不得写入 canon。'
             ),
         },
@@ -85,7 +86,11 @@ def build_world_brief_messages(brief: str) -> list[dict[str, str]]:
 
 def _protected_text_blob(expansion: WorldBriefExpansion) -> str:
     payload = expansion.payload.model_dump(mode='json')
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    return json.dumps(
+        {'payload': payload, 'first_chapter_goal': expansion.first_chapter_goal},
+        ensure_ascii=False,
+        sort_keys=True,
+    )
 
 
 def _reject_protected_reference_terms(expansion: WorldBriefExpansion) -> None:
