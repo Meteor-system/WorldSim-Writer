@@ -573,13 +573,14 @@ describe('WorldPage world creation', () => {
 
   it('creates the built-in sample world and loads its overview', async () => {
     const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
     vi.mocked(apiRequest).mockReset();
     vi.mocked(apiRequest)
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce(world);
     vi.mocked(createSampleWorld).mockResolvedValue({ id: 7 });
 
-    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
 
     expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
     expect(await screen.findByText('Sandbox Seed Library')).toBeInTheDocument();
@@ -589,6 +590,56 @@ describe('WorldPage world creation', () => {
     expect(createSampleWorld).toHaveBeenCalledOnce();
     expect(apiRequest).toHaveBeenNthCalledWith(2, '/worlds/7/overview');
     expect(await screen.findByText('青岚城')).toBeInTheDocument();
+    expect(onEnterStudio).not.toHaveBeenCalled();
+  });
+
+  it('enters Studio with auto-start context after confirming a brief-created world', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    const createdWorld: WorldOverview = {
+      ...world,
+      title: '死因王国',
+      truth_canon: '每个人出生时都会被分配未来死因。',
+      characters: [{ id: 1, name: '莉塔', role_type: 'protagonist', status: '命簿抄录员', public_profile: {}, hidden_traits: {}, destiny_flag: null, current_goals: ['查清空白死因'] }],
+      world_version: 1,
+      approved_chapter_count: 0,
+      story_arc: [],
+      recent_events: [],
+    };
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(createdWorld);
+    vi.mocked(expandWorldBrief).mockResolvedValueOnce({
+      payload: {
+        title: '死因王国',
+        genre_template: 'political_fantasy',
+        truth_canon: '每个人出生时都会被分配未来死因。',
+        tone_profile: { style: '政治奇幻' },
+        starter_assets: { characters: [{ name: '莉塔', role_type: 'protagonist', current_goals: ['查清空白死因'] }], relations: [], foreshadows: [] },
+      },
+    });
+    vi.mocked(createWorld).mockResolvedValue({ id: 7 });
+
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配未来死因的王国');
+    await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
+    await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
+
+    expect(createWorld).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国' }));
+    expect(onEnterStudio).toHaveBeenCalledWith(createdWorld, expect.objectContaining({
+      autoStartFirstDraft: true,
+      initialChapterGoal: expect.stringContaining('死因王国'),
+      executionContext: expect.objectContaining({
+        source: 'manual',
+        source_world_version: 1,
+        next_chapter_number: 1,
+        goal: expect.stringContaining('每个人出生时都会被分配未来死因'),
+      }),
+    }));
+    expect(screen.queryByText('世界推进结算')).not.toBeInTheDocument();
   });
 
   it('shows backend validation errors when custom world creation fails', async () => {
@@ -608,13 +659,14 @@ describe('WorldPage world creation', () => {
 
   it('creates a world directly from a sandbox seed', async () => {
     const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
     vi.mocked(apiRequest).mockReset();
     vi.mocked(apiRequest)
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce(world);
     vi.mocked(createWorldFromSeed).mockResolvedValue({ id: 7 });
 
-    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
 
     expect(await screen.findByText('Sandbox Seed Library')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '直接创建此胚胎' }));
@@ -622,6 +674,7 @@ describe('WorldPage world creation', () => {
     expect(createWorldFromSeed).toHaveBeenCalledWith('forgotten-sun-city');
     expect(apiRequest).toHaveBeenNthCalledWith(2, '/worlds/7/overview');
     expect(await screen.findByText('青岚城')).toBeInTheDocument();
+    expect(onEnterStudio).not.toHaveBeenCalled();
   });
 });
 

@@ -208,6 +208,10 @@ export type WorldBriefExpandResponse = {
   safety_notes?: string[];
 };
 
+export type WorldCreationOptions = {
+  autoStartFirstDraft?: boolean;
+};
+
 export type WorldSeedSummary = {
   key: string;
   label: string;
@@ -496,6 +500,7 @@ export type ChapterExecutionContext = {
 export type StudioLaunchContext = {
   initialChapterGoal?: string;
   executionContext?: ChapterExecutionContext;
+  autoStartFirstDraft?: boolean;
 };
 
 export type ChapterPipelineResponse = {

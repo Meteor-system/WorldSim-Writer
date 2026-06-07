@@ -6,6 +6,7 @@ import type {
   StarterRelationCreate,
   WorldBriefExpandResponse,
   WorldCreateRequest,
+  WorldCreationOptions,
   WorldSeedDetail,
   WorldSeedSummary,
 } from '../api/types';
@@ -14,7 +15,7 @@ import { SeedLibraryPanel } from './SeedLibraryPanel';
 
 type Props = {
   creating: boolean;
-  onCreate: (payload: WorldCreateRequest) => Promise<void>;
+  onCreate: (payload: WorldCreateRequest, options?: WorldCreationOptions) => Promise<void>;
   onCreateSample: () => Promise<void>;
   seeds?: WorldSeedSummary[];
   selectedSeedKey?: string | null;
@@ -77,12 +78,14 @@ export function WorldCreationForm({
   const [briefError, setBriefError] = useState('');
   const [briefSuccess, setBriefSuccess] = useState('');
   const [briefNotes, setBriefNotes] = useState<Pick<WorldBriefExpandResponse, 'rationale' | 'assumptions' | 'safety_notes'>>({});
+  const [briefDraftApplied, setBriefDraftApplied] = useState(false);
   const briefRequestIdRef = useRef(0);
 
   function selectPreset(key: string) {
     const preset = GENRE_PRESETS.find((item) => item.key === key) ?? GENRE_PRESETS[0];
     setSelectedPresetKey(preset.key);
     setActiveSeedKey(null);
+    setBriefDraftApplied(false);
     setForm(clonePreset(preset));
   }
 
@@ -91,6 +94,7 @@ export function WorldCreationForm({
     const seed = await onLoadSeed(seedKey);
     setSelectedPresetKey('');
     setActiveSeedKey(seedKey);
+    setBriefDraftApplied(false);
     setForm(JSON.parse(JSON.stringify(seed.payload)) as WorldCreateRequest);
   }
 
@@ -289,6 +293,7 @@ export function WorldCreationForm({
       if (briefRequestIdRef.current !== requestId) return;
       setSelectedPresetKey('');
       setActiveSeedKey(null);
+      setBriefDraftApplied(true);
       setForm(JSON.parse(JSON.stringify(response.payload)) as WorldCreateRequest);
       setBriefNotes({ rationale: response.rationale, assumptions: response.assumptions, safety_notes: response.safety_notes });
       setBriefSuccess('草稿已填入下方表单。请检查标题、设定、角色和伏笔，确认后再创建世界。');
@@ -310,6 +315,10 @@ export function WorldCreationForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (briefDraftApplied) {
+      await onCreate(form, { autoStartFirstDraft: true });
+      return;
+    }
     await onCreate(form);
   }
 

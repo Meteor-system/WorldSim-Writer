@@ -65,6 +65,7 @@ describe('WorldCreationForm', () => {
         foreshadows: expect.arrayContaining([expect.objectContaining({ status: 'planted', urgency_level: expect.any(Number) })]),
       }),
     }));
+    expect(onCreate.mock.calls[0][1]).toBeUndefined();
   });
 
   it('calls the sample world shortcut without submitting the custom form', async () => {
@@ -154,6 +155,19 @@ describe('WorldCreationForm', () => {
     expect(screen.getByText('主角需要能接触命簿制度。')).toBeInTheDocument();
     expect(screen.getByText('这是原创世界创建草稿，不会自动创建世界或写入正史。')).toBeInTheDocument();
     expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it('starts a first-draft review path only after creating a brief-autofilled world', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const onExpandBrief = vi.fn().mockResolvedValue({ payload: briefDraftPayload });
+    render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} onExpandBrief={onExpandBrief} />);
+
+    await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配未来死因的王国');
+    await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
+    await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
+
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国' }), { autoStartFirstDraft: true });
   });
 
   it('shows a friendly retry message when brief expansion fails and keeps current form data', async () => {

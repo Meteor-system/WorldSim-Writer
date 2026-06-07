@@ -35,9 +35,9 @@ import {
   updateWorldStatus,
   updateWorldTag,
 } from '../api/client';
-import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, ImportMaterialReference, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
+import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, ImportMaterialReference, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldCreationOptions, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
-import { buildExecutionContextFromPrep } from './chapterExecutionContext';
+import { buildExecutionContextFromPrep, buildManualExecutionContext } from './chapterExecutionContext';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
 import { ArcPlanPanel } from './ArcPlanPanel';
@@ -269,6 +269,12 @@ function StoryArcCard({ chapter, expanded, onToggle }: { chapter: StoryArcChapte
 
 function buildStoryArcGoal(chapter: StoryArcChapter) {
   return `${chapter.title}：${chapter.summary}`;
+}
+
+function buildFirstChapterGoal(world: WorldOverview): string {
+  const protagonist = world.characters[0]?.name;
+  const protagonistPart = protagonist ? `，以「${protagonist}」作为第一视角锚点` : '';
+  return `为《${world.title}》生成第一章草稿：从世界底层设定“${world.truth_canon}”开场${protagonistPart}，建立核心冲突并埋下初始悬念。`;
 }
 
 function buildStoryArcExecutionContext(world: WorldOverview, chapter: StoryArcChapter, materialReferences: ImportMaterialReference[] = []): ChapterExecutionContext {
@@ -518,7 +524,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     }
   }
 
-  async function submitWorld(payload: WorldCreateRequest) {
+  async function submitWorld(payload: WorldCreateRequest, options: WorldCreationOptions = {}) {
     setCreating(true);
     setError('');
     try {
@@ -527,6 +533,15 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setWorld(overview);
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
+      if (options.autoStartFirstDraft) {
+        const initialChapterGoal = buildFirstChapterGoal(overview);
+        onEnterStudio(overview, {
+          autoStartFirstDraft: true,
+          initialChapterGoal,
+          executionContext: buildManualExecutionContext(overview, initialChapterGoal),
+        });
+        return;
+      }
       void loadNarrativeControlCenter(overview.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建世界失败');

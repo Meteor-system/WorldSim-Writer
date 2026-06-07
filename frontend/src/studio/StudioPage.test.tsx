@@ -307,6 +307,22 @@ afterEach(() => {
   vi.mocked(checkApprovalConsistency).mockClear();
   vi.mocked(exportWorldArchiveMarkdown).mockClear();
   vi.mocked(writeChapter).mockClear();
+  vi.mocked(createChapter).mockReset();
+  vi.mocked(createChapter).mockResolvedValue({
+    id: 11,
+    world_id: 7,
+    title: '推进雨巷密谈',
+    status: 'drafting',
+    draft_version: 1,
+    approved_version: null,
+    base_world_version: 1,
+    approved_content: null,
+    chapter_goal: '推进雨巷密谈',
+    outline_beats: [],
+    outline_context: {},
+    critique_report: {},
+    execution_context: executionContext,
+  });
   vi.mocked(generateOutline).mockClear();
   vi.mocked(generateCriticReport).mockClear();
   vi.mocked(getApprovalReadiness).mockClear();
@@ -333,6 +349,32 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.clear(goal);
     await user.type(goal, '用户修改后的下一章目标');
     expect(goal).toHaveValue('用户修改后的下一章目标');
+  });
+
+  it('auto-generates the first draft for review when launched with auto-start intent', async () => {
+    render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext, autoStartFirstDraft: true }} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    expect(await screen.findByText('Writer Draft')).toBeInTheDocument();
+    expect(screen.getByText('写入正史前确认')).toBeInTheDocument();
+    expect(createChapter).toHaveBeenCalledWith(7, expect.objectContaining({
+      chapter_goal: executionContext.goal,
+      execution_context: expect.objectContaining({ goal: executionContext.goal }),
+    }));
+    expect(generateOutline).toHaveBeenCalledWith(11, {});
+    expect(writeChapter).toHaveBeenCalledWith(11, { outline_beats: expect.arrayContaining([expect.objectContaining({ beat_id: 'beat-1' })]) });
+    expect(approveChapter).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled();
+  });
+
+  it('shows a friendly retry path when auto-start first draft fails', async () => {
+    vi.mocked(createChapter).mockRejectedValueOnce(new Error('模型暂不可用'));
+
+    render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext, autoStartFirstDraft: true }} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('自动生成第一章草稿失败，请检查章节目标后手动重试。');
+    expect(screen.getByRole('button', { name: '用候选素材参考创建章节' })).toBeEnabled();
+    expect(writeChapter).not.toHaveBeenCalled();
+    expect(approveChapter).not.toHaveBeenCalled();
   });
 
   it('shows launch execution context summary and submits edited context when creating chapter', async () => {

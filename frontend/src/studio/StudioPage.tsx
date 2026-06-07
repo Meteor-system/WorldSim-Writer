@@ -165,6 +165,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [editContent, setEditContent] = useState('');
   const titleRef = useRef<HTMLHeadingElement>(null);
   const draftTitleRef = useRef<HTMLHeadingElement>(null);
+  const autoStartFirstDraftRef = useRef(false);
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -277,6 +278,78 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setDraftDiff(null);
     }
   }
+
+  useEffect(() => {
+    if (!launchContext?.autoStartFirstDraft || autoStartFirstDraftRef.current) return;
+    const initialGoal = goal.trim();
+    if (!initialGoal) return;
+    autoStartFirstDraftRef.current = true;
+    let cancelled = false;
+
+    async function runAutoStartFirstDraft() {
+      setWorking(true);
+      setOperationHint('正在生成第一章草稿…');
+      setError('');
+      try {
+        const frozenContext = withEditedGoal(executionContext, localWorld, initialGoal);
+        const created = await createChapterRequest(localWorld.id, {
+          chapter_goal: initialGoal,
+          title: initialGoal.slice(0, 40),
+          execution_context: frozenContext,
+        });
+        if (cancelled) return;
+        setChapter(created);
+        setOutlineBeats(created.outline_beats);
+        setOutlineContext(created.outline_context);
+        setDraft(null);
+        setApprovalPreview(null);
+        clearApprovalSelection();
+        clearApprovalConsistency();
+        setApprovalReadiness(null);
+        setCritique(null);
+        setCharacterArcReport(null);
+        setSettlement(null);
+
+        const outline = await generateOutline(created.id, {});
+        if (cancelled) return;
+        setOutlineBeats(outline.outline_beats);
+        setOutlineContext(outline.outline_context);
+        setChapter({ ...created, status: outline.status, outline_beats: outline.outline_beats, outline_context: outline.outline_context });
+
+        const nextDraft = normalizeDraft(await writeChapter(created.id, { outline_beats: outline.outline_beats }));
+        if (cancelled) return;
+        setDraft(nextDraft);
+        setDraftVersions([nextDraft.draft_version]);
+        setLatestDraftVersion(nextDraft.draft_version);
+        await refreshReviewStudioPanels(nextDraft);
+        if (cancelled) return;
+        setCritique(null);
+        setCharacterArcReport(null);
+        setEditMode(false);
+        setEditContent('');
+        setChapter({
+          ...created,
+          title: nextDraft.title,
+          status: nextDraft.status ?? 'reviewing',
+          outline_beats: nextDraft.outline_beats ?? outline.outline_beats,
+          outline_context: nextDraft.outline_context ?? outline.outline_context,
+          critique_report: nextDraft.critique_report ?? {},
+        });
+      } catch {
+        if (!cancelled) setError('自动生成第一章草稿失败，请检查章节目标后手动重试。');
+      } finally {
+        if (!cancelled) {
+          setWorking(false);
+          setOperationHint('');
+        }
+      }
+    }
+
+    void runAutoStartFirstDraft();
+    return () => {
+      cancelled = true;
+    };
+  }, [launchContext?.autoStartFirstDraft]);
 
   async function handleSuggestGoal() {
     setSuggestingGoal(true);
