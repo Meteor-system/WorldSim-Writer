@@ -131,6 +131,7 @@ def _normalize_brief_expansion(raw: object) -> object:
     starter_assets.setdefault('foreshadows', [])
 
     characters = starter_assets.get('characters')
+    character_count = len(characters) if isinstance(characters, list) else None
     if isinstance(characters, list):
         for character in characters:
             if not isinstance(character, dict):
@@ -142,12 +143,27 @@ def _normalize_brief_expansion(raw: object) -> object:
 
     relations = starter_assets.get('relations')
     if isinstance(relations, list):
+        normalized_relations = []
         for relation in relations:
             if not isinstance(relation, dict):
                 continue
             for key in ('source_index', 'target_index', 'intensity'):
                 if key in relation:
                     relation[key] = _normalize_int(relation[key])
+            source_index = relation.get('source_index')
+            target_index = relation.get('target_index')
+            if character_count is not None and (
+                not isinstance(source_index, int)
+                or not isinstance(target_index, int)
+                or source_index < 0
+                or target_index < 0
+                or source_index >= character_count
+                or target_index >= character_count
+                or source_index == target_index
+            ):
+                continue
+            normalized_relations.append(relation)
+        starter_assets['relations'] = normalized_relations
 
     foreshadows = starter_assets.get('foreshadows')
     if isinstance(foreshadows, list):
@@ -158,9 +174,16 @@ def _normalize_brief_expansion(raw: object) -> object:
                 foreshadow['urgency_level'] = _normalize_int(foreshadow['urgency_level'])
             indexes = foreshadow.get('related_character_indexes')
             if isinstance(indexes, list):
-                foreshadow['related_character_indexes'] = [_normalize_int(index) for index in indexes]
+                normalized_indexes = [_normalize_int(index) for index in indexes]
             elif isinstance(indexes, str):
-                foreshadow['related_character_indexes'] = [_normalize_int(indexes)]
+                normalized_indexes = [_normalize_int(indexes)]
+            else:
+                continue
+            if character_count is not None:
+                normalized_indexes = [
+                    index for index in normalized_indexes if isinstance(index, int) and 0 <= index < character_count
+                ]
+            foreshadow['related_character_indexes'] = normalized_indexes
 
     return normalized
 

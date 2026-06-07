@@ -212,6 +212,34 @@ def test_expand_world_brief_normalizes_light_missing_fields_and_types(client, mo
     assert payload['starter_assets']['foreshadows'][0]['related_character_indexes'] == [0, 1]
 
 
+def test_expand_world_brief_filters_invalid_relation_indexes(client, monkeypatch):
+    token = register(client, 'brief-invalid-relation@example.com')
+    payload_with_invalid_relation = draft_payload()
+    payload_with_invalid_relation['starter_assets']['characters'] = [
+        payload_with_invalid_relation['starter_assets']['characters'][0]
+    ]
+    payload_with_invalid_relation['starter_assets']['relations'] = [
+        {'source_index': 0, 'target_index': 1, 'relation_type': 'rival', 'intensity': 4, 'visibility': 'public'}
+    ]
+    payload_with_invalid_relation['starter_assets']['foreshadows'][0]['related_character_indexes'] = [0, 1]
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: FakeBriefLLMClient({'payload': payload_with_invalid_relation}))
+
+    response = client.post(
+        '/worlds/brief/expand',
+        headers=auth_headers(token),
+        json={'brief': '一个所有人出生时都会被分配未来死因的王国'},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()['payload']
+    WorldCreateRequest.model_validate(payload)
+    assert len(payload['starter_assets']['characters']) == 1
+    assert payload['starter_assets']['characters'][0]['name'] == '莉塔'
+    assert payload['starter_assets']['relations'] == []
+    assert len(payload['starter_assets']['foreshadows']) == 1
+    assert payload['starter_assets']['foreshadows'][0]['related_character_indexes'] == [0]
+
+
 def test_expand_world_brief_rejects_unrepairable_model_text(client, db_session, monkeypatch):
     token = register(client, 'brief-unrepairable@example.com')
     monkeypatch.setattr(world_service, 'LLMClient', lambda: FakeBriefLLMClient('我无法给出结构化草稿。'))
@@ -261,7 +289,7 @@ def test_expand_world_brief_rejects_malformed_model_payload(client, db_session, 
     assert db_session.scalars(select(EventLog)).all() == []
 
 
-def test_expand_world_brief_rejects_invalid_starter_asset_indexes(client, db_session, monkeypatch):
+def test_expand_world_brief_filters_invalid_foreshadow_indexes(client, db_session, monkeypatch):
     token = register(client, 'brief-index@example.com')
     malformed = draft_payload()
     malformed['starter_assets']['foreshadows'][0]['related_character_indexes'] = [0, 99]
@@ -273,8 +301,10 @@ def test_expand_world_brief_rejects_invalid_starter_asset_indexes(client, db_ses
         json={'brief': '一个所有人出生时都会被分配未来死因的王国'},
     )
 
-    assert response.status_code == 502
-    assert response.json()['detail'] == 'MODEL_RESPONSE_INVALID'
+    assert response.status_code == 200
+    payload = response.json()['payload']
+    WorldCreateRequest.model_validate(payload)
+    assert payload['starter_assets']['foreshadows'][0]['related_character_indexes'] == [0]
     assert db_session.scalars(select(World)).all() == []
     assert db_session.scalars(select(EventLog)).all() == []
 
