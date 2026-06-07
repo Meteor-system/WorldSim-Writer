@@ -392,6 +392,20 @@ export function WorldCreationForm({
             <p className="font-black text-[#3b2511]">{briefSuccess}</p>
             <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">现在还没有创建世界，也没有写入正史。只有点击“创建世界并生成第一章草稿”后才会创建。</p>
             <p className="manuscript mt-1 text-sm font-bold text-[#5e3b1c]">确认创建后会进入第一章草稿审阅；第一章仍需在创作台点击“写入正史并更新世界”才会正式生效。</p>
+            {briefDraftApplied && (
+              <div className="mt-4">
+                <label className="text-sm font-semibold text-[#4a321e]" htmlFor="brief-first-chapter-goal">第一章草稿目标</label>
+                <textarea
+                  id="brief-first-chapter-goal"
+                  className="mt-1 min-h-24 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3"
+                  value={briefFirstChapterGoal}
+                  onChange={(event) => setBriefFirstChapterGoal(event.target.value)}
+                  placeholder="写下第一章要完成的开场目标"
+                  aria-describedby="brief-first-chapter-goal-help"
+                />
+                <p id="brief-first-chapter-goal-help" className="manuscript mt-1 text-xs text-[#5e3b1c]">可修改；它只用于进入创作台生成草稿，不会写入正史。</p>
+              </div>
+            )}
             {briefNotes.rationale && <p className="manuscript mt-3 text-sm">{briefNotes.rationale}</p>}
             {(briefNotes.assumptions?.length ?? 0) > 0 && (
               <div className="mt-3">

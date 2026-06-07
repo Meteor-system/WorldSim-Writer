@@ -180,6 +180,22 @@ describe('WorldCreationForm', () => {
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国' }), { autoStartFirstDraft: true, firstChapterGoal: briefFirstChapterGoal });
   });
 
+  it('lets users edit the generated first chapter goal before creating the world', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const onExpandBrief = vi.fn().mockResolvedValue({ payload: briefDraftPayload, first_chapter_goal: briefFirstChapterGoal });
+    const revisedGoal = '莉塔在归档夜主动调换命簿，把空白页藏进公爵审判卷宗。';
+    render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} onExpandBrief={onExpandBrief} />);
+
+    await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配未来死因的王国');
+    await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
+    await user.clear(screen.getByLabelText('第一章草稿目标'));
+    await user.type(screen.getByLabelText('第一章草稿目标'), revisedGoal);
+    await user.click(screen.getByRole('button', { name: '创建世界并生成第一章草稿' }));
+
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国' }), { autoStartFirstDraft: true, firstChapterGoal: revisedGoal });
+  });
+
   it('shows a friendly retry message when brief expansion fails and keeps current form data', async () => {
     const user = userEvent.setup();
     const onExpandBrief = vi.fn().mockRejectedValue(new Error('PROTECTED_REFERENCE_TERMS'));
