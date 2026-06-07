@@ -131,6 +131,32 @@ def test_expand_world_brief_accepts_markdown_wrapped_model_json(client, db_sessi
     assert db_session.scalars(select(EventLog)).all() == []
 
 
+def test_expand_world_brief_promotes_metadata_misplaced_inside_payload(client, monkeypatch):
+    token = register(client, 'brief-misplaced-metadata@example.com')
+    misplaced = draft_payload()
+    misplaced['first_chapter_goal'] = '莉塔在命簿归档夜发现自己的死因栏是空白。'
+    misplaced['rationale'] = '模型把响应元数据误放进 payload 时仍应生成可编辑草稿。'
+    misplaced['assumptions'] = ['死因制度由命簿机关执行。']
+    misplaced['safety_notes'] = ['用户确认前不得创建世界或写入正史。']
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: FakeBriefLLMClient({'payload': misplaced}))
+
+    response = client.post(
+        '/worlds/brief/expand',
+        headers=auth_headers(token),
+        json={'brief': '一个所有人出生时都会被分配未来死因的王国'},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    WorldCreateRequest.model_validate(data['payload'])
+    assert data['first_chapter_goal'] == '莉塔在命簿归档夜发现自己的死因栏是空白。'
+    assert data['rationale'] == '模型把响应元数据误放进 payload 时仍应生成可编辑草稿。'
+    assert data['assumptions'] == ['死因制度由命簿机关执行。']
+    assert data['safety_notes'] == ['用户确认前不得创建世界或写入正史。']
+    for key in ('first_chapter_goal', 'rationale', 'assumptions', 'safety_notes'):
+        assert key not in data['payload']
+
+
 def test_expand_world_brief_repairs_light_json_formatting(client, monkeypatch):
     token = register(client, 'brief-json-repair@example.com')
     repaired_payload = draft_payload()

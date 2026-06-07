@@ -116,6 +116,12 @@ def _normalize_brief_expansion(raw: object) -> object:
     if not isinstance(payload, dict):
         return normalized
 
+    for key in ('first_chapter_goal', 'rationale', 'assumptions', 'safety_notes'):
+        if key in payload:
+            value = payload.pop(key)
+            if key not in normalized:
+                normalized[key] = value
+
     payload.setdefault('tone_profile', {})
     starter_assets = payload.get('starter_assets')
     if not isinstance(starter_assets, dict):
