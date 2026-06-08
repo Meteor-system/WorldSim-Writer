@@ -88,6 +88,13 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
         </div>
       </article>
 
+      {prep.previous_chapter_summary && (
+        <section className="rounded-2xl bg-white/35 p-4">
+          <h3 className="font-black text-[#3b2511]">上一章摘要</h3>
+          <p className="manuscript mt-2 text-sm">{prep.previous_chapter_summary}</p>
+        </section>
+      )}
+
       <p className="rounded-2xl bg-white/35 p-3 text-sm font-bold text-[#5e3b1c]">
         推荐 POV：{prep.recommended_pov_character_name ?? '暂无'}
       </p>

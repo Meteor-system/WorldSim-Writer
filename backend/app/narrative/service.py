@@ -131,8 +131,10 @@ def format_execution_context_for_prompt(execution_context: dict | None) -> str:
         '本章执行上下文：',
         f"- 来源：{execution_context.get('source', 'manual')}",
         f"- 源世界版本：{execution_context.get('source_world_version', '未知')}",
-        f"- 推荐 POV：{pov.get('name') or '暂无'}",
     ]
+    if execution_context.get('previous_chapter_summary'):
+        lines.append(f"- 上一章摘要：{execution_context.get('previous_chapter_summary')}")
+    lines.append(f"- 推荐 POV：{pov.get('name') or '暂无'}")
     characters = execution_context.get('priority_characters') or []
     if characters:
         lines.append('- 优先角色：' + '；'.join(f"{c.get('name')}（理由：{c.get('reason')}）" for c in characters))

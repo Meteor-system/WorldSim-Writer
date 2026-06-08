@@ -96,6 +96,7 @@ class NextChapterPrepResponse(BaseModel):
     world_version: int
     next_chapter_number: int
     suggested_goal: str
+    previous_chapter_summary: str | None = None
     recommended_pov_character_id: int | None = None
     recommended_pov_character_name: str | None = None
     source_signals: list[str]

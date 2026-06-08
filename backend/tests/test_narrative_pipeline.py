@@ -118,6 +118,83 @@ class PipelineLLMClient:
         return fake_critique()
 
 
+class ContinuousChapterLLMClient:
+    def __init__(self):
+        self.messages = []
+        self.call_count = 0
+
+    def generate_chapter(self, messages):
+        self.call_count += 1
+        self.messages.append(messages)
+        if self.call_count == 1:
+            return ChapterGeneration(
+                title='第一章 雨巷密谈',
+                draft_content='林砚在雨巷中接过沈微霜递来的湿信。',
+                context_summary='林砚与沈微霜在雨巷交换湿信线索。',
+                review_hints=['确认湿信线索是否清楚'],
+                proposed_character_changes=[
+                    ProposedCharacterChange(character_id=1, status='开始调查密信', current_goals=['追查湿信来源'])
+                ],
+                proposed_foreshadow_changes=[
+                    ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='湿信推进玉佩线索')
+                ],
+            )
+        if self.call_count == 2:
+            return ChapterGeneration(
+                title='第二章 城主府外墙',
+                draft_content='林砚按用户目标抵达城主府外墙，以湿信试探沈微霜。',
+                context_summary='林砚把湿信线索带到城主府外墙。',
+                review_hints=['确认第二章承接第一章湿信线索'],
+                proposed_character_changes=[
+                    ProposedCharacterChange(character_id=1, status='试探沈微霜', current_goals=['确认城主府密道入口'])
+                ],
+                proposed_foreshadow_changes=[
+                    ProposedForeshadowChange(foreshadow_id=1, status='resolved', description_note='玉佩指向城主府密道')
+                ],
+            )
+        return ChapterGeneration(
+            title='第三章 灵井余波',
+            draft_content='林砚准备继续追查灵井余波。',
+            context_summary='第三章草稿等待审批。',
+            review_hints=['确认世界版本是否仍匹配'],
+            proposed_character_changes=[
+                ProposedCharacterChange(character_id=1, status='追查灵井余波', current_goals=['确认灵井异动'])
+            ],
+            proposed_foreshadow_changes=[],
+        )
+
+
+def execution_context_from_prep(prep: dict, goal: str | None = None) -> dict:
+    return {
+        'source': 'next_chapter_prep',
+        'source_world_version': prep['world_version'],
+        'next_chapter_number': prep['next_chapter_number'],
+        'goal': goal or prep['suggested_goal'],
+        'previous_chapter_summary': prep['previous_chapter_summary'],
+        'recommended_pov': {
+            'character_id': prep['recommended_pov_character_id'],
+            'name': prep['recommended_pov_character_name'],
+        },
+        'source_signals': prep['source_signals'],
+        'priority_characters': prep['priority_characters'],
+        'priority_foreshadows': prep['priority_foreshadows'],
+        'progression_hints': prep['progression_hints'],
+        'continuity_warnings': prep['continuity_warnings'],
+        'recent_events': [
+            {
+                'id': event['id'],
+                'event_type': event['event_type'],
+                'world_version_before': event['world_version_before'],
+                'world_version_after': event['world_version_after'],
+                'created_at': event['created_at'],
+            }
+            for event in prep['recent_events']
+        ],
+        'material_references': prep['material_references'],
+    }
+
+
+
 def test_create_chapter_session_requires_login_and_sets_base_world_version(client):
     token, world_id = register_and_create_world(client)
 
@@ -189,6 +266,61 @@ def test_manual_story_bible_edits_feed_latest_next_chapter_context(client, db_se
     assert '三口灵井' in joined
     assert 'status=advanced' in joined
     assert 'urgency=5' in joined
+
+
+def test_continuous_two_chapters_use_latest_context_and_stale_third_draft_is_blocked(client, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    llm = ContinuousChapterLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+
+    first_draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        headers=auth(token),
+        json={'chapter_goal': '第一章建立湿信线索'},
+    ).json()
+    assert client.post(f"/chapters/{first_draft['chapter_id']}/approve", headers=auth(token)).status_code == 200
+
+    prep = client.get(f'/worlds/{world_id}/next-chapter-prep', headers=auth(token)).json()
+    second_goal = '用户修改后的第二章目标：林砚在城主府外墙试探沈微霜。'
+    second_context = execution_context_from_prep(prep, second_goal)
+    second_draft_response = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        headers=auth(token),
+        json={'chapter_goal': second_goal, 'execution_context': second_context},
+    )
+
+    assert second_draft_response.status_code == 200
+    second_prompt = '\n'.join(message['content'] for message in llm.messages[1])
+    assert '上一章摘要：林砚与沈微霜在雨巷交换湿信线索。' in second_prompt
+    assert '世界设定：青岚城由城主府、云河剑宗与地下商盟共同影响。' in second_prompt
+    assert '世界版本：2' in second_prompt
+    assert 'status=开始调查密信' in second_prompt
+    assert "goals=['追查湿信来源']" in second_prompt
+    assert '裂纹玉佩, status=advanced' in second_prompt
+    assert second_goal in second_prompt
+    assert client.post(f"/chapters/{second_draft_response.json()['chapter_id']}/approve", headers=auth(token)).status_code == 200
+
+    overview = client.get(f'/worlds/{world_id}/overview', headers=auth(token)).json()
+    assert overview['approved_chapter_count'] == 2
+    assert overview['world_version'] == 3
+
+    third_prep = client.get(f'/worlds/{world_id}/next-chapter-prep', headers=auth(token)).json()
+    third_goal = '第三章继续追查灵井余波'
+    third_draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        headers=auth(token),
+        json={'chapter_goal': third_goal, 'execution_context': execution_context_from_prep(third_prep, third_goal)},
+    ).json()
+    canon_edit = client.put(
+        f'/worlds/{world_id}/canon',
+        headers=auth(token),
+        json={'truth_canon': '青岚城灵脉已经枯竭，只剩三口灵井。', 'edit_reason': '第三章前修正设定'},
+    )
+    assert canon_edit.status_code == 200
+
+    stale_approve = client.post(f"/chapters/{third_draft['chapter_id']}/approve", headers=auth(token))
+    assert stale_approve.status_code == 409
+    assert stale_approve.json()['detail'] == 'WORLD_VERSION_MISMATCH'
 
 
 def test_write_requires_outline_for_pipeline_endpoint(client):

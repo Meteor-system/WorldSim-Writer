@@ -7,6 +7,7 @@ const prep: NextChapterPrepResponse = {
   world_version: 2,
   next_chapter_number: 2,
   suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+  previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',
   recommended_pov_character_id: 1,
   recommended_pov_character_name: '林砚',
   source_signals: ['character_arc_progression_hint'],
@@ -51,6 +52,7 @@ describe('chapterExecutionContext', () => {
     expect(context.source_world_version).toBe(2);
     expect(context.next_chapter_number).toBe(2);
     expect(context.goal).toBe(prep.suggested_goal);
+    expect(context.previous_chapter_summary).toBe('林砚与沈微霜在雨巷交换湿信线索。');
     expect(context.recommended_pov.name).toBe('林砚');
     expect(context.priority_characters[0].reason).toBe('上一章提示。');
     expect(context.priority_foreshadows[0].title).toBe('裂纹玉佩');
@@ -73,7 +75,9 @@ describe('chapterExecutionContext', () => {
   it('applies edited goal to provided or manual context', () => {
     const context = buildExecutionContextFromPrep(prep);
 
-    expect(withEditedGoal(context, world, '用户修改后的目标').goal).toBe('用户修改后的目标');
+    const edited = withEditedGoal(context, world, '用户修改后的目标');
+    expect(edited.goal).toBe('用户修改后的目标');
+    expect(edited.previous_chapter_summary).toBe('林砚与沈微霜在雨巷交换湿信线索。');
     expect(withEditedGoal(undefined, world, '无 NCC 的目标').source).toBe('manual');
   });
 });

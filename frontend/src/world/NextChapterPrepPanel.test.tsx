@@ -10,6 +10,7 @@ const prep: NextChapterPrepResponse = {
   world_version: 2,
   next_chapter_number: 2,
   suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+  previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',
   recommended_pov_character_id: 1,
   recommended_pov_character_name: '林砚',
   source_signals: ['character_arc_progression_hint', 'story_arc', 'import_material_reference'],
@@ -93,6 +94,9 @@ describe('NextChapterPrepPanel', () => {
     expect(document.body).not.toHaveTextContent('Next Chapter Prep');
     expect(screen.getByText('第 2 章建议目标')).toBeInTheDocument();
     expect(screen.getByText('林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
+    expect(screen.getByText('上一章摘要')).toBeInTheDocument();
+    expect(screen.getByText('林砚与沈微霜在雨巷交换湿信线索。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('previous_chapter_summary');
     expect(screen.getByText('候选素材参考')).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('import_material_reference');
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();

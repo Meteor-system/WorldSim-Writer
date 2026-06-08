@@ -122,6 +122,17 @@ def _select_progression_hint(chapter: Chapter | None) -> dict | None:
     return None
 
 
+def _previous_chapter_summary(db: Session, chapter: Chapter | None) -> str | None:
+    if chapter is None:
+        return None
+    draft = _latest_draft(db, chapter)
+    if draft is not None and draft.context_summary.strip():
+        return draft.context_summary.strip()
+    if chapter.approved_content:
+        return _approved_excerpt(chapter.approved_content)
+    return None
+
+
 def _next_story_arc_chapter(world: World, next_chapter_number: int) -> dict | None:
     for index, item in enumerate(world.story_arc or [], start=1):
         if not isinstance(item, dict):
@@ -1075,6 +1086,7 @@ def get_next_chapter_prep(db: Session, user: User, world_id: int) -> dict:
         'world_version': world.world_version,
         'next_chapter_number': next_chapter_number,
         'suggested_goal': suggested_goal,
+        'previous_chapter_summary': _previous_chapter_summary(db, latest_chapter),
         'recommended_pov_character_id': recommended_pov_character_id,
         'recommended_pov_character_name': recommended_pov_character_name,
         'source_signals': source_signals,

@@ -172,6 +172,7 @@ def test_create_chapter_rejects_stale_execution_context(client, db_session):
 def test_outline_and_writer_prompts_use_frozen_execution_context(client, db_session):
     token, world_id = register_and_create_world(client, 'prompt-context@example.com')
     context = sample_execution_context()
+    context['previous_chapter_summary'] = '上一章中，林砚与沈微霜在雨巷交换湿信线索。'
     chapter_response = client.post(
         f'/worlds/{world_id}/chapters',
         json={'chapter_goal': context['goal'], 'title': '第二章 城主府外墙', 'execution_context': context},
@@ -203,6 +204,7 @@ def test_outline_and_writer_prompts_use_frozen_execution_context(client, db_sess
     assert '推荐 POV：林砚' in outline_text
     assert '试探沈微霜是否可信' in outline_text
     assert '本章执行上下文' in writer_text
+    assert '上一章摘要：上一章中，林砚与沈微霜在雨巷交换湿信线索。' in writer_text
     assert '优先满足执行上下文' in writer_text
     assert '裂纹玉佩' in writer_text
 

@@ -11,6 +11,7 @@ import {
   getApprovalReadiness,
   getDraftDiff,
   getDraftVersion,
+  getNextChapterPrep,
   exportWorldArchiveMarkdown,
   reviseDraft,
   reviseParagraph,
@@ -19,7 +20,7 @@ import {
   writeChapter,
 } from '../api/client';
 import type { ApprovalPreviewResponse, ApprovalReadinessResponse, BeatCard, ChapterExecutionContext, ChapterPipelineResponse, CharacterArcReportResponse, ConsistencySummary, ConsistencyWarning, CriticReportResponse, DraftDiffResponse, DraftResponse, StudioLaunchContext, WorldOverview } from '../api/types';
-import { withEditedGoal } from '../world/chapterExecutionContext';
+import { buildExecutionContextFromPrep, withEditedGoal } from '../world/chapterExecutionContext';
 import { ApprovalReadinessPanel } from './ApprovalReadinessPanel';
 import { CharacterArcPanel } from './CharacterArcPanel';
 import { CriticReportPanel } from './CriticReportPanel';
@@ -116,6 +117,7 @@ function ExecutionContextSummary({ context, frozen }: { context?: ChapterExecuti
       <p className="mt-3 ink-muted">来源：{sourceLabel(context.source)}</p>
       <p className="mt-2 ink-muted">源世界版本：v{context.source_world_version}</p>
       <p className="mt-2 ink-muted">建议章节：第 {context.next_chapter_number ?? '?'} 章</p>
+      {context.previous_chapter_summary && <p className="mt-2 ink-muted">上一章摘要：{context.previous_chapter_summary}</p>}
       <p className="mt-2 ink-muted">推荐 POV：{context.recommended_pov.name ?? '暂无'}</p>
       <p className="mt-2 ink-muted">优先角色：{names(context.priority_characters)}</p>
       <p className="mt-2 ink-muted">优先伏笔：{names(context.priority_foreshadows)}</p>
@@ -133,6 +135,7 @@ function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionConte
       <h3 className="font-black text-[#3b2511]">执行上下文快照</h3>
       <p className="manuscript text-sm">来源：{sourceLabel(context.source)} · v{context.source_world_version}</p>
       <p className="manuscript text-sm">目标：{context.goal}</p>
+      {context.previous_chapter_summary && <p className="manuscript text-sm">上一章摘要：{context.previous_chapter_summary}</p>}
       <p className="manuscript text-sm">推荐 POV：{context.recommended_pov.name ?? '暂无'}</p>
       <p className="manuscript text-sm">优先角色：{names(context.priority_characters)}</p>
       <p className="manuscript text-sm">优先伏笔：{names(context.priority_foreshadows)}</p>
@@ -604,29 +607,42 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     onApproved(settlement.overview);
   }
 
-  function continueNextChapter() {
+  async function continueNextChapter() {
     if (!settlement) return;
-    setLocalWorld(settlement.overview);
-    setGoal('');
-    setChapter(null);
-    setOutlineBeats([]);
-    setOutlineContext({});
-    setDraft(null);
-    setDraftVersions([]);
-    setDraftDiff(null);
-    setApprovalPreview(null);
-    clearApprovalSelection();
-    clearApprovalConsistency();
-    setApprovalReadiness(null);
-    setCritique(null);
-    setCharacterArcReport(null);
-    setLatestDraftVersion(null);
-    setRevisionInstruction('');
-    setAutoStartRetryCreatedChapter(false);
-    setEditMode(false);
-    setEditContent('');
-    setExecutionContext(undefined);
-    setSettlement(null);
+    const nextWorld = settlement.overview;
+    setWorking(true);
+    setError('');
+    try {
+      const prep = await getNextChapterPrep(nextWorld.id);
+      const context = buildExecutionContextFromPrep(prep);
+      setGoal(context.goal);
+      setExecutionContext(context);
+    } catch {
+      setGoal('');
+      setExecutionContext(undefined);
+      setError('下一章准备台暂不可用；可手动填写章节目标，或返回世界页刷新后再试。');
+    } finally {
+      setLocalWorld(nextWorld);
+      setChapter(null);
+      setOutlineBeats([]);
+      setOutlineContext({});
+      setDraft(null);
+      setDraftVersions([]);
+      setDraftDiff(null);
+      setApprovalPreview(null);
+      clearApprovalSelection();
+      clearApprovalConsistency();
+      setApprovalReadiness(null);
+      setCritique(null);
+      setCharacterArcReport(null);
+      setLatestDraftVersion(null);
+      setRevisionInstruction('');
+      setAutoStartRetryCreatedChapter(false);
+      setEditMode(false);
+      setEditContent('');
+      setSettlement(null);
+      setWorking(false);
+    }
   }
 
   async function rejectDraft() {
@@ -776,6 +792,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const totalPreviewChanges = approvalPreview ? approvalPreview.character_changes.length + approvalPreview.foreshadow_changes.length : 0;
   const selectedPreviewChanges = selectedCharacterChangeIndexes.length + selectedForeshadowChangeIndexes.length;
   const approvalBlockedByConsistency = consistencySummary?.status === 'blocked';
+  const approvalBlockedByWorldVersion = approvalPreview?.version_conflict === true || approvalReadiness?.world_version.matches === false;
   const reviewMaterialReferenceTitles = materialReferenceTitles(draft?.execution_context ?? chapter?.execution_context ?? executionContext);
   const autoStartFailedWithoutDraft = Boolean(launchContext?.autoStartFirstDraft && error && !draft);
   const autoStartNoticeTitle = error && !draft
@@ -887,7 +904,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
               {settlement.exportMessage && <p className="paper-success px-4 py-2 text-sm">{settlement.exportMessage}</p>}
               {settlement.exportError && <p className="paper-error">{settlement.exportError}</p>}
               <div className="flex flex-wrap gap-3">
-                <button className="primary-button" disabled={working} onClick={continueNextChapter}>继续下一章</button>
+                <button className="primary-button" disabled={working} onClick={() => void continueNextChapter()}>继续下一章</button>
                 <button className="secondary-button" disabled={working} onClick={viewSettlementOverview}>查看世界概览</button>
                 <button className="secondary-button" disabled={working} onClick={() => void exportSettlementArchive()}>导出世界档案</button>
               </div>
@@ -1058,7 +1075,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                     </div>
                   )}
                   {approvalBlockedByConsistency && <p className="paper-error">存在阻塞项，请取消相关变化或重新修订草稿。</p>}
-                  {approvalPreview.version_conflict && <p className="paper-error">世界版本已变化，请重新生成草稿。</p>}
+                  {approvalBlockedByWorldVersion && <p className="paper-error">世界版本已变化，请重新生成草稿。</p>}
                   {approvalPreview.character_changes.map((change, index) => {
                     const changeIndex = previewIndex(change, index);
                     return (
@@ -1141,7 +1158,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
 
           {draft && (
             <div className="flex flex-wrap gap-3">
-              <button className="primary-button" disabled={working || !isViewingLatestDraft() || approvalBlockedByConsistency} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '写入正史并更新世界'}</button>
+              <button className="primary-button" disabled={working || !isViewingLatestDraft() || approvalBlockedByConsistency || approvalBlockedByWorldVersion} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '写入正史并更新世界'}</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={rejectDraft}>驳回</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={startEdit}>编辑正文</button>
             </div>

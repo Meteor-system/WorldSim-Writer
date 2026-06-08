@@ -71,6 +71,7 @@ class ChapterExecutionContext(BaseModel):
     source_world_version: int
     next_chapter_number: int | None = None
     goal: str = Field(min_length=3)
+    previous_chapter_summary: str | None = None
     recommended_pov: ExecutionContextPov = Field(default_factory=ExecutionContextPov)
     source_signals: list[str] = Field(default_factory=list)
     priority_characters: list[ExecutionContextPriorityCharacter] = Field(default_factory=list)

@@ -6,6 +6,7 @@ export function buildExecutionContextFromPrep(prep: NextChapterPrepResponse): Ch
     source_world_version: prep.world_version,
     next_chapter_number: prep.next_chapter_number,
     goal: prep.suggested_goal,
+    previous_chapter_summary: prep.previous_chapter_summary,
     recommended_pov: {
       character_id: prep.recommended_pov_character_id,
       name: prep.recommended_pov_character_name,

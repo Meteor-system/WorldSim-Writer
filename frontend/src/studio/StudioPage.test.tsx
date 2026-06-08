@@ -3,8 +3,8 @@ import { StrictMode } from 'react';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
-import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
+import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalReadiness, getDraftVersion, getNextChapterPrep, reviseDraft, writeChapter } from '../api/client';
+import type { ChapterExecutionContext, DraftResponse, NextChapterPrepResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
 const executionContext: ChapterExecutionContext = {
@@ -12,6 +12,7 @@ const executionContext: ChapterExecutionContext = {
   source_world_version: 2,
   next_chapter_number: 2,
   goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
+  previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',
   recommended_pov: { character_id: 1, name: '林砚' },
   source_signals: ['character_arc_progression_hint'],
   priority_characters: [{ character_id: 1, name: '林砚', role_type: 'protagonist', status: '开始调查密信', reason: '上一章提示。' }],
@@ -201,6 +202,7 @@ vi.mock('../api/client', () => ({
     change_summary: '补足林砚试探沈微霜的过程',
     parent_draft_version: 1,
   })),
+  getNextChapterPrep: vi.fn(async () => nextPrepForSecondChapter),
   getDraftVersion: vi.fn(async (_chapterId: number, draftVersion: number) => (
     draftVersion === 1
       ? draftResponse
@@ -301,6 +303,23 @@ const approvedWorld: WorldOverview = {
   ],
 };
 
+const nextPrepForSecondChapter: NextChapterPrepResponse = {
+  world_id: 7,
+  world_version: 2,
+  next_chapter_number: 2,
+  suggested_goal: '第二章建议：林砚沿湿信追到城主府外墙。',
+  previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',
+  recommended_pov_character_id: 1,
+  recommended_pov_character_name: '林砚',
+  source_signals: ['character_arc_progression_hint'],
+  priority_characters: [{ character_id: 1, name: '林砚', role_type: 'protagonist', status: '开始调查密信', reason: '上一章提示。' }],
+  priority_foreshadows: [{ foreshadow_id: 1, title: '裂纹玉佩', status: 'advanced', urgency_level: 4, reason: '该伏笔需要推进。' }],
+  progression_hints: [{ hint_type: 'character', priority: 'high', title: '试探沈微霜是否可信', rationale: '上一章建立湿信线索。', suggested_next_beat: '第二章建议：林砚沿湿信追到城主府外墙。', related_character_ids: [1], related_foreshadow_ids: [1], can_seed_next_chapter_goal: true }],
+  continuity_warnings: [],
+  recent_events: [{ id: 88, event_type: 'chapter_approved', world_version_before: 1, world_version_after: 2, payload: {}, created_at: '2026-06-02T00:00:00Z' }],
+  material_references: [],
+};
+
 afterEach(() => {
   vi.useRealTimers();
   cleanup();
@@ -345,6 +364,8 @@ afterEach(() => {
   vi.mocked(generateCriticReport).mockClear();
   vi.mocked(getApprovalReadiness).mockClear();
   vi.mocked(reviseDraft).mockClear();
+  vi.mocked(getNextChapterPrep).mockReset();
+  vi.mocked(getNextChapterPrep).mockResolvedValue(nextPrepForSecondChapter);
   vi.mocked(getDraftVersion).mockClear();
 });
 
@@ -786,7 +807,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(document.body).not.toHaveTextContent('林砚 · protagonist');
   });
 
-  it('shows blocked approval readiness without changing approve controls', async () => {
+  it('disables approval when the draft world version is stale', async () => {
     const user = userEvent.setup();
     vi.mocked(getApprovalReadiness).mockResolvedValueOnce({
       chapter_id: 11,
@@ -809,7 +830,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByText('暂不可批准')).toBeInTheDocument();
     expect(screen.getByText('世界版本：v1 → v2')).toBeInTheDocument();
     expect(screen.getByText('世界版本已变化，请重新生成草稿后再批准。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeDisabled();
   });
 
   it('generates a full-draft revision from review context and shows parent diff', async () => {
@@ -994,7 +1015,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByText('已导出世界档案：qinglan-v2.zip')).toBeInTheDocument();
   });
 
-  it('continues with a fresh chapter session from the settlement panel', async () => {
+  it('continues with fresh next-prep context and keeps the next goal editable', async () => {
     const user = userEvent.setup();
     vi.mocked(apiRequest).mockResolvedValueOnce(approvedWorld);
     render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
@@ -1006,12 +1027,31 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
     await user.click(await screen.findByRole('button', { name: '继续下一章' }));
 
+    expect(getNextChapterPrep).toHaveBeenCalledWith(7);
     expect(screen.queryByText('世界推进结算')).not.toBeInTheDocument();
     expect(screen.queryByText('第一章 雨巷密谈')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('章节目标')).toHaveValue('');
+    const goal = screen.getByLabelText('章节目标');
+    expect(goal).toHaveValue('第二章建议：林砚沿湿信追到城主府外墙。');
+    expect(goal).toBeEnabled();
     expect(screen.getByRole('button', { name: '创建章节' })).toBeEnabled();
     expect(screen.getByText('当前上下文')).toBeInTheDocument();
     expect(screen.getByText('世界进度：2')).toBeInTheDocument();
+    expect(screen.getByText('上一章摘要：林砚与沈微霜在雨巷交换湿信线索。')).toBeInTheDocument();
+
+    await user.clear(goal);
+    await user.type(goal, '用户编辑后的第二章目标');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+
+    expect(createChapter).toHaveBeenLastCalledWith(7, expect.objectContaining({
+      chapter_goal: '用户编辑后的第二章目标',
+      execution_context: expect.objectContaining({
+        source: 'next_chapter_prep',
+        source_world_version: 2,
+        next_chapter_number: 2,
+        goal: '用户编辑后的第二章目标',
+        previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',
+      }),
+    }));
   });
 
   it('clears stale candidate references when continuing to a fresh next chapter', async () => {
@@ -1030,16 +1070,19 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.queryByRole('button', { name: '用候选素材参考创建章节' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '创建章节' })).toBeEnabled();
 
-    await user.type(screen.getByLabelText('章节目标'), '下一章调查城主府密道');
+    const goal = screen.getByLabelText('章节目标');
+    await user.clear(goal);
+    await user.type(goal, '下一章调查城主府密道');
     await user.click(screen.getByRole('button', { name: '创建章节' }));
 
     expect(createChapter).toHaveBeenLastCalledWith(7, expect.objectContaining({
       chapter_goal: '下一章调查城主府密道',
       execution_context: expect.objectContaining({
-        source: 'manual',
+        source: 'next_chapter_prep',
         source_world_version: 2,
         next_chapter_number: 2,
         goal: '下一章调查城主府密道',
+        previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',
         material_references: [],
       }),
     }));

@@ -494,6 +494,7 @@ export type ChapterExecutionContext = {
   source_world_version: number;
   next_chapter_number: number | null;
   goal: string;
+  previous_chapter_summary?: string | null;
   recommended_pov: { character_id: number | null; name: string | null };
   source_signals: string[];
   priority_characters: NextChapterPrepCharacter[];
@@ -730,6 +731,7 @@ export type NextChapterPrepResponse = {
   world_version: number;
   next_chapter_number: number;
   suggested_goal: string;
+  previous_chapter_summary: string | null;
   recommended_pov_character_id: number | null;
   recommended_pov_character_name: string | null;
   source_signals: string[];

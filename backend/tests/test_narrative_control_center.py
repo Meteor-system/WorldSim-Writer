@@ -186,6 +186,7 @@ def test_next_chapter_prep_uses_high_priority_character_arc_progression_hint(cli
     assert payload['world_version'] == 2
     assert payload['next_chapter_number'] == 2
     assert payload['suggested_goal'] == '林砚带着湿信赴城主府外墙，并设置一次试探。'
+    assert payload['previous_chapter_summary'] == '林砚与沈微霜在雨巷交换湿信线索。'
     assert payload['recommended_pov_character_id'] == 1
     assert payload['recommended_pov_character_name'] == '林砚'
     assert 'character_arc_progression_hint' in payload['source_signals']
