@@ -2,7 +2,9 @@ import json
 
 from sqlalchemy import select
 
+from app.character.models import Character, CharacterRelation
 from app.event.models import EventLog
+from app.foreshadow.models import Foreshadow
 from app.world.models import World
 from app.world.schemas import WorldCreateRequest
 from app.world import service as world_service
@@ -210,6 +212,61 @@ def test_expand_world_brief_normalizes_light_missing_fields_and_types(client, mo
     assert payload['starter_assets']['relations'][0]['intensity'] == 4
     assert payload['starter_assets']['foreshadows'][0]['urgency_level'] == 4
     assert payload['starter_assets']['foreshadows'][0]['related_character_indexes'] == [0, 1]
+
+
+def test_expand_world_brief_truncates_short_fields_before_world_creation(client, db_session, monkeypatch):
+    token = register(client, 'brief-long-short-fields@example.com')
+    long_payload = draft_payload()
+    character = long_payload['starter_assets']['characters'][0]
+    character['name'] = '莉塔' + '命簿抄录员' * 40
+    character['role_type'] = 'protagonist' + '_fate_registry_clerk' * 10
+    character['status'] = '命簿抄录员，被迫记录每个孩子未来死因，却发现自己的死因栏空白，并开始怀疑整个王国制度' * 4
+    character['destiny_flag'] = '空白死因持有者' * 30
+    long_payload['starter_assets']['relations'][0]['relation_type'] = 'rival' + '_political_fate_conflict' * 10
+    long_payload['starter_assets']['relations'][0]['visibility'] = 'public' + '_visible_to_registry_court' * 10
+    foreshadow = long_payload['starter_assets']['foreshadows'][0]
+    foreshadow['title'] = '空白命簿页' * 60
+    foreshadow['foreshadow_type'] = 'fate_clue' + '_registry_anomaly' * 10
+    foreshadow['expected_resolution_window'] = '第2-5章后持续影响女主对命簿制度的反抗' * 20
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: FakeBriefLLMClient({'payload': long_payload}))
+
+    expand_response = client.post(
+        '/worlds/brief/expand',
+        headers=auth_headers(token),
+        json={'brief': '一个所有人出生时都会被分配未来死因的王国'},
+    )
+
+    assert expand_response.status_code == 200
+    payload = expand_response.json()['payload']
+    WorldCreateRequest.model_validate(payload)
+    normalized_character = payload['starter_assets']['characters'][0]
+    assert len(normalized_character['name']) <= 120
+    assert len(normalized_character['role_type']) <= 60
+    assert len(normalized_character['status']) <= 60
+    assert normalized_character['status'].startswith('命簿抄录员，被迫记录每个孩子未来死因')
+    assert len(normalized_character['destiny_flag']) <= 120
+    normalized_relation = payload['starter_assets']['relations'][0]
+    assert len(normalized_relation['relation_type']) <= 80
+    assert len(normalized_relation['visibility']) <= 40
+    normalized_foreshadow = payload['starter_assets']['foreshadows'][0]
+    assert len(normalized_foreshadow['title']) <= 200
+    assert len(normalized_foreshadow['foreshadow_type']) <= 80
+    assert normalized_foreshadow['status'] == 'planted'
+    assert len(normalized_foreshadow['expected_resolution_window']) <= 120
+
+    create_response = client.post('/worlds', headers=auth_headers(token), json=payload)
+
+    assert create_response.status_code == 200
+    persisted_character = db_session.scalar(select(Character).where(Character.name == normalized_character['name']))
+    assert persisted_character is not None
+    assert len(persisted_character.status) <= 60
+    persisted_relation = db_session.scalar(select(CharacterRelation))
+    assert persisted_relation is not None
+    assert len(persisted_relation.relation_type) <= 80
+    assert len(persisted_relation.visibility) <= 40
+    persisted_foreshadow = db_session.scalar(select(Foreshadow).where(Foreshadow.title == normalized_foreshadow['title']))
+    assert persisted_foreshadow is not None
+    assert len(persisted_foreshadow.expected_resolution_window or '') <= 120
 
 
 def test_expand_world_brief_filters_invalid_relation_indexes(client, monkeypatch):

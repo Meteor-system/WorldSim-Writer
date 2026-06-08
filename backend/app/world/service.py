@@ -106,6 +106,15 @@ def _normalize_int(value: object) -> object:
     return value
 
 
+def _truncate_short_text(value: object, max_length: int) -> object:
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    if len(stripped) <= max_length:
+        return stripped
+    return stripped[:max_length].rstrip()
+
+
 def _normalize_brief_expansion(raw: object) -> object:
     parsed = parse_model_json_object(raw) if isinstance(raw, str) else raw
     if not isinstance(parsed, dict):
@@ -122,6 +131,10 @@ def _normalize_brief_expansion(raw: object) -> object:
             if key not in normalized:
                 normalized[key] = value
 
+    for key, max_length in (('title', 200), ('genre_template', 80)):
+        if key in payload:
+            payload[key] = _truncate_short_text(payload[key], max_length)
+
     payload.setdefault('tone_profile', {})
     starter_assets = payload.get('starter_assets')
     if not isinstance(starter_assets, dict):
@@ -136,6 +149,9 @@ def _normalize_brief_expansion(raw: object) -> object:
         for character in characters:
             if not isinstance(character, dict):
                 continue
+            for key, max_length in (('name', 120), ('role_type', 60), ('status', 60), ('destiny_flag', 120)):
+                if key in character:
+                    character[key] = _truncate_short_text(character[key], max_length)
             goals = character.get('current_goals')
             if isinstance(goals, str):
                 stripped = goals.strip()
@@ -150,6 +166,9 @@ def _normalize_brief_expansion(raw: object) -> object:
             for key in ('source_index', 'target_index', 'intensity'):
                 if key in relation:
                     relation[key] = _normalize_int(relation[key])
+            for key, max_length in (('relation_type', 80), ('visibility', 40)):
+                if key in relation:
+                    relation[key] = _truncate_short_text(relation[key], max_length)
             source_index = relation.get('source_index')
             target_index = relation.get('target_index')
             if character_count is not None and (
@@ -170,6 +189,9 @@ def _normalize_brief_expansion(raw: object) -> object:
         for foreshadow in foreshadows:
             if not isinstance(foreshadow, dict):
                 continue
+            for key, max_length in (('title', 200), ('foreshadow_type', 80), ('expected_resolution_window', 120)):
+                if key in foreshadow:
+                    foreshadow[key] = _truncate_short_text(foreshadow[key], max_length)
             if 'urgency_level' in foreshadow:
                 foreshadow['urgency_level'] = _normalize_int(foreshadow['urgency_level'])
             indexes = foreshadow.get('related_character_indexes')
