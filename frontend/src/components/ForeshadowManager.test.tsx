@@ -198,7 +198,8 @@ describe('ForeshadowManager', () => {
     expect(screen.getByText((_, element) => element?.textContent === '收束窗口：第2-4章')).toBeInTheDocument();
     expect(screen.getByText((_, element) => element?.textContent === '关联角色：林砚')).toBeInTheDocument();
     expect(screen.getByText((_, element) => element?.textContent === '生命周期：活跃推进')).toBeInTheDocument();
-    expect(screen.getByText((_, element) => element?.textContent === '状态：advanced')).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.textContent === '状态：已推进')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('状态：advanced');
     expect(screen.getByText('压力：高紧迫度：4；预期收束窗口：第2-4章')).toBeInTheDocument();
     expect(screen.getByText((_, element) => element?.textContent === '最近轨迹：advanced · 第三章 · 玉佩裂纹扩大')).toBeInTheDocument();
   });

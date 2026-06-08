@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getCharacters, updateCharacter } from '../api/client';
-import type { Character, CharacterUpdate } from '../api/types';
+import { createCharacter, deleteCharacter, getCharacters, updateCharacter } from '../api/client';
+import type { Character, CharacterCreate, CharacterUpdate } from '../api/types';
 
 type Props = { worldId: number; onChanged?: () => Promise<void> | void; readOnly?: boolean };
 
@@ -23,6 +23,7 @@ type FormData = {
   name: string;
   role_type: string;
   status: string;
+  destiny_flag: string;
   current_goals: string;
   edit_reason: string;
 };
@@ -31,6 +32,7 @@ const EMPTY_FORM: FormData = {
   name: '',
   role_type: '',
   status: 'active',
+  destiny_flag: '',
   current_goals: '',
   edit_reason: '',
 };
@@ -40,18 +42,26 @@ function formFromCharacter(c: Character): FormData {
     name: c.name,
     role_type: c.role_type,
     status: c.status,
+    destiny_flag: c.destiny_flag ?? '',
     current_goals: c.current_goals.join('、'),
     edit_reason: '',
   };
 }
 
-function formToUpdatePayload(f: FormData): CharacterUpdate {
+function goalsFromForm(f: FormData): string[] {
+  return f.current_goals
+    .split(/[、,，]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function formToPayload(f: FormData): CharacterCreate {
   return {
+    name: f.name.trim(),
+    role_type: f.role_type.trim(),
     status: f.status,
-    current_goals: f.current_goals
-      .split(/[、,，]/)
-      .map((s) => s.trim())
-      .filter(Boolean),
+    destiny_flag: f.destiny_flag.trim() || undefined,
+    current_goals: goalsFromForm(f),
     edit_reason: f.edit_reason.trim() || undefined,
   };
 }
@@ -60,9 +70,12 @@ export function CharacterManager({ worldId, onChanged, readOnly = false }: Props
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [deleteReason, setDeleteReason] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,22 +93,34 @@ export function CharacterManager({ worldId, onChanged, readOnly = false }: Props
     void load();
   }, [load]);
 
+  function openCreate() {
+    setForm(EMPTY_FORM);
+    setEditingId(null);
+    setShowForm(true);
+  }
+
   function openEdit(c: Character) {
     setForm(formFromCharacter(c));
     setEditingId(c.id);
+    setShowForm(true);
   }
 
   function closeForm() {
+    setShowForm(false);
     setEditingId(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!editingId) return;
+    if (!form.name.trim() || !form.role_type.trim()) return;
     setSubmitting(true);
     setError('');
     try {
-      await updateCharacter(editingId, formToUpdatePayload(form));
+      if (editingId) {
+        await updateCharacter(editingId, formToPayload(form) as CharacterUpdate);
+      } else {
+        await createCharacter(worldId, formToPayload(form));
+      }
       closeForm();
       await load();
       await onChanged?.();
@@ -106,12 +131,26 @@ export function CharacterManager({ worldId, onChanged, readOnly = false }: Props
     }
   }
 
+  async function handleDelete(id: number) {
+    setError('');
+    try {
+      await deleteCharacter(id, deleteReason.trim() || undefined);
+      setConfirmDelete(null);
+      setDeleteReason('');
+      await load();
+      await onChanged?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除角色失败');
+    }
+  }
+
   if (loading) return <p className="ink-muted py-4">正在加载角色列表…</p>;
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="chapter-kicker">角色管理</p>
+        <p className="chapter-kicker">角色</p>
+        {!readOnly && <button className="primary-button" type="button" onClick={openCreate}>+ 新增角色</button>}
       </div>
       <p className="mt-3 rounded-2xl border border-amber-700/25 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
         {readOnly ? '已归档小说为只读模式；恢复写作后才能编辑世界资料。' : '这些编辑会正式写入世界状态，并使 world_version 增长。'}
@@ -124,7 +163,7 @@ export function CharacterManager({ worldId, onChanged, readOnly = false }: Props
       )}
 
       {characters.length === 0 ? (
-        <p className="manuscript mt-6 ink-muted">还没有角色。MVP9 仅支持编辑已有角色。</p>
+        <p className="manuscript mt-6 ink-muted">还没有角色，点击上方按钮创建第一位角色。</p>
       ) : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {characters.map((c) => (
@@ -155,10 +194,32 @@ export function CharacterManager({ worldId, onChanged, readOnly = false }: Props
               )}
 
               {!readOnly && (
-                <div className="mt-auto flex gap-2 pt-2">
+                <div className="mt-auto flex flex-wrap gap-2 pt-2">
                   <button className="secondary-button text-sm" onClick={() => openEdit(c)}>
                     编辑
                   </button>
+                  {confirmDelete === c.id ? (
+                    <div className="w-full space-y-2">
+                      <input
+                        className="paper-input text-sm"
+                        value={deleteReason}
+                        placeholder="删除原因（可选）"
+                        onChange={(event) => setDeleteReason(event.target.value)}
+                      />
+                      <div className="flex gap-2">
+                        <button className="rounded-full border border-red-800/40 bg-red-100 px-3 py-1.5 text-sm font-bold text-red-800" onClick={() => void handleDelete(c.id)}>
+                          确认删除
+                        </button>
+                        <button className="ghost-button text-sm" onClick={() => { setConfirmDelete(null); setDeleteReason(''); }}>
+                          取消
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button className="ghost-button text-sm text-red-700/80" onClick={() => { setConfirmDelete(c.id); setDeleteReason(''); }}>
+                      删除
+                    </button>
+                  )}
                 </div>
               )}
             </article>
@@ -166,7 +227,7 @@ export function CharacterManager({ worldId, onChanged, readOnly = false }: Props
         </div>
       )}
 
-      {editingId && (
+      {showForm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           onClick={closeForm}
@@ -177,9 +238,30 @@ export function CharacterManager({ worldId, onChanged, readOnly = false }: Props
             onSubmit={handleSubmit}
           >
             <div>
-              <h2 className="text-xl font-black text-[#3b2511]">编辑角色</h2>
-              <p className="manuscript mt-1 text-sm">{form.name} · {form.role_type}</p>
+              <h2 className="text-xl font-black text-[#3b2511]">{editingId ? '编辑角色' : '新增角色'}</h2>
+              <p className="manuscript mt-1 text-sm">{form.name || '新角色'} · {(ROLE_LABELS[form.role_type] ?? form.role_type) || '未设定定位'}</p>
             </div>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-[#4a321e]">角色姓名 *</span>
+              <input
+                className="paper-input mt-1"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                required
+              />
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-[#4a321e]">角色定位 *</span>
+              <input
+                className="paper-input mt-1"
+                value={form.role_type}
+                placeholder="如：protagonist、ally、rival"
+                onChange={(e) => setForm({ ...form, role_type: e.target.value })}
+                required
+              />
+            </label>
 
             <label className="block">
               <span className="text-sm font-semibold text-[#4a321e]">状态</span>
@@ -194,6 +276,16 @@ export function CharacterManager({ worldId, onChanged, readOnly = false }: Props
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-[#4a321e]">命运标记（可选）</span>
+              <input
+                className="paper-input mt-1"
+                value={form.destiny_flag}
+                placeholder="例如：灵脉异动见证者"
+                onChange={(e) => setForm({ ...form, destiny_flag: e.target.value })}
+              />
             </label>
 
             <label className="block">
@@ -220,7 +312,7 @@ export function CharacterManager({ worldId, onChanged, readOnly = false }: Props
               <button type="button" className="secondary-button" onClick={closeForm}>
                 取消
               </button>
-              <button type="submit" className="primary-button" disabled={submitting}>
+              <button type="submit" className="primary-button" disabled={submitting || !form.name.trim() || !form.role_type.trim()}>
                 {submitting ? '保存中…' : '保存'}
               </button>
             </div>

@@ -466,6 +466,11 @@ export type WorldStatusUpdateRequest = {
   status: 'active' | 'archived';
 };
 
+export type WorldCanonUpdateRequest = {
+  truth_canon: string;
+  edit_reason?: string;
+};
+
 export type WorldOverview = WorldSummary & {
   characters: Character[];
   relations: CharacterRelation[];

@@ -51,6 +51,7 @@ import type {
   TagUpdateRequest,
   WorldBriefExpandRequest,
   WorldBriefExpandResponse,
+  WorldCanonUpdateRequest,
   WorldCreateRequest,
   WorldMarkdownExportResponse,
   WorldPulseResponse,
@@ -146,6 +147,13 @@ export function createWorldFromSeed(seedKey: string) {
 export function updateWorldStatus(worldId: number, data: WorldStatusUpdateRequest) {
   return apiRequest<WorldSummary>(`/worlds/${worldId}/status`, {
     method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export function updateWorldCanon(worldId: number, data: WorldCanonUpdateRequest) {
+  return apiRequest<WorldSummary>(`/worlds/${worldId}/canon`, {
+    method: 'PUT',
     body: JSON.stringify(data),
   });
 }

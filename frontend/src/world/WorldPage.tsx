@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import {
   apiRequest,
   assignWorldTag,
@@ -32,6 +32,7 @@ import {
   previewWorldImport,
   searchWorld,
   unassignWorldTag,
+  updateWorldCanon,
   updateWorldStatus,
   updateWorldTag,
 } from '../api/client';
@@ -56,13 +57,14 @@ import { labelGenre, labelStatus, labelWorldVersion } from './displayLabels';
 
 type Props = { onEnterStudio: (world: WorldOverview, context?: StudioLaunchContext) => void; autoFocusTitle?: boolean };
 
-type Tab = 'overview' | 'characters' | 'relations' | 'foreshadows';
+type Tab = 'overview' | 'storyBible' | 'characters' | 'relations' | 'foreshadows';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'overview', label: '世界概览' },
-  { key: 'characters', label: '角色管理' },
-  { key: 'relations', label: '关系管理' },
-  { key: 'foreshadows', label: '伏笔账本' },
+  { key: 'storyBible', label: '正史资料' },
+  { key: 'characters', label: '角色' },
+  { key: 'relations', label: '关系' },
+  { key: 'foreshadows', label: '伏笔' },
 ];
 
 function describeEvent(event: { event_type: string; payload: Record<string, unknown> }, world: WorldOverview): string {
@@ -411,6 +413,10 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [selectedExecutionContext, setSelectedExecutionContext] = useState<ChapterExecutionContext | null>(null);
   const [expandedStoryArcChapters, setExpandedStoryArcChapters] = useState<number[]>([]);
   const [tab, setTab] = useState<Tab>('overview');
+  const [canonEditing, setCanonEditing] = useState(false);
+  const [canonText, setCanonText] = useState('');
+  const [canonReason, setCanonReason] = useState('');
+  const [canonSaving, setCanonSaving] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
 
   async function loadNarrativeControlCenter(worldId: number) {
@@ -644,6 +650,34 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setArchiveError('更新归档状态失败');
     } finally {
       setArchiveLoading(false);
+    }
+  }
+
+  function openCanonEditor() {
+    if (!world) return;
+    setCanonText(world.truth_canon);
+    setCanonReason('');
+    setCanonEditing(true);
+  }
+
+  async function saveCanonEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!world || !canonText.trim()) return;
+    setCanonSaving(true);
+    setError('');
+    try {
+      await updateWorldCanon(world.id, {
+        truth_canon: canonText.trim(),
+        edit_reason: canonReason.trim() || undefined,
+      });
+      const overview = await apiRequest<WorldOverview>(`/worlds/${world.id}/overview`);
+      setWorld(overview);
+      setWorlds((current) => current.map((item) => (item.id === overview.id ? overview : item)));
+      setCanonEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '保存正史文本失败');
+    } finally {
+      setCanonSaving(false);
     }
   }
 
@@ -987,6 +1021,58 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               </div>
             </section>
           </div>
+        )}
+
+        {tab === 'storyBible' && (
+          <section className="space-y-5">
+            <div>
+              <p className="chapter-kicker">Story Bible</p>
+              <h2 className="mt-2 text-3xl font-black text-[#34210f]">正史资料</h2>
+              <p className="manuscript mt-2 text-sm text-[#5e3b1c]">这里维护后续章节会读取的正式世界设定。人工修改会写入世界历史记录，并推进世界版本。</p>
+            </div>
+            <article className="book-card p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-black text-[#3b2511]">世界正史文本</h3>
+                  <p className="ink-muted mt-1 text-sm">{labelWorldVersion(world.world_version)} · 正史文本版本 {world.truth_canon_version}</p>
+                </div>
+                {!isArchivedWorld && !canonEditing && (
+                  <button className="primary-button" type="button" onClick={openCanonEditor}>编辑正史文本</button>
+                )}
+              </div>
+              {isArchivedWorld && <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已归档小说为只读模式；恢复写作后才能编辑正史资料。</p>}
+              {canonEditing ? (
+                <form className="mt-4 space-y-4" onSubmit={saveCanonEdit}>
+                  <label className="block">
+                    <span className="text-sm font-semibold text-[#4a321e]">正史文本</span>
+                    <textarea
+                      className="paper-input mt-1 min-h-40"
+                      value={canonText}
+                      onChange={(event) => setCanonText(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-sm font-semibold text-[#4a321e]">修改原因（可选）</span>
+                    <input
+                      className="paper-input mt-1"
+                      value={canonReason}
+                      placeholder="例如：修正世界底层设定"
+                      onChange={(event) => setCanonReason(event.target.value)}
+                    />
+                  </label>
+                  <div className="flex justify-end gap-3">
+                    <button type="button" className="secondary-button" onClick={() => setCanonEditing(false)}>取消</button>
+                    <button type="submit" className="primary-button" disabled={canonSaving || !canonText.trim()}>
+                      {canonSaving ? '保存中…' : '保存正史文本'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <p className="manuscript mt-4 text-lg">{world.truth_canon}</p>
+              )}
+            </article>
+          </section>
         )}
 
         {tab === 'characters' && <CharacterManager worldId={world.id} onChanged={loadWorld} readOnly={isArchivedWorld} />}

@@ -122,6 +122,24 @@ class WorldStatusUpdateRequest(BaseModel):
         return value
 
 
+class WorldCanonUpdateRequest(BaseModel):
+    truth_canon: str
+    edit_reason: str | None = None
+
+    @field_validator('truth_canon')
+    @classmethod
+    def validate_truth_canon(cls, value: str) -> str:
+        return _strip_required(value)
+
+    @field_validator('edit_reason')
+    @classmethod
+    def validate_edit_reason(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
 class WorldResponse(BaseModel):
     id: int
     title: str

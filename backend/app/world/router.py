@@ -9,6 +9,7 @@ from app.world.schemas import (
     StoryArcResponse,
     WorldBriefExpandRequest,
     WorldBriefExpandResponse,
+    WorldCanonUpdateRequest,
     WorldCreateRequest,
     WorldOverviewResponse,
     WorldResponse,
@@ -29,6 +30,7 @@ from app.world.service import (
     list_world_seeds,
     require_owned_world,
     search_world,
+    update_world_canon,
     update_world_status,
 )
 from app.world.story_arc import generate_story_arc, suggest_chapter_goal
@@ -92,6 +94,16 @@ def update_status(
     db: Session = Depends(get_db),
 ) -> WorldResponse:
     return WorldResponse.model_validate(update_world_status(db, current_user, world_id, data.status))
+
+
+@router.put('/{world_id}/canon', response_model=WorldResponse)
+def update_canon(
+    world_id: int,
+    data: WorldCanonUpdateRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> WorldResponse:
+    return WorldResponse.model_validate(update_world_canon(db, current_user, world_id, data))
 
 
 @router.get('/{world_id}/overview', response_model=WorldOverviewResponse)

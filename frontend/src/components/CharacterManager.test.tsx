@@ -2,11 +2,13 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getCharacters, updateCharacter } from '../api/client';
+import { createCharacter, deleteCharacter, getCharacters, updateCharacter } from '../api/client';
 import type { Character } from '../api/types';
 import { CharacterManager } from './CharacterManager';
 
 vi.mock('../api/client', () => ({
+  createCharacter: vi.fn(),
+  deleteCharacter: vi.fn(),
   getCharacters: vi.fn(),
   updateCharacter: vi.fn(),
 }));
@@ -25,6 +27,8 @@ const characters: Character[] = [
 ];
 
 beforeEach(() => {
+  vi.mocked(createCharacter).mockReset().mockResolvedValue({ ...characters[0], id: 2, name: '沈微霜', role_type: 'ally' });
+  vi.mocked(deleteCharacter).mockReset().mockResolvedValue(undefined);
   vi.mocked(updateCharacter).mockReset().mockResolvedValue({
     ...characters[0],
     status: 'inactive',
@@ -45,22 +49,54 @@ describe('CharacterManager', () => {
     expect(screen.getByText('调查灵脉衰退')).toBeInTheDocument();
   });
 
-  it('hides character create and delete controls for MVP9 scope', async () => {
-    render(<CharacterManager worldId={7} />);
+  it('creates a character and refreshes the world overview', async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn();
+    render(<CharacterManager worldId={7} onChanged={onChanged} />);
 
     expect(await screen.findByText('林砚')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '+ 新增角色' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '+ 新增角色' }));
+    await user.type(screen.getByLabelText('角色姓名 *'), '沈微霜');
+    await user.type(screen.getByLabelText('角色定位 *'), 'ally');
+    await user.selectOptions(screen.getByLabelText('状态'), 'active');
+    await user.type(screen.getByLabelText('命运标记（可选）'), '湿信守密者');
+    await user.type(screen.getByLabelText('当前目标'), '观察林砚反应、隐藏湿信来源');
+    await user.type(screen.getByLabelText('修改原因（可选）'), '补充关键盟友');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    await waitFor(() => expect(createCharacter).toHaveBeenCalledWith(7, {
+      name: '沈微霜',
+      role_type: 'ally',
+      status: 'active',
+      destiny_flag: '湿信守密者',
+      current_goals: ['观察林砚反应', '隐藏湿信来源'],
+      edit_reason: '补充关键盟友',
+    }));
+    expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
-  it('edits only character status and current goals then refreshes the world overview', async () => {
+  it('deletes a character and refreshes the world overview', async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn();
+    render(<CharacterManager worldId={7} onChanged={onChanged} />);
+
+    expect(await screen.findByText('林砚')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '删除' }));
+    await user.type(screen.getByPlaceholderText('删除原因（可选）'), '重复角色');
+    await user.click(screen.getByRole('button', { name: '确认删除' }));
+
+    await waitFor(() => expect(deleteCharacter).toHaveBeenCalledWith(1, '重复角色'));
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it('edits character core fields then refreshes the world overview', async () => {
     const user = userEvent.setup();
     const onChanged = vi.fn();
     render(<CharacterManager worldId={7} onChanged={onChanged} />);
 
     await screen.findByText('林砚');
     await user.click(screen.getByRole('button', { name: '编辑' }));
-    expect(screen.getByText('林砚 · protagonist')).toBeInTheDocument();
+    expect(screen.getByText('林砚 · 主角')).toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText('状态'), 'inactive');
     const goals = screen.getByLabelText('当前目标');
@@ -70,7 +106,10 @@ describe('CharacterManager', () => {
     await user.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => expect(updateCharacter).toHaveBeenCalledWith(1, {
+      name: '林砚',
+      role_type: 'protagonist',
       status: 'inactive',
+      destiny_flag: '灵脉异动见证者',
       current_goals: ['验证沈微霜是否可信', '追查湿信来源'],
       edit_reason: '同步章节结果',
     }));
@@ -101,6 +140,6 @@ describe('CharacterManager', () => {
     await user.click(screen.getByRole('button', { name: '保存' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('保存角色失败');
-    expect(screen.getByText('林砚 · protagonist')).toBeInTheDocument();
+    expect(screen.getByText('林砚 · 主角')).toBeInTheDocument();
   });
 });

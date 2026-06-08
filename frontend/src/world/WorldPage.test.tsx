@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, confirmWorldImport, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, expandWorldBrief, exportWorldArchiveMarkdown, generateStoryArc, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldImports, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, previewWorldImport, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
+import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, confirmWorldImport, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, expandWorldBrief, exportWorldArchiveMarkdown, generateStoryArc, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldImports, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, previewWorldImport, searchWorld, unassignWorldTag, updateWorldCanon, updateWorldStatus, updateWorldTag } from '../api/client';
 import type { WorldOverview, WorldSearchResponse } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -38,6 +38,7 @@ vi.mock('../api/client', () => ({
   previewWorldImport: vi.fn(),
   searchWorld: vi.fn(),
   unassignWorldTag: vi.fn(),
+  updateWorldCanon: vi.fn(),
   updateWorldStatus: vi.fn(),
   updateWorldTag: vi.fn(),
   getCharacters: vi.fn(),
@@ -154,6 +155,8 @@ beforeEach(() => {
   vi.mocked(searchWorld).mockReset();
   vi.mocked(searchWorld).mockResolvedValue(worldSearchResponse);
   vi.mocked(unassignWorldTag).mockReset();
+  vi.mocked(updateWorldCanon).mockReset();
+  vi.mocked(updateWorldCanon).mockResolvedValue({ ...world, truth_canon: '灵脉已经枯竭，青岚城只剩三口灵井。', truth_canon_version: 2, world_version: 3 });
   vi.mocked(updateWorldStatus).mockReset();
   vi.mocked(updateWorldTag).mockReset();
   vi.mocked(listWorldSnapshots).mockReset();
@@ -1248,21 +1251,45 @@ describe('WorldPage Narrative Control Center', () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
     await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
-    await user.click(screen.getByRole('button', { name: '角色管理' }));
+    await user.click(screen.getAllByRole('button', { name: '角色' })[0]);
 
     expect(await screen.findByText('已归档小说为只读模式；恢复写作后才能编辑世界资料。')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '编辑' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '关系管理' }));
+    await user.click(screen.getAllByRole('button', { name: '关系' })[0]);
     expect(await screen.findByText('已归档小说为只读模式；恢复写作后才能编辑世界资料。')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '+ 新增关系' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '伏笔账本' }));
+    await user.click(screen.getAllByRole('button', { name: '伏笔' })[0]);
     expect(await screen.findByText('已归档小说为只读模式；恢复写作后才能编辑世界资料。')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '+ 新增伏笔' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '放弃伏笔' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
     expect(await screen.findByRole('button', { name: '展开时间线' })).toBeInTheDocument();
+  });
+
+  it('edits world canon from the Story Bible tab', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(world)
+      .mockResolvedValueOnce({ ...world, truth_canon: '灵脉已经枯竭，青岚城只剩三口灵井。', truth_canon_version: 2, world_version: 3 });
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '正史资料' }));
+    await user.click(screen.getByRole('button', { name: '编辑正史文本' }));
+    const canon = screen.getByLabelText('正史文本');
+    await user.clear(canon);
+    await user.type(canon, '灵脉已经枯竭，青岚城只剩三口灵井。');
+    await user.type(screen.getByLabelText('修改原因（可选）'), '修正世界底层设定');
+    await user.click(screen.getByRole('button', { name: '保存正史文本' }));
+
+    await waitFor(() => expect(updateWorldCanon).toHaveBeenCalledWith(7, {
+      truth_canon: '灵脉已经枯竭，青岚城只剩三口灵井。',
+      edit_reason: '修正世界底层设定',
+    }));
+    expect(await screen.findByText('灵脉已经枯竭，青岚城只剩三口灵井。')).toBeInTheDocument();
   });
 
   it('renders World Bible Editor manager tabs with governance warning', async () => {
@@ -1271,19 +1298,19 @@ describe('WorldPage Narrative Control Center', () => {
 
     expect(await screen.findByText('青岚城')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '角色管理' }));
-    expect(screen.getAllByText('角色管理').length).toBeGreaterThanOrEqual(2);
+    await user.click(screen.getAllByRole('button', { name: '角色' })[0]);
+    expect(screen.getAllByText('角色').length).toBeGreaterThanOrEqual(1);
     expect(getCharacters).toHaveBeenCalledWith(7);
     expect(screen.getByText('这些编辑会正式写入世界状态，并使 world_version 增长。')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '+ 新增角色' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '+ 新增角色' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '关系管理' }));
-    expect(screen.getAllByText('关系管理').length).toBeGreaterThanOrEqual(2);
+    await user.click(screen.getAllByRole('button', { name: '关系' })[0]);
+    expect(screen.getAllByText('关系管理').length).toBeGreaterThanOrEqual(1);
     expect(getRelations).toHaveBeenCalledWith(7);
     expect(screen.getByRole('button', { name: '+ 新增关系' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '伏笔账本' }));
-    expect(screen.getAllByText('伏笔账本').length).toBeGreaterThanOrEqual(2);
+    await user.click(screen.getAllByRole('button', { name: '伏笔' })[0]);
+    expect(screen.getAllByText('伏笔账本').length).toBeGreaterThanOrEqual(1);
     expect(getForeshadowLedger).toHaveBeenCalledWith(7);
     expect(await screen.findByText('Foreshadow Ledger')).toBeInTheDocument();
     expect(screen.getByText('伏笔治理台')).toBeInTheDocument();

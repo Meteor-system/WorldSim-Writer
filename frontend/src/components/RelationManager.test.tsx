@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createRelation, getRelations, updateRelation } from '../api/client';
+import { createRelation, deleteRelation, getRelations, updateRelation } from '../api/client';
 import type { Character, CharacterRelation } from '../api/types';
 import { RelationManager } from './RelationManager';
 
@@ -10,6 +10,7 @@ vi.mock('../api/client', () => ({
   getRelations: vi.fn(),
   createRelation: vi.fn(),
   updateRelation: vi.fn(),
+  deleteRelation: vi.fn(),
 }));
 
 const characters: Character[] = [
@@ -25,6 +26,7 @@ beforeEach(() => {
   vi.mocked(getRelations).mockReset().mockResolvedValue(relations);
   vi.mocked(createRelation).mockReset().mockResolvedValue(relations[0]);
   vi.mocked(updateRelation).mockReset().mockResolvedValue(relations[0]);
+  vi.mocked(deleteRelation).mockReset().mockResolvedValue(undefined);
 });
 
 afterEach(() => cleanup());
@@ -37,14 +39,23 @@ describe('RelationManager', () => {
     expect(screen.getByText('这些编辑会正式写入世界状态，并使 world_version 增长。')).toBeInTheDocument();
     expect(screen.getByText('关系：uneasy_alliance')).toBeInTheDocument();
     expect(screen.getByText('强度：2')).toBeInTheDocument();
+    expect(screen.getByText('可见性：公开')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('可见性：public');
     expect(screen.getByRole('button', { name: '+ 新增关系' })).toBeInTheDocument();
   });
 
-  it('hides relation delete controls for MVP9 scope', async () => {
-    render(<RelationManager worldId={7} characters={characters} />);
+  it('deletes a relation and refreshes the world overview', async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn();
+    render(<RelationManager worldId={7} characters={characters} onChanged={onChanged} />);
 
     expect(await screen.findByText('林砚 → 沈微霜')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '删除' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '删除' }));
+    await user.type(screen.getByPlaceholderText('删除原因（可选）'), '关系线废弃');
+    await user.click(screen.getByRole('button', { name: '确认删除' }));
+
+    await waitFor(() => expect(deleteRelation).toHaveBeenCalledWith(1, '关系线废弃'));
+    expect(onChanged).toHaveBeenCalledTimes(1);
   });
 
   it('creates a relation and refreshes the world overview', async () => {

@@ -16,7 +16,7 @@ from app.llm.client import LLMClient, parse_model_json_object
 from app.narrative.models import Chapter
 from app.tags.models import ObjectTag, Tag
 from app.world.models import World
-from app.world.schemas import WorldBriefExpansion, WorldCreateRequest
+from app.world.schemas import WorldBriefExpansion, WorldCanonUpdateRequest, WorldCreateRequest
 from app.world.seed_library import WORLD_SEEDS, seed_detail, seed_summary
 from app.world.templates import SAMPLE_WORLD
 
@@ -457,6 +457,75 @@ def update_world_status(db: Session, user: User, world_id: int, next_status: str
                 world_version_after=world.world_version,
             )
         )
+    db.commit()
+    db.refresh(world)
+    return world
+
+
+def update_world_canon(db: Session, user: User, world_id: int, data: WorldCanonUpdateRequest) -> World:
+    world = db.scalar(select(World).where(World.id == world_id).with_for_update())
+    if world is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    if world.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='FORBIDDEN')
+    if world.status == 'archived':
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_ARCHIVED')
+
+    version_before = world.world_version
+    before = {
+        'truth_canon': world.truth_canon,
+        'truth_canon_version': world.truth_canon_version,
+    }
+    world.truth_canon = data.truth_canon
+    world.truth_canon_version += 1
+    world.world_version = version_before + 1
+    db.flush()
+    refresh_world_projection(db, world)
+    after = {
+        'truth_canon': world.truth_canon,
+        'truth_canon_version': world.truth_canon_version,
+    }
+    commit_group_id = f'manual-world-canon-{world.id}-{uuid4().hex}'
+    db.add(
+        EventLog(
+            world_id=world.id,
+            chapter_id=None,
+            event_type='world_canon_change',
+            source_type='manual_edit',
+            commit_id=f'{commit_group_id}-updated',
+            payload={
+                'commit_group_id': commit_group_id,
+                'object_type': 'world_canon',
+                'object_id': world.id,
+                'action': 'updated',
+                'before': before,
+                'after': after,
+                'edit_reason': data.edit_reason,
+            },
+            world_version_before=version_before,
+            world_version_after=world.world_version,
+        )
+    )
+    db.add(
+        EventLog(
+            world_id=world.id,
+            chapter_id=None,
+            event_type='world_version_increment',
+            source_type='manual_edit',
+            commit_id=f'{commit_group_id}-version',
+            payload={
+                'commit_group_id': commit_group_id,
+                'object_type': 'world_canon',
+                'object_id': world.id,
+                'action': 'updated',
+                'world_version_before': version_before,
+                'world_version_after': world.world_version,
+                'edit_reason': data.edit_reason,
+            },
+            world_version_before=version_before,
+            world_version_after=world.world_version,
+        )
+    )
     db.commit()
     db.refresh(world)
     return world

@@ -156,6 +156,41 @@ def test_outline_generates_and_persists_beat_cards(client, db_session, monkeypat
     assert chapter.outline_beats[1]['summary'] == '沈微霜出现并隐瞒她知道密道入口。'
 
 
+def test_manual_story_bible_edits_feed_latest_next_chapter_context(client, db_session):
+    token, world_id = register_and_create_world(client)
+    assert client.put(
+        f'/worlds/{world_id}/canon',
+        headers=auth(token),
+        json={'truth_canon': '青岚城灵脉已经枯竭，只剩三口灵井。'},
+    ).status_code == 200
+    character_id = client.get(f'/worlds/{world_id}/characters', headers=auth(token)).json()[0]['id']
+    assert client.put(
+        f'/characters/{character_id}',
+        headers=auth(token),
+        json={'status': '守井人', 'current_goals': ['封存最后一口灵井']},
+    ).status_code == 200
+    foreshadow_id = client.get(f'/worlds/{world_id}/foreshadows', headers=auth(token)).json()[0]['id']
+    assert client.put(
+        f'/foreshadows/{foreshadow_id}',
+        headers=auth(token),
+        json={'title': '三口灵井', 'status': 'advanced', 'urgency_level': 5},
+    ).status_code == 200
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    characters, foreshadows = narrative_service._load_world_context(db_session, world)
+
+    messages = narrative_service.build_generation_messages(world, characters, foreshadows, '继续下一章')
+    joined = '\n'.join(message['content'] for message in messages)
+
+    assert '青岚城灵脉已经枯竭，只剩三口灵井。' in joined
+    assert f'世界版本：{world.world_version}' in joined
+    assert '守井人' in joined
+    assert '封存最后一口灵井' in joined
+    assert '三口灵井' in joined
+    assert 'status=advanced' in joined
+    assert 'urgency=5' in joined
+
+
 def test_write_requires_outline_for_pipeline_endpoint(client):
     token, world_id = register_and_create_world(client)
     chapter_id = create_chapter(client, token, world_id).json()['id']

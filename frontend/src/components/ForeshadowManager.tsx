@@ -320,7 +320,7 @@ export function ForeshadowManager({ worldId, characters, onChanged, readOnly = f
           </p>
           <p>
             <span className="font-semibold text-[#4a321e]">状态：</span>
-            {f.status}
+            {STATUS_LABELS[f.status]}
           </p>
           <p>
             <span className="font-semibold text-[#4a321e]">来源章节：</span>
