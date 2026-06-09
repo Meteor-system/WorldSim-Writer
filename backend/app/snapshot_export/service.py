@@ -350,6 +350,7 @@ def _world_markdown(
         '## Vault Navigation',
         '',
         '- [[README]]',
+        '- [[Manifest]]',
         '- [[Story Bible]]',
         '- [[Relations]]',
         '- [[Timeline]]',
@@ -707,6 +708,7 @@ def _readme_markdown(payload: dict[str, Any]) -> str:
             '## Main files',
             '',
             '- [[World]] — canonical world overview and vault index.',
+            '- [[Manifest]] — vault file inventory and archive verification notes.',
             '- [[Story Bible]] — canon and story arc reference.',
             '- [[Relations]] — character relationship table.',
             '- [[Timeline]] — event history exported from WorldSim.',
@@ -720,6 +722,58 @@ def _readme_markdown(payload: dict[str, Any]) -> str:
             '',
         ]
     )
+
+
+def _manifest_markdown(payload: dict[str, Any], files: list[dict[str, str]]) -> str:
+    world = payload['world']
+    file_paths = [file['path'] for file in files]
+    archive_fallback = f"World-{world['id']}"
+    archive_filename = f"WorldSim-{_safe_segment(world['title'], archive_fallback)}-v{world['world_version']}-markdown.zip"
+    lines = [
+        _frontmatter(
+            {
+                'worldsim_type': 'vault_manifest',
+                'world_id': world['id'],
+                'world_version': world['world_version'],
+                'file_count': len(file_paths),
+                'tags': ['worldsim/manifest'],
+            }
+        ),
+        '# Vault Manifest',
+        '',
+        '- World: [[World]]',
+        '- README: [[README]]',
+        '',
+        '## Archive Metadata',
+        '',
+        f'- archive_filename: {archive_filename}',
+        '- archive_format: zip',
+        '- archive_encoding: base64',
+        '- files_are_inline: true',
+        '',
+        '## Content Counts',
+        '',
+        f"- Characters: {len(payload['characters'])}",
+        f"- Relations: {len(payload['relations'])}",
+        f"- Foreshadows: {len(payload['foreshadows'])}",
+        f"- Approved Chapters: {len(payload['approved_chapters'])}",
+        f"- Events: {len(payload['events'])}",
+        f'- Files: {len(file_paths)}',
+        '',
+        '## Preserved API Contract',
+        '',
+        '- archive_format: zip',
+        '- archive_encoding: base64',
+        '- archive_base64: present in API response',
+        '- files_are_inline: true',
+        '- files: inline preview entries match ZIP paths',
+        '',
+        '## File Inventory',
+        '',
+    ]
+    lines.extend(f"- [[{_wiki_path(path)}]] `{path}`" for path in file_paths if path.endswith('.md'))
+    lines.append('')
+    return '\n'.join(lines)
 
 
 def _characters_index_markdown(characters: list[dict[str, Any]], character_paths: dict[int, str]) -> str:
@@ -821,7 +875,7 @@ def _events_index_markdown(events: list[dict[str, Any]], event_paths: dict[int, 
 
 
 def render_markdown_bundle(payload: dict[str, Any]) -> list[dict[str, str]]:
-    used_paths = {'World.md', 'Story Bible.md', 'Relations.md', 'Timeline.md', 'README.md'}
+    used_paths = {'World.md', 'Manifest.md', 'Story Bible.md', 'Relations.md', 'Timeline.md', 'README.md'}
     character_paths = {
         character['id']: _unique_markdown_path('Characters', character.get('name'), f"Character-{character.get('id')}", used_paths)
         for character in payload['characters']
@@ -884,6 +938,9 @@ def render_markdown_bundle(payload: dict[str, Any]) -> list[dict[str, str]]:
             {'path': 'Indexes/Events.md', 'content': _events_index_markdown(payload['events'], event_paths)},
         ]
     )
+    manifest_file = {'path': 'Manifest.md', 'content': ''}
+    manifest_file['content'] = _manifest_markdown(payload, [*files, manifest_file])
+    files.append(manifest_file)
     return files
 
 

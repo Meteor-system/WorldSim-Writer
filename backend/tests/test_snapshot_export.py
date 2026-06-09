@@ -418,6 +418,36 @@ def test_export_markdown_adds_obsidian_readme_and_index_files(client, monkeypatc
     assert '[[Timeline]]' in timeline_index
 
 
+def test_export_markdown_adds_vault_manifest_for_archive_verification(client, monkeypatch):
+    token, world_id = register_and_create_world(client, 'markdown-manifest@example.com')
+    approve_chapter(client, token, world_id, monkeypatch)
+
+    response = client.post(f'/worlds/{world_id}/export/markdown', headers=auth_headers(token))
+
+    assert response.status_code == 200
+    files_by_path = {file['path']: file['content'] for file in response.json()['files']}
+    assert 'Manifest.md' in files_by_path
+    assert '[[Manifest]]' in files_by_path['README.md']
+    assert '[[Manifest]]' in files_by_path['World.md']
+
+    manifest = files_by_path['Manifest.md']
+    assert manifest.startswith('---\n')
+    assert 'worldsim_type: vault_manifest' in manifest
+    assert f'world_id: {world_id}' in manifest
+    assert f"file_count: {len(files_by_path)}" in manifest
+    assert '## Archive Metadata' in manifest
+    assert 'archive_format: zip' in manifest
+    assert 'archive_encoding: base64' in manifest
+    assert 'files_are_inline: true' in manifest
+    assert '## Content Counts' in manifest
+    assert '- Approved Chapters: 1' in manifest
+    assert '## File Inventory' in manifest
+    assert '- [[World]] `World.md`' in manifest
+    assert '- [[Story Bible]] `Story Bible.md`' in manifest
+    assert '- [[Chapters/Chapter-001]] `Chapters/Chapter-001.md`' in manifest
+    assert '- [[Events/Event-001]] `Events/Event-001.md`' in manifest
+
+
 def test_export_markdown_adds_story_bible_and_event_notes_with_wikilinks(client, monkeypatch):
     token, world_id = register_and_create_world(client, 'markdown-story-events@example.com')
     approved = approve_chapter(client, token, world_id, monkeypatch)
