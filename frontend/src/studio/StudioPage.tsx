@@ -1110,15 +1110,17 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
               {draft.proposed_changes && (Object.keys(draft.proposed_changes).length > 0) && (
                 <div className="space-y-3">
                   <h3 className="font-black text-[#3b2511]">📋 世界状态变化</h3>
+                  <p className="manuscript text-sm text-[#5e3b1c]">拟提交变化只是草稿建议；只有勾选并点击「写入正史并更新世界」后才会更新正式世界。</p>
                   {/* Character updates */}
                   {Array.isArray((draft.proposed_changes as any).characters) && (draft.proposed_changes as any).characters.length > 0 && (
                     <div className="space-y-2">
                       <h4 className="text-sm font-bold text-[#5e3b1c]">🎭 角色变化</h4>
                       {(draft.proposed_changes as any).characters.map((c: any, i: number) => {
-                        const charName = localWorld.characters?.find((ch: any) => ch.id === c.character_id)?.name ?? `角色#${c.character_id}`;
+                        const charName = localWorld.characters?.find((ch: any) => ch.id === c.character_id)?.name ?? '未命名角色';
+                        const statusText = c.status ? labelStatus(String(c.status)) : '未设置';
                         return (
                           <div key={i} className="rounded-xl bg-amber-50/60 p-3">
-                            <p className="font-bold text-[#3b2511]">{charName} <span className="text-xs font-normal text-amber-700">({c.status})</span></p>
+                            <p className="font-bold text-[#3b2511]">{charName} <span className="text-xs font-normal text-amber-700">状态：{statusText}</span></p>
                             {c.current_goals && c.current_goals.length > 0 && (
                               <ul className="mt-1 list-inside list-disc text-sm text-[#4a321e]">
                                 {c.current_goals.map((g: string, gi: number) => <li key={gi}>{g}</li>)}
@@ -1134,10 +1136,11 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                     <div className="space-y-2">
                       <h4 className="text-sm font-bold text-[#5e3b1c]">🔮 伏笔推进</h4>
                       {(draft.proposed_changes as any).foreshadows.map((f: any, i: number) => {
-                        const fsName = localWorld.foreshadows?.find((fs: any) => fs.id === f.foreshadow_id)?.title ?? `伏笔#${f.foreshadow_id}`;
+                        const fsName = localWorld.foreshadows?.find((fs: any) => fs.id === f.foreshadow_id)?.title ?? '未命名伏笔';
+                        const statusText = f.status ? labelStatus(String(f.status)) : '未设置';
                         return (
                           <div key={i} className="rounded-xl bg-purple-50/60 p-3">
-                            <p className="font-bold text-[#3b2511]">{fsName} <span className="text-xs font-normal text-purple-700">({f.status})</span></p>
+                            <p className="font-bold text-[#3b2511]">{fsName} <span className="text-xs font-normal text-purple-700">状态：{statusText}</span></p>
                             {f.description_note && <p className="manuscript mt-1 text-sm text-[#4a321e]">{f.description_note}</p>}
                           </div>
                         );

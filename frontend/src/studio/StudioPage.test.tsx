@@ -633,6 +633,12 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('Approval Readiness')).toBeInTheDocument();
     expect(screen.getByText('建议复核后批准')).toBeInTheDocument();
     expect(screen.getByText('Critic 高风险')).toBeInTheDocument();
+    expect(screen.getByText('拟提交变化只是草稿建议；只有勾选并点击「写入正史并更新世界」后才会更新正式世界。')).toBeInTheDocument();
+    expect(screen.getByText('状态：开始调查密信')).toBeInTheDocument();
+    expect(screen.getByText('状态：推进中')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('(advanced)');
+    expect(document.body).not.toHaveTextContent('角色#');
+    expect(document.body).not.toHaveTextContent('伏笔#');
     expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled();
 
     await user.click(screen.getByRole('button', { name: '生成 Critic 报告' }));
