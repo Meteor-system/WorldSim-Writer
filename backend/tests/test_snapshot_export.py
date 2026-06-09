@@ -353,6 +353,71 @@ def test_export_markdown_returns_downloadable_obsidian_zip_bundle(client, monkey
         assert archive.read('Chapters/Chapter-001.md').decode('utf-8') == files_by_path['Chapters/Chapter-001.md']
 
 
+def test_export_markdown_enriches_existing_files_with_obsidian_metadata(client, monkeypatch):
+    token, world_id = register_and_create_world(client, 'markdown-metadata@example.com')
+    approved = approve_chapter(client, token, world_id, monkeypatch)
+
+    response = client.post(f'/worlds/{world_id}/export/markdown', headers=auth_headers(token))
+
+    assert response.status_code == 200
+    files_by_path = {file['path']: file['content'] for file in response.json()['files']}
+
+    world_markdown = files_by_path['World.md']
+    assert world_markdown.startswith('---\n')
+    assert 'worldsim_type: world_index' in world_markdown
+    assert f'world_id: {world_id}' in world_markdown
+    assert 'tags:\n  - worldsim/world' in world_markdown
+    assert '## Vault Navigation' in world_markdown
+    assert '[[Indexes/Characters]]' in world_markdown
+    assert '[[Indexes/Foreshadows]]' in world_markdown
+    assert '[[Indexes/Chapters]]' in world_markdown
+
+    chapter_markdown = files_by_path['Chapters/Chapter-001.md']
+    assert chapter_markdown.startswith('---\n')
+    assert 'worldsim_type: chapter' in chapter_markdown
+    assert f"chapter_id: {approved['id']}" in chapter_markdown
+    assert 'chapter_number: 1' in chapter_markdown
+    assert 'tags:\n  - worldsim/chapter' in chapter_markdown
+    assert '[[World]]' in chapter_markdown
+    assert approved['approved_content'] in chapter_markdown
+
+
+def test_export_markdown_adds_obsidian_readme_and_index_files(client, monkeypatch):
+    token, world_id = register_and_create_world(client, 'markdown-indexes@example.com')
+    approve_chapter(client, token, world_id, monkeypatch)
+
+    response = client.post(f'/worlds/{world_id}/export/markdown', headers=auth_headers(token))
+
+    assert response.status_code == 200
+    files_by_path = {file['path']: file['content'] for file in response.json()['files']}
+    assert 'World.md' in files_by_path
+    assert 'Relations.md' in files_by_path
+    assert 'Timeline.md' in files_by_path
+    assert 'Chapters/Chapter-001.md' in files_by_path
+    assert 'README.md' in files_by_path
+    assert 'Indexes/Characters.md' in files_by_path
+    assert 'Indexes/Foreshadows.md' in files_by_path
+    assert 'Indexes/Chapters.md' in files_by_path
+    assert 'Indexes/Timeline.md' in files_by_path
+
+    readme = files_by_path['README.md']
+    assert readme.startswith('---\n')
+    assert 'worldsim_type: vault_readme' in readme
+    assert 'Open [[World]] first.' in readme
+    assert 'The original API contract is preserved' in readme
+
+    character_index = files_by_path['Indexes/Characters.md']
+    assert character_index.startswith('---\n')
+    assert 'worldsim_type: character_index' in character_index
+    assert '| Character | Role | Status | Goals |' in character_index
+    assert '[[Characters/' in character_index
+
+    timeline_index = files_by_path['Indexes/Timeline.md']
+    assert timeline_index.startswith('---\n')
+    assert 'worldsim_type: timeline_index' in timeline_index
+    assert '[[Timeline]]' in timeline_index
+
+
 def test_export_markdown_sanitizes_and_deduplicates_markdown_paths(client, db_session):
     token, world_id = register_and_create_world(client, 'markdown-sanitize@example.com')
     world = db_session.get(World, world_id)
