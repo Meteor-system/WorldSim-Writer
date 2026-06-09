@@ -163,6 +163,37 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
     ]
 
 
+def test_e2e_smoke_script_includes_runbook_metadata_and_dynamic_cleanup_command(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test/')
+    monkeypatch.delenv('E2E_REAL_LLM', raising=False)
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
+            json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
+            json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
+            overview_response(),
+            json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 1}}}),
+            json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is True
+    assert summary['runbook']['required_backend_env'] == ['LLM_MOCK=true']
+    assert summary['runbook']['client_env'] == ['BASE_URL=https://worldsim.test', 'E2E_REAL_LLM unset or false']
+    assert 'E2E_TIMEOUT_SECONDS=<seconds> for slow backends' in summary['runbook']['optional_client_env']
+    assert summary['cleanup_command'] == f"cd {module.BACKEND_DIR} && PYTHONIOENCODING=utf-8 {module.sys.executable} scripts/cleanup_e2e_data.py --confirm"
+    assert 'next_action' not in summary
+
+
 def test_e2e_smoke_script_accepts_chapter_approved_version_that_differs_from_world_version(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()
@@ -1704,6 +1735,29 @@ def test_e2e_smoke_script_returns_step_context_for_http_failure(monkeypatch):
     assert summary['checks']['create_world']['world_version'] == 1
 
 
+def test_e2e_smoke_script_adds_next_action_for_real_llm_provider_auth_failure(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    monkeypatch.setenv('E2E_REAL_LLM', '1')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': False}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            httpx.Response(502, text='MODEL_AUTH_FAILED api_key=sk-secret LLM_BASE_URL=https://provider.example/v1'),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['mode'] == 'real-llm'
+    assert summary['failed_step'] == 'draft'
+    assert summary['response_body'] == 'MODEL_AUTH_FAILED api_key=[REDACTED_SECRET] LLM_BASE_URL=[REDACTED_URL]'
+    assert summary['next_action'] == 'Check LLM_API_KEY permissions and provider access, restart the backend, then rerun real-LLM smoke.'
+
+
 def test_e2e_smoke_script_reports_request_timeout_for_draft_timeout(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()
@@ -2197,6 +2251,7 @@ def test_e2e_smoke_script_stops_when_mock_smoke_targets_real_llm_backend(monkeyp
     assert summary['ok'] is False
     assert summary['failed_step'] == 'health'
     assert summary['error'] == 'BACKEND_LLM_MOCK_DISABLED'
+    assert summary['next_action'] == 'Restart the backend with LLM_MOCK=true, then rerun mock smoke.'
     assert summary['checks']['health'] == {
         'status': 'ok',
         'migration_up_to_date': True,
@@ -2222,6 +2277,8 @@ def test_e2e_smoke_script_stops_when_real_llm_smoke_targets_mock_backend(monkeyp
     assert summary['mode'] == 'real-llm'
     assert summary['failed_step'] == 'health'
     assert summary['error'] == 'BACKEND_LLM_MOCK_ENABLED'
+    assert summary['runbook']['required_backend_env'] == ['LLM_MOCK=false', 'LLM_BASE_URL=<provider-url>', 'LLM_API_KEY=<secret>', 'LLM_MODEL=<model>']
+    assert summary['next_action'] == 'Restart the backend with real LLM_* settings and LLM_MOCK=false, then rerun with E2E_REAL_LLM=1.'
     assert summary['checks']['health'] == {
         'status': 'ok',
         'migration_up_to_date': True,

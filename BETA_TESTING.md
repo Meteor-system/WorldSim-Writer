@@ -50,6 +50,8 @@ Pass criteria:
 
 - The script exits 0.
 - The printed JSON has `ok: true`.
+- The JSON includes `runbook` with mode-specific backend/client environment hints and a `cleanup_command` for removing generated `e2e-*` data.
+- On common failures, `next_action` gives the first safe triage step; follow it before rerunning smoke.
 - Checks include health, register/login, world creation, draft, approval preview/readiness/consistency, approve, events, and markdown export.
 - `checks.health.status` is `ok`; if the smoke JSON stops at `failed_step: "health"` with `error: "HEALTH_STATUS_NOT_OK"`, inspect `/health`, backend startup logs, and dependency configuration before rerunning smoke.
 - Auth evidence appears as either `checks.register.user_id` for a newly created smoke user or `checks.login.user_id` when `E2E_EMAIL` reuses an existing smoke account through the duplicate-email fallback; fallback only happens when `/auth/register` explicitly reports `EMAIL_ALREADY_REGISTERED` or an equivalent "already registered" detail. Auth `user` metadata is optional, but if present it must be an object so the smoke can safely record `user_id`.
@@ -116,7 +118,7 @@ cd /opt/WorldSim-Writer/backend
 PYTHONIOENCODING=utf-8 .venv/bin/python scripts/cleanup_e2e_data.py --confirm
 ```
 
-The cleanup script should only delete users whose emails start with `e2e-` and their associated data. Do not manually delete `backend/worldsim-dev.db` unless the test owner explicitly asks for a full local reset.
+Run without `--confirm` first for a dry-run summary; add `--confirm` only after the matched `e2e-*` accounts look correct. The cleanup script should only delete users whose emails start with `e2e-` and their associated data. Do not manually delete `backend/worldsim-dev.db` unless the test owner explicitly asks for a full local reset.
 
 ## 8. Bug report evidence
 

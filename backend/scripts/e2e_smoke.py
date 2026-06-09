@@ -2,7 +2,10 @@
 import json
 import os
 import re
+import shlex
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
@@ -11,6 +14,7 @@ DEFAULT_BASE_URL = 'http://localhost:8000'
 DEFAULT_PASSWORD = 'strongpass123'
 DEFAULT_TIMEOUT_SECONDS = 60.0
 MAX_RESPONSE_BODY_CHARS = 1000
+BACKEND_DIR = Path(__file__).resolve().parents[1]
 READINESS_STATUSES = {'ready', 'needs_review', 'blocked'}
 CONSISTENCY_STATUSES = {'clear', 'needs_review', 'blocked'}
 
@@ -50,6 +54,55 @@ def _timeout_seconds() -> float:
     if timeout <= 0:
         return DEFAULT_TIMEOUT_SECONDS
     return timeout
+
+
+def _cleanup_command() -> str:
+    return (
+        f'cd {shlex.quote(str(BACKEND_DIR))} && '
+        f'PYTHONIOENCODING=utf-8 {shlex.quote(sys.executable)} scripts/cleanup_e2e_data.py --confirm'
+    )
+
+
+def _runbook(mode: str, base_url: str) -> dict:
+    if mode == 'real-llm':
+        required_backend_env = ['LLM_MOCK=false', 'LLM_BASE_URL=<provider-url>', 'LLM_API_KEY=<secret>', 'LLM_MODEL=<model>']
+        client_env = [f'BASE_URL={base_url}', 'E2E_REAL_LLM=1']
+    else:
+        required_backend_env = ['LLM_MOCK=true']
+        client_env = [f'BASE_URL={base_url}', 'E2E_REAL_LLM unset or false']
+    return {
+        'required_backend_env': required_backend_env,
+        'client_env': client_env,
+        'optional_client_env': ['E2E_TIMEOUT_SECONDS=<seconds> for slow backends'],
+        'cleanup': 'Run cleanup_command after smoke runs to remove e2e-* users and worlds.',
+    }
+
+
+def _next_action(summary: dict) -> str | None:
+    error = summary.get('error')
+    response_body = summary.get('response_body') or ''
+    if error == 'BACKEND_LLM_MOCK_DISABLED':
+        return 'Restart the backend with LLM_MOCK=true, then rerun mock smoke.'
+    if error == 'BACKEND_LLM_MOCK_ENABLED':
+        return 'Restart the backend with real LLM_* settings and LLM_MOCK=false, then rerun with E2E_REAL_LLM=1.'
+    if error == 'MIGRATION_NOT_UP_TO_DATE':
+        return 'Run alembic upgrade head from backend/, restart the backend, then rerun smoke.'
+    if error == 'REQUEST_TIMEOUT':
+        return 'Increase E2E_TIMEOUT_SECONDS for the smoke client or inspect backend/provider latency, then rerun smoke.'
+    if 'MODEL_AUTH_FAILED' in response_body:
+        return 'Check LLM_API_KEY permissions and provider access, restart the backend, then rerun real-LLM smoke.'
+    if 'MODEL_RATE_LIMITED' in response_body:
+        return 'Wait for provider quota or queue capacity, then rerun real-LLM smoke.'
+    if summary.get('failed_step') == 'register':
+        return 'Inspect register status_code/response_body; only explicit duplicate-email errors should fall back to login.'
+    return None
+
+
+def _finalize_summary(summary: dict) -> dict:
+    action = _next_action(summary)
+    if action:
+        summary['next_action'] = action
+    return summary
 
 
 def _default_email() -> str:
@@ -321,18 +374,19 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         'email': email,
         'timeout_seconds': timeout_seconds,
         'requires_backend_llm_mock': mode == 'mock',
-        'cleanup_command': "cd /opt/WorldSim-Writer/backend && PYTHONIOENCODING=utf-8 .venv/bin/python scripts/cleanup_e2e_data.py --confirm",
+        'cleanup_command': _cleanup_command(),
+        'runbook': _runbook(mode, base_url),
         'checks': {},
     }
 
     try:
         health = _step_json(summary, 'health', lambda: client.get('/health'))
         if _has_failed(summary):
-            return summary
+            return _finalize_summary(summary)
         if not _require_paths(summary, 'health', health, ['status', 'migration.up_to_date', 'llm.mock']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_bool_paths(summary, 'health', health, ['migration.up_to_date', 'llm.mock']):
-            return summary
+            return _finalize_summary(summary)
         backend_llm_mock = (health.get('llm') or {}).get('mock')
         summary['checks']['health'] = {
             'status': health.get('status'),
@@ -342,40 +396,40 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if summary['checks']['health']['status'] != 'ok':
             summary['failed_step'] = 'health'
             summary['error'] = 'HEALTH_STATUS_NOT_OK'
-            return summary
+            return _finalize_summary(summary)
         if summary['checks']['health']['migration_up_to_date'] is False:
             summary['failed_step'] = 'health'
             summary['error'] = 'MIGRATION_NOT_UP_TO_DATE'
-            return summary
+            return _finalize_summary(summary)
         if mode == 'mock' and backend_llm_mock is False:
             summary['failed_step'] = 'health'
             summary['error'] = 'BACKEND_LLM_MOCK_DISABLED'
-            return summary
+            return _finalize_summary(summary)
         if mode == 'real-llm' and backend_llm_mock is True:
             summary['failed_step'] = 'health'
             summary['error'] = 'BACKEND_LLM_MOCK_ENABLED'
-            return summary
+            return _finalize_summary(summary)
 
         auth_payload, auth_step = _register_or_login(client, email, password, summary)
         if _has_failed(summary):
-            return summary
+            return _finalize_summary(summary)
         if not _require_fields(summary, auth_step, auth_payload, ['access_token']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_string_fields(summary, auth_step, auth_payload, ['access_token']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_optional_dict(summary, auth_step, auth_payload, 'user'):
-            return summary
+            return _finalize_summary(summary)
         token = auth_payload['access_token']
         headers = {'Authorization': f'Bearer {token}'}
         summary['checks'][auth_step] = {'user_id': (auth_payload.get('user') or {}).get('id')}
 
         world = _step_json(summary, 'create_world', lambda: client.post('/worlds/from-template', headers=headers))
         if _has_failed(summary):
-            return summary
+            return _finalize_summary(summary)
         if not _require_fields(summary, 'create_world', world, ['id', 'world_version']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_int_fields(summary, 'create_world', world, ['id', 'world_version']):
-            return summary
+            return _finalize_summary(summary)
         world_id = world['id']
         initial_world_version = world.get('world_version')
         summary['world_id'] = world_id
@@ -391,11 +445,11 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             ),
         )
         if _has_failed(summary):
-            return summary
+            return _finalize_summary(summary)
         if not _require_fields(summary, 'draft', draft, ['chapter_id', 'draft_version']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_int_fields(summary, 'draft', draft, ['chapter_id', 'draft_version']):
-            return summary
+            return _finalize_summary(summary)
         chapter_id = draft['chapter_id']
         draft_version = draft['draft_version']
         summary['chapter_id'] = chapter_id
@@ -404,15 +458,15 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
 
         preview = _step_json(summary, 'approval_preview', lambda: client.get(f'/chapters/{chapter_id}/approval-preview', headers=headers))
         if _has_failed(summary):
-            return summary
+            return _finalize_summary(summary)
         if not _require_fields(summary, 'approval_preview', preview, ['version_conflict']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_bool_fields(summary, 'approval_preview', preview, ['version_conflict']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_list_of_dicts(summary, 'approval_preview', preview, 'character_changes'):
-            return summary
+            return _finalize_summary(summary)
         if not _require_list_of_dicts(summary, 'approval_preview', preview, 'foreshadow_changes'):
-            return summary
+            return _finalize_summary(summary)
         preview_blocked = preview.get('version_conflict') is True
         character_change_count = len(preview.get('character_changes') or [])
         foreshadow_change_count = len(preview.get('foreshadow_changes') or [])
@@ -427,25 +481,25 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if preview_blocked:
             summary['failed_step'] = 'approval_preview'
             summary['error'] = 'APPROVAL_PREVIEW_BLOCKED'
-            return summary
+            return _finalize_summary(summary)
         if proposed_change_count == 0:
             summary['failed_step'] = 'approval_preview'
             summary['error'] = 'NO_PROPOSED_PROJECTION_CHANGES'
-            return summary
+            return _finalize_summary(summary)
 
         readiness = _step_json(summary, 'approval_readiness', lambda: client.get(f'/chapters/{chapter_id}/approval-readiness', headers=headers))
         if _has_failed(summary):
-            return summary
+            return _finalize_summary(summary)
         if not _require_fields(summary, 'approval_readiness', readiness, ['ready', 'status']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_bool_fields(summary, 'approval_readiness', readiness, ['ready']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_string_path_in(summary, 'approval_readiness', readiness, 'status', READINESS_STATUSES):
-            return summary
+            return _finalize_summary(summary)
         if not _require_list(summary, 'approval_readiness', readiness, 'blocking_reasons'):
-            return summary
+            return _finalize_summary(summary)
         if not _require_list(summary, 'approval_readiness', readiness, 'warnings'):
-            return summary
+            return _finalize_summary(summary)
         readiness_blocking_reasons = readiness.get('blocking_reasons') or []
         readiness_blocked = readiness.get('status') == 'blocked' or bool(readiness_blocking_reasons)
         summary['checks']['approval_readiness'] = {
@@ -458,7 +512,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if readiness_blocked:
             summary['failed_step'] = 'approval_readiness'
             summary['error'] = 'APPROVAL_READINESS_BLOCKED'
-            return summary
+            return _finalize_summary(summary)
 
         consistency = _step_json(
             summary,
@@ -466,17 +520,17 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             lambda: client.post(f'/chapters/{chapter_id}/approval-consistency', json={'draft_version': draft_version}, headers=headers),
         )
         if _has_failed(summary):
-            return summary
+            return _finalize_summary(summary)
         if not _require_paths(summary, 'approval_consistency', consistency, ['consistency_summary.status']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_string_path_in(summary, 'approval_consistency', consistency, 'consistency_summary.status', CONSISTENCY_STATUSES):
-            return summary
+            return _finalize_summary(summary)
         if not _require_non_negative_int_path(summary, 'approval_consistency', consistency, 'consistency_summary.blocking_count'):
-            return summary
+            return _finalize_summary(summary)
         if not _require_fields(summary, 'approval_consistency', consistency, ['consistency_warnings']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_list_of_dicts(summary, 'approval_consistency', consistency, 'consistency_warnings'):
-            return summary
+            return _finalize_summary(summary)
         consistency_summary = consistency.get('consistency_summary') or {}
         consistency_warnings = consistency.get('consistency_warnings') or []
         consistency_blocked = consistency_summary.get('status') == 'blocked' or (consistency_summary.get('blocking_count') or 0) > 0
@@ -488,15 +542,15 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if consistency_blocked:
             summary['failed_step'] = 'approval_consistency'
             summary['error'] = 'APPROVAL_CONSISTENCY_BLOCKED'
-            return summary
+            return _finalize_summary(summary)
 
         approved = _step_json(summary, 'approve', lambda: client.post(f'/chapters/{chapter_id}/approve', json={'draft_version': draft_version}, headers=headers))
         if _has_failed(summary):
-            return summary
+            return _finalize_summary(summary)
         if not _require_fields(summary, 'approve', approved, ['status', 'approved_version']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_int_fields(summary, 'approve', approved, ['approved_version']):
-            return summary
+            return _finalize_summary(summary)
         approved_version = approved.get('approved_version')
         expected_world_version_after = initial_world_version + 1 if isinstance(initial_world_version, int) else None
         summary['checks']['approve'] = {
@@ -508,19 +562,19 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if approved.get('status') != 'approved':
             summary['failed_step'] = 'approve'
             summary['error'] = 'APPROVAL_STATUS_NOT_APPROVED'
-            return summary
+            return _finalize_summary(summary)
 
         overview = _step_json(summary, 'overview', lambda: client.get(f'/worlds/{world_id}/overview', headers=headers))
         if _has_failed(summary):
-            return summary
+            return _finalize_summary(summary)
         if not _require_fields(summary, 'overview', overview, ['world_version', 'approved_chapter_count', 'characters', 'foreshadows']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_int_fields(summary, 'overview', overview, ['world_version', 'approved_chapter_count']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_list_of_dicts(summary, 'overview', overview, 'characters'):
-            return summary
+            return _finalize_summary(summary)
         if not _require_list_of_dicts(summary, 'overview', overview, 'foreshadows'):
-            return summary
+            return _finalize_summary(summary)
         overview_world_version = overview.get('world_version')
         approved_chapter_count = overview.get('approved_chapter_count')
         expected_approved_chapter_count = 1
@@ -542,11 +596,11 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if not overview_world_version_incremented:
             summary['failed_step'] = 'overview'
             summary['error'] = 'WORLD_VERSION_NOT_INCREMENTED'
-            return summary
+            return _finalize_summary(summary)
         if not overview_approved_chapter_count_incremented:
             summary['failed_step'] = 'overview'
             summary['error'] = 'OVERVIEW_APPROVED_CHAPTER_MISSING'
-            return summary
+            return _finalize_summary(summary)
         empty_projection_fields = []
         if character_count == 0:
             empty_projection_fields.append('characters')
@@ -556,17 +610,17 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             summary['failed_step'] = 'overview'
             summary['error'] = 'OVERVIEW_PROJECTION_EMPTY'
             summary['invalid_fields'] = empty_projection_fields
-            return summary
+            return _finalize_summary(summary)
 
         events = _step_json(summary, 'events', lambda: client.get(f'/worlds/{world_id}/events', params={'limit': 100}, headers=headers))
         if _has_failed(summary):
-            return summary
+            return _finalize_summary(summary)
         if not _require_fields(summary, 'events', events, ['items']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_list_of_dicts(summary, 'events', events, 'items'):
-            return summary
+            return _finalize_summary(summary)
         if not _require_optional_dict(summary, 'events', events, 'summary'):
-            return summary
+            return _finalize_summary(summary)
         event_types = [event.get('event_type') for event in events.get('items', [])]
         chapter_approved_seen = 'chapter_approved' in event_types or 'chapter_approved' in (events.get('summary') or {}).get('event_type_counts', {})
         summary['checks']['events'] = {
@@ -576,17 +630,17 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         if not chapter_approved_seen:
             summary['failed_step'] = 'events'
             summary['error'] = 'CHAPTER_APPROVED_EVENT_MISSING'
-            return summary
+            return _finalize_summary(summary)
 
         export = _step_json(summary, 'markdown_export', lambda: client.post(f'/worlds/{world_id}/export/markdown', headers=headers))
         if _has_failed(summary):
-            return summary
+            return _finalize_summary(summary)
         if not _require_fields(summary, 'markdown_export', export, ['archive_format', 'archive_encoding', 'archive_base64', 'files_are_inline', 'files']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_string_fields(summary, 'markdown_export', export, ['archive_base64']):
-            return summary
+            return _finalize_summary(summary)
         if not _require_list_of_dicts(summary, 'markdown_export', export, 'files'):
-            return summary
+            return _finalize_summary(summary)
         files = export.get('files') or []
         has_world_md = any(file.get('path') == 'World.md' for file in files)
         summary['checks']['markdown_export'] = {
@@ -612,7 +666,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             summary['failed_step'] = 'markdown_export'
             summary['error'] = 'MARKDOWN_EXPORT_INVALID_ARCHIVE'
             summary['invalid_fields'] = invalid_export_fields
-            return summary
+            return _finalize_summary(summary)
 
         summary['ok'] = all(
             [
@@ -634,7 +688,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 has_world_md,
             ]
         )
-        return summary
+        return _finalize_summary(summary)
     finally:
         if owns_client:
             client.close()
@@ -650,6 +704,10 @@ def main() -> int:
             'base_url': _base_url(),
             'error': str(exc),
         }
+    if 'runbook' not in summary:
+        summary['runbook'] = _runbook(summary.get('mode', 'mock'), summary.get('base_url', _base_url()))
+        summary['cleanup_command'] = _cleanup_command()
+    summary = _finalize_summary(summary)
     print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
     return 0 if summary.get('ok') else 1
 
