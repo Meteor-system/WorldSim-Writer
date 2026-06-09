@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 
 import httpx
@@ -50,6 +51,69 @@ def overview_response(world_version=2, approved_chapter_count=1):
             'approved_chapter_count': approved_chapter_count,
             'characters': [{'id': 1, 'name': 'Lin Yan'}],
             'foreshadows': [{'id': 1, 'title': 'Jade Pendant'}],
+        }
+    )
+
+
+def world_response(world_version=3, truth_canon='第二章前设定：城主府外墙刻着三枚潮汐符印。'):
+    return json_response(
+        {
+            'id': 10,
+            'title': '青岚城风云',
+            'genre_template': 'xianxia_intrigue',
+            'truth_canon': truth_canon,
+            'truth_canon_version': world_version,
+            'world_version': world_version,
+            'status': 'active',
+            'tone_profile': {},
+            'current_characters': [],
+            'current_foreshadows': [],
+            'current_relations': [],
+        }
+    )
+
+
+def next_chapter_prep_response(world_version=3, previous_summary='林砚在雨夜发现神秘书阁。'):
+    return json_response(
+        {
+            'world_id': 10,
+            'world_version': world_version,
+            'next_chapter_number': 2,
+            'suggested_goal': '继续追查城主府密道',
+            'previous_chapter_summary': previous_summary,
+            'recommended_pov_character_id': 1,
+            'recommended_pov_character_name': '林砚',
+            'source_signals': ['previous_chapter_summary', 'open_foreshadows'],
+            'priority_characters': [
+                {
+                    'character_id': 1,
+                    'name': '林砚',
+                    'role_type': 'protagonist',
+                    'status': 'active',
+                    'reason': '该核心角色当前仍有 active goals。',
+                }
+            ],
+            'priority_foreshadows': [
+                {
+                    'foreshadow_id': 1,
+                    'title': '裂纹玉佩',
+                    'status': 'planted',
+                    'urgency_level': 3,
+                    'reason': '该伏笔仍处于可推进状态且紧迫度较高。',
+                }
+            ],
+            'progression_hints': [],
+            'continuity_warnings': [],
+            'recent_events': [
+                {
+                    'id': 99,
+                    'event_type': 'chapter_approved',
+                    'world_version_before': world_version - 1,
+                    'world_version_after': world_version,
+                    'created_at': '2026-06-09T00:00:00+00:00',
+                }
+            ],
+            'material_references': [],
         }
     )
 
@@ -161,6 +225,93 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
         '/worlds/10/events',
         '/worlds/10/export/markdown',
     ]
+    approve_request = transport.requests[7]
+    assert json.loads(approve_request.content) == {'draft_version': 1}
+
+
+def test_e2e_smoke_script_optionally_checks_continuous_second_chapter_and_stale_draft(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test/')
+    monkeypatch.setenv('E2E_CONTINUOUS_CHAPTERS', '1')
+    monkeypatch.delenv('E2E_REAL_LLM', raising=False)
+    module = load_e2e_smoke_module()
+    second_prep = next_chapter_prep_response(world_version=3).json()
+    second_context = module._execution_context_from_prep(second_prep, module.SECOND_CHAPTER_GOAL)
+    fresh_second_prep = next_chapter_prep_response(
+        world_version=4,
+        previous_summary='第二章重新准备前仍承接第一章摘要。',
+    ).json()
+    fresh_second_context = module._execution_context_from_prep(fresh_second_prep, module.FRESH_SECOND_CHAPTER_GOAL)
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1, 'source_world_version': 1}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': [{'foreshadow_id': 1}]}),
+            json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
+            json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
+            json_response({'id': 20, 'status': 'approved', 'approved_version': 1}),
+            overview_response(world_version=2, approved_chapter_count=1),
+            world_response(world_version=3),
+            json_response(second_prep),
+            json_response({'chapter_id': 21, 'draft_id': 31, 'draft_version': 1, 'source_world_version': 3, 'execution_context': second_context}),
+            world_response(world_version=4, truth_canon='第三章前设定：灵井只在子夜回声。'),
+            json_response({'detail': 'WORLD_VERSION_MISMATCH'}, status_code=409),
+            json_response(fresh_second_prep),
+            json_response({'chapter_id': 22, 'draft_id': 32, 'draft_version': 1, 'source_world_version': 4, 'execution_context': fresh_second_context}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': [{'foreshadow_id': 1}]}),
+            json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
+            json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
+            json_response({'id': 22, 'status': 'approved', 'approved_version': 1}),
+            overview_response(world_version=5, approved_chapter_count=2),
+            json_response({'items': [{'event_type': 'chapter_approved'}], 'summary': {'event_type_counts': {'chapter_approved': 2}}}),
+            json_response({'archive_format': 'zip', 'archive_encoding': 'base64', 'archive_base64': 'UEs=', 'files_are_inline': True, 'files': [{'path': 'World.md', 'content': '# World'}]}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is True
+    assert summary['checks']['continuous_chapters']['enabled'] is True
+    assert summary['checks']['continuous_chapters']['canon_world_version'] == 3
+    assert summary['checks']['continuous_chapters']['prep_world_version'] == 3
+    assert summary['checks']['continuous_chapters']['previous_chapter_summary_present'] is True
+    assert summary['checks']['continuous_chapters']['priority_foreshadow_count'] == 1
+    assert summary['checks']['continuous_chapters']['stale_draft_rejected'] is True
+    assert summary['checks']['continuous_chapters']['fresh_draft_source_world_version'] == 4
+    assert summary['checks']['continuous_chapters']['second_chapter_approved'] is True
+    assert summary['checks']['continuous_chapters']['approved_chapter_count_incremented'] is True
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+        '/worlds/10/chapters/draft',
+        '/chapters/20/approval-preview',
+        '/chapters/20/approval-readiness',
+        '/chapters/20/approval-consistency',
+        '/chapters/20/approve',
+        '/worlds/10/overview',
+        '/worlds/10/canon',
+        '/worlds/10/next-chapter-prep',
+        '/worlds/10/chapters/draft',
+        '/worlds/10/canon',
+        '/chapters/21/approve',
+        '/worlds/10/next-chapter-prep',
+        '/worlds/10/chapters/draft',
+        '/chapters/22/approval-preview',
+        '/chapters/22/approval-readiness',
+        '/chapters/22/approval-consistency',
+        '/chapters/22/approve',
+        '/worlds/10/overview',
+        '/worlds/10/events',
+        '/worlds/10/export/markdown',
+    ]
+    first_approve_request = transport.requests[7]
+    assert json.loads(first_approve_request.content) == {
+        'draft_version': 1,
+        'selected_foreshadow_change_indexes': [],
+    }
 
 
 def test_e2e_smoke_script_includes_runbook_metadata_and_dynamic_cleanup_command(monkeypatch):

@@ -51,7 +51,7 @@ LLM_MOCK=true uvicorn app.main:app --reload
 BASE_URL=http://localhost:8000 PYTHONIOENCODING=utf-8 python scripts/e2e_smoke.py
 ```
 
-For optional real-LLM smoke, start the backend with real `LLM_*` settings and run `E2E_REAL_LLM=1 BASE_URL=http://localhost:8000 python scripts/e2e_smoke.py`. Both modes print a JSON summary with `runbook` environment hints, `cleanup_command`, and `next_action` when a common failure has a safe first triage step. The smoke covers register → create world → draft → approval preview/readiness/consistency → approve → events → markdown export. Inspect generated `e2e-*` data first, then clean it with:
+For optional real-LLM smoke, start the backend with real `LLM_*` settings and run `E2E_REAL_LLM=1 BASE_URL=http://localhost:8000 python scripts/e2e_smoke.py`. Both modes print a JSON summary with `runbook` environment hints, `cleanup_command`, and `next_action` when a common failure has a safe first triage step. The default smoke covers register → create world → draft → approval preview/readiness/consistency → approve → events → markdown export. Add `E2E_CONTINUOUS_CHAPTERS=1` when you want the deeper continuity smoke: it edits canon after chapter 1, prepares chapter 2 from the latest context, verifies stale draft approval is rejected, regenerates, and approves chapter 2. Inspect generated `e2e-*` data first, then clean it with:
 
 ```bash
 cd backend

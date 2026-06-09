@@ -17,6 +17,10 @@ MAX_RESPONSE_BODY_CHARS = 1000
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 READINESS_STATUSES = {'ready', 'needs_review', 'blocked'}
 CONSISTENCY_STATUSES = {'clear', 'needs_review', 'blocked'}
+SECOND_CHAPTER_CANON = '第二章前设定：城主府外墙刻着三枚潮汐符印，只有湿信能显影。'
+STALE_DRAFT_CANON = '第三章前设定：灵井只在子夜回声，旧草稿必须重新生成。'
+SECOND_CHAPTER_GOAL = 'E2E smoke: chapter 2 follows the latest canon, previous summary, and open foreshadows.'
+FRESH_SECOND_CHAPTER_GOAL = 'E2E smoke: regenerate chapter 2 after stale world-version rejection.'
 
 _REDACTION_PATTERNS = [
     (re.compile(r'Authorization\s*:\s*Bearer\s+[^\s,;]+', re.IGNORECASE), 'Authorization: Bearer [REDACTED_SECRET]'),
@@ -41,6 +45,10 @@ def _env_bool(name: str) -> bool:
 
 def _base_url() -> str:
     return os.getenv('BASE_URL', DEFAULT_BASE_URL).rstrip('/')
+
+
+def _continuous_chapters_enabled() -> bool:
+    return _env_bool('E2E_CONTINUOUS_CHAPTERS')
 
 
 def _timeout_seconds() -> float:
@@ -73,7 +81,7 @@ def _runbook(mode: str, base_url: str) -> dict:
     return {
         'required_backend_env': required_backend_env,
         'client_env': client_env,
-        'optional_client_env': ['E2E_TIMEOUT_SECONDS=<seconds> for slow backends'],
+        'optional_client_env': ['E2E_TIMEOUT_SECONDS=<seconds> for slow backends', 'E2E_CONTINUOUS_CHAPTERS=1 for two-chapter continuity smoke'],
         'cleanup': 'Run cleanup_command after smoke runs to remove e2e-* users and worlds.',
     }
 
@@ -355,6 +363,36 @@ def _register_or_login(client: httpx.Client, email: str, password: str, summary:
     return _step_json(summary, 'register', lambda: response), 'register'
 
 
+def _execution_context_from_prep(prep: dict, goal: str) -> dict:
+    return {
+        'source': 'next_chapter_prep',
+        'source_world_version': prep['world_version'],
+        'next_chapter_number': prep['next_chapter_number'],
+        'goal': goal,
+        'previous_chapter_summary': prep.get('previous_chapter_summary'),
+        'recommended_pov': {
+            'character_id': prep.get('recommended_pov_character_id'),
+            'name': prep.get('recommended_pov_character_name'),
+        },
+        'source_signals': prep.get('source_signals') or [],
+        'priority_characters': prep.get('priority_characters') or [],
+        'priority_foreshadows': prep.get('priority_foreshadows') or [],
+        'progression_hints': prep.get('progression_hints') or [],
+        'continuity_warnings': prep.get('continuity_warnings') or [],
+        'recent_events': [
+            {
+                'id': event.get('id'),
+                'event_type': event.get('event_type'),
+                'world_version_before': event.get('world_version_before'),
+                'world_version_after': event.get('world_version_after'),
+                'created_at': event.get('created_at'),
+            }
+            for event in prep.get('recent_events') or []
+        ],
+        'material_references': prep.get('material_references') or [],
+    }
+
+
 def run_smoke(client: httpx.Client | None = None, email: str | None = None, password: str | None = None) -> dict:
     owns_client = client is None
     base_url = _base_url()
@@ -544,7 +582,18 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             summary['error'] = 'APPROVAL_CONSISTENCY_BLOCKED'
             return _finalize_summary(summary)
 
-        approved = _step_json(summary, 'approve', lambda: client.post(f'/chapters/{chapter_id}/approve', json={'draft_version': draft_version}, headers=headers))
+        approve_payload = {'draft_version': draft_version}
+        if _continuous_chapters_enabled():
+            approve_payload['selected_foreshadow_change_indexes'] = []
+        approved = _step_json(
+            summary,
+            'approve',
+            lambda: client.post(
+                f'/chapters/{chapter_id}/approve',
+                json=approve_payload,
+                headers=headers,
+            ),
+        )
         if _has_failed(summary):
             return _finalize_summary(summary)
         if not _require_fields(summary, 'approve', approved, ['status', 'approved_version']):
@@ -611,6 +660,297 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             summary['error'] = 'OVERVIEW_PROJECTION_EMPTY'
             summary['invalid_fields'] = empty_projection_fields
             return _finalize_summary(summary)
+
+        continuous_ok = True
+        if _continuous_chapters_enabled():
+            canon = _step_json(
+                summary,
+                'continuous_canon_update',
+                lambda: client.put(
+                    f'/worlds/{world_id}/canon',
+                    json={'truth_canon': SECOND_CHAPTER_CANON, 'edit_reason': 'E2E smoke chapter 2 continuity setup'},
+                    headers=headers,
+                ),
+            )
+            if _has_failed(summary):
+                return _finalize_summary(summary)
+            if not _require_fields(summary, 'continuous_canon_update', canon, ['world_version']):
+                return _finalize_summary(summary)
+            if not _require_int_fields(summary, 'continuous_canon_update', canon, ['world_version']):
+                return _finalize_summary(summary)
+            canon_world_version = canon['world_version']
+            expected_canon_world_version = overview_world_version + 1
+            if canon_world_version != expected_canon_world_version:
+                summary['failed_step'] = 'continuous_canon_update'
+                summary['error'] = 'WORLD_VERSION_NOT_INCREMENTED'
+                return _finalize_summary(summary)
+
+            prep = _step_json(summary, 'next_chapter_prep', lambda: client.get(f'/worlds/{world_id}/next-chapter-prep', headers=headers))
+            if _has_failed(summary):
+                return _finalize_summary(summary)
+            if not _require_fields(
+                summary,
+                'next_chapter_prep',
+                prep,
+                ['world_version', 'next_chapter_number', 'previous_chapter_summary'],
+            ):
+                return _finalize_summary(summary)
+            if not _require_int_fields(summary, 'next_chapter_prep', prep, ['world_version', 'next_chapter_number']):
+                return _finalize_summary(summary)
+            for field in ['source_signals', 'priority_characters', 'priority_foreshadows', 'progression_hints', 'continuity_warnings', 'recent_events', 'material_references']:
+                if not _require_list(summary, 'next_chapter_prep', prep, field):
+                    return _finalize_summary(summary)
+            if prep.get('world_version') != canon_world_version:
+                summary['failed_step'] = 'next_chapter_prep'
+                summary['error'] = 'WORLD_VERSION_NOT_INCREMENTED'
+                return _finalize_summary(summary)
+            if not prep.get('previous_chapter_summary'):
+                summary['failed_step'] = 'next_chapter_prep'
+                summary['error'] = 'PREVIOUS_CHAPTER_SUMMARY_MISSING'
+                return _finalize_summary(summary)
+            priority_foreshadow_count = len(prep.get('priority_foreshadows') or [])
+            if priority_foreshadow_count == 0:
+                summary['failed_step'] = 'next_chapter_prep'
+                summary['error'] = 'PRIORITY_FORESHADOWS_MISSING'
+                return _finalize_summary(summary)
+
+            second_context = _execution_context_from_prep(prep, SECOND_CHAPTER_GOAL)
+            second_draft = _step_json(
+                summary,
+                'second_draft',
+                lambda: client.post(
+                    f'/worlds/{world_id}/chapters/draft',
+                    json={'chapter_goal': SECOND_CHAPTER_GOAL, 'execution_context': second_context},
+                    headers=headers,
+                ),
+            )
+            if _has_failed(summary):
+                return _finalize_summary(summary)
+            if not _require_fields(summary, 'second_draft', second_draft, ['chapter_id', 'draft_version', 'source_world_version', 'execution_context']):
+                return _finalize_summary(summary)
+            if not _require_int_fields(summary, 'second_draft', second_draft, ['chapter_id', 'draft_version', 'source_world_version']):
+                return _finalize_summary(summary)
+            if not _require_optional_dict(summary, 'second_draft', second_draft, 'execution_context'):
+                return _finalize_summary(summary)
+            second_execution_context = second_draft.get('execution_context') or {}
+            if second_draft.get('source_world_version') != canon_world_version:
+                summary['failed_step'] = 'second_draft'
+                summary['error'] = 'WORLD_VERSION_MISMATCH'
+                return _finalize_summary(summary)
+            if second_execution_context.get('source_world_version') != canon_world_version or not second_execution_context.get('previous_chapter_summary'):
+                summary['failed_step'] = 'second_draft'
+                summary['error'] = 'EXECUTION_CONTEXT_NOT_CURRENT'
+                return _finalize_summary(summary)
+            if not second_execution_context.get('priority_foreshadows'):
+                summary['failed_step'] = 'second_draft'
+                summary['error'] = 'EXECUTION_CONTEXT_FORESHADOWS_MISSING'
+                return _finalize_summary(summary)
+
+            stale_canon = _step_json(
+                summary,
+                'stale_canon_update',
+                lambda: client.put(
+                    f'/worlds/{world_id}/canon',
+                    json={'truth_canon': STALE_DRAFT_CANON, 'edit_reason': 'E2E smoke stale draft approval setup'},
+                    headers=headers,
+                ),
+            )
+            if _has_failed(summary):
+                return _finalize_summary(summary)
+            if not _require_fields(summary, 'stale_canon_update', stale_canon, ['world_version']):
+                return _finalize_summary(summary)
+            if not _require_int_fields(summary, 'stale_canon_update', stale_canon, ['world_version']):
+                return _finalize_summary(summary)
+            stale_world_version = stale_canon['world_version']
+
+            try:
+                stale_response = client.post(
+                    f"/chapters/{second_draft['chapter_id']}/approve",
+                    json={'draft_version': second_draft['draft_version']},
+                    headers=headers,
+                )
+            except httpx.RequestError as exc:
+                _mark_request_error(summary, 'stale_draft_approval', exc)
+                return _finalize_summary(summary)
+            stale_draft_rejected = stale_response.status_code == 409 and 'WORLD_VERSION_MISMATCH' in stale_response.text
+            if not stale_draft_rejected:
+                summary['failed_step'] = 'stale_draft_approval'
+                summary['error'] = 'STALE_DRAFT_APPROVAL_NOT_REJECTED'
+                summary['status_code'] = stale_response.status_code
+                summary['response_body'] = _response_body_snippet(stale_response)
+                return _finalize_summary(summary)
+
+            fresh_prep = _step_json(summary, 'fresh_next_chapter_prep', lambda: client.get(f'/worlds/{world_id}/next-chapter-prep', headers=headers))
+            if _has_failed(summary):
+                return _finalize_summary(summary)
+            if not _require_fields(
+                summary,
+                'fresh_next_chapter_prep',
+                fresh_prep,
+                ['world_version', 'next_chapter_number', 'previous_chapter_summary'],
+            ):
+                return _finalize_summary(summary)
+            if not _require_int_fields(summary, 'fresh_next_chapter_prep', fresh_prep, ['world_version', 'next_chapter_number']):
+                return _finalize_summary(summary)
+            for field in ['source_signals', 'priority_characters', 'priority_foreshadows', 'progression_hints', 'continuity_warnings', 'recent_events', 'material_references']:
+                if not _require_list(summary, 'fresh_next_chapter_prep', fresh_prep, field):
+                    return _finalize_summary(summary)
+            if fresh_prep.get('world_version') != stale_world_version:
+                summary['failed_step'] = 'fresh_next_chapter_prep'
+                summary['error'] = 'WORLD_VERSION_NOT_INCREMENTED'
+                return _finalize_summary(summary)
+
+            fresh_context = _execution_context_from_prep(fresh_prep, FRESH_SECOND_CHAPTER_GOAL)
+            fresh_draft = _step_json(
+                summary,
+                'fresh_second_draft',
+                lambda: client.post(
+                    f'/worlds/{world_id}/chapters/draft',
+                    json={'chapter_goal': FRESH_SECOND_CHAPTER_GOAL, 'execution_context': fresh_context},
+                    headers=headers,
+                ),
+            )
+            if _has_failed(summary):
+                return _finalize_summary(summary)
+            if not _require_fields(summary, 'fresh_second_draft', fresh_draft, ['chapter_id', 'draft_version', 'source_world_version', 'execution_context']):
+                return _finalize_summary(summary)
+            if not _require_int_fields(summary, 'fresh_second_draft', fresh_draft, ['chapter_id', 'draft_version', 'source_world_version']):
+                return _finalize_summary(summary)
+            if not _require_optional_dict(summary, 'fresh_second_draft', fresh_draft, 'execution_context'):
+                return _finalize_summary(summary)
+            fresh_chapter_id = fresh_draft['chapter_id']
+            fresh_draft_version = fresh_draft['draft_version']
+            fresh_draft_source_world_version = fresh_draft['source_world_version']
+            fresh_execution_context = fresh_draft.get('execution_context') or {}
+            if fresh_draft_source_world_version != stale_world_version:
+                summary['failed_step'] = 'fresh_second_draft'
+                summary['error'] = 'WORLD_VERSION_MISMATCH'
+                return _finalize_summary(summary)
+            if fresh_execution_context.get('source_world_version') != stale_world_version or not fresh_execution_context.get('previous_chapter_summary'):
+                summary['failed_step'] = 'fresh_second_draft'
+                summary['error'] = 'EXECUTION_CONTEXT_NOT_CURRENT'
+                return _finalize_summary(summary)
+            if not fresh_execution_context.get('priority_foreshadows'):
+                summary['failed_step'] = 'fresh_second_draft'
+                summary['error'] = 'EXECUTION_CONTEXT_FORESHADOWS_MISSING'
+                return _finalize_summary(summary)
+
+            second_preview = _step_json(summary, 'second_approval_preview', lambda: client.get(f'/chapters/{fresh_chapter_id}/approval-preview', headers=headers))
+            if _has_failed(summary):
+                return _finalize_summary(summary)
+            if not _require_fields(summary, 'second_approval_preview', second_preview, ['version_conflict']):
+                return _finalize_summary(summary)
+            if not _require_bool_fields(summary, 'second_approval_preview', second_preview, ['version_conflict']):
+                return _finalize_summary(summary)
+            if not _require_list_of_dicts(summary, 'second_approval_preview', second_preview, 'character_changes'):
+                return _finalize_summary(summary)
+            if not _require_list_of_dicts(summary, 'second_approval_preview', second_preview, 'foreshadow_changes'):
+                return _finalize_summary(summary)
+            second_proposed_change_count = len(second_preview.get('character_changes') or []) + len(second_preview.get('foreshadow_changes') or [])
+            if second_preview.get('version_conflict') is True:
+                summary['failed_step'] = 'second_approval_preview'
+                summary['error'] = 'APPROVAL_PREVIEW_BLOCKED'
+                return _finalize_summary(summary)
+            if second_proposed_change_count == 0:
+                summary['failed_step'] = 'second_approval_preview'
+                summary['error'] = 'NO_PROPOSED_PROJECTION_CHANGES'
+                return _finalize_summary(summary)
+
+            second_readiness = _step_json(summary, 'second_approval_readiness', lambda: client.get(f'/chapters/{fresh_chapter_id}/approval-readiness', headers=headers))
+            if _has_failed(summary):
+                return _finalize_summary(summary)
+            if not _require_fields(summary, 'second_approval_readiness', second_readiness, ['ready', 'status']):
+                return _finalize_summary(summary)
+            if not _require_bool_fields(summary, 'second_approval_readiness', second_readiness, ['ready']):
+                return _finalize_summary(summary)
+            if not _require_string_path_in(summary, 'second_approval_readiness', second_readiness, 'status', READINESS_STATUSES):
+                return _finalize_summary(summary)
+            if not _require_list(summary, 'second_approval_readiness', second_readiness, 'blocking_reasons'):
+                return _finalize_summary(summary)
+            if not _require_list(summary, 'second_approval_readiness', second_readiness, 'warnings'):
+                return _finalize_summary(summary)
+            second_readiness_blocked = second_readiness.get('status') == 'blocked' or bool(second_readiness.get('blocking_reasons') or [])
+            if second_readiness_blocked:
+                summary['failed_step'] = 'second_approval_readiness'
+                summary['error'] = 'APPROVAL_READINESS_BLOCKED'
+                return _finalize_summary(summary)
+
+            second_consistency = _step_json(
+                summary,
+                'second_approval_consistency',
+                lambda: client.post(f'/chapters/{fresh_chapter_id}/approval-consistency', json={'draft_version': fresh_draft_version}, headers=headers),
+            )
+            if _has_failed(summary):
+                return _finalize_summary(summary)
+            if not _require_paths(summary, 'second_approval_consistency', second_consistency, ['consistency_summary.status']):
+                return _finalize_summary(summary)
+            if not _require_string_path_in(summary, 'second_approval_consistency', second_consistency, 'consistency_summary.status', CONSISTENCY_STATUSES):
+                return _finalize_summary(summary)
+            if not _require_non_negative_int_path(summary, 'second_approval_consistency', second_consistency, 'consistency_summary.blocking_count'):
+                return _finalize_summary(summary)
+            if not _require_fields(summary, 'second_approval_consistency', second_consistency, ['consistency_warnings']):
+                return _finalize_summary(summary)
+            if not _require_list_of_dicts(summary, 'second_approval_consistency', second_consistency, 'consistency_warnings'):
+                return _finalize_summary(summary)
+            second_consistency_summary = second_consistency.get('consistency_summary') or {}
+            second_consistency_blocked = second_consistency_summary.get('status') == 'blocked' or (second_consistency_summary.get('blocking_count') or 0) > 0
+            if second_consistency_blocked:
+                summary['failed_step'] = 'second_approval_consistency'
+                summary['error'] = 'APPROVAL_CONSISTENCY_BLOCKED'
+                return _finalize_summary(summary)
+
+            second_approved = _step_json(
+                summary,
+                'second_approve',
+                lambda: client.post(f'/chapters/{fresh_chapter_id}/approve', json={'draft_version': fresh_draft_version}, headers=headers),
+            )
+            if _has_failed(summary):
+                return _finalize_summary(summary)
+            if not _require_fields(summary, 'second_approve', second_approved, ['status', 'approved_version']):
+                return _finalize_summary(summary)
+            if not _require_int_fields(summary, 'second_approve', second_approved, ['approved_version']):
+                return _finalize_summary(summary)
+            if second_approved.get('status') != 'approved':
+                summary['failed_step'] = 'second_approve'
+                summary['error'] = 'APPROVAL_STATUS_NOT_APPROVED'
+                return _finalize_summary(summary)
+
+            second_overview = _step_json(summary, 'second_overview', lambda: client.get(f'/worlds/{world_id}/overview', headers=headers))
+            if _has_failed(summary):
+                return _finalize_summary(summary)
+            if not _require_fields(summary, 'second_overview', second_overview, ['world_version', 'approved_chapter_count', 'characters', 'foreshadows']):
+                return _finalize_summary(summary)
+            if not _require_int_fields(summary, 'second_overview', second_overview, ['world_version', 'approved_chapter_count']):
+                return _finalize_summary(summary)
+            if not _require_list_of_dicts(summary, 'second_overview', second_overview, 'characters'):
+                return _finalize_summary(summary)
+            if not _require_list_of_dicts(summary, 'second_overview', second_overview, 'foreshadows'):
+                return _finalize_summary(summary)
+            second_world_version_incremented = second_overview.get('world_version') == stale_world_version + 1
+            second_chapter_count_incremented = second_overview.get('approved_chapter_count') >= 2
+            if not second_world_version_incremented:
+                summary['failed_step'] = 'second_overview'
+                summary['error'] = 'WORLD_VERSION_NOT_INCREMENTED'
+                return _finalize_summary(summary)
+            if not second_chapter_count_incremented:
+                summary['failed_step'] = 'second_overview'
+                summary['error'] = 'OVERVIEW_APPROVED_CHAPTER_MISSING'
+                return _finalize_summary(summary)
+
+            summary['checks']['continuous_chapters'] = {
+                'enabled': True,
+                'canon_world_version': canon_world_version,
+                'prep_world_version': prep.get('world_version'),
+                'previous_chapter_summary_present': bool(prep.get('previous_chapter_summary')),
+                'priority_foreshadow_count': priority_foreshadow_count,
+                'stale_draft_rejected': stale_draft_rejected,
+                'fresh_draft_source_world_version': fresh_draft_source_world_version,
+                'second_chapter_approved': second_approved.get('status') == 'approved',
+                'approved_chapter_count_incremented': second_chapter_count_incremented,
+            }
+            continuous_ok = stale_draft_rejected and second_world_version_incremented and second_chapter_count_incremented
+        else:
+            summary['checks']['continuous_chapters'] = {'enabled': False}
 
         events = _step_json(summary, 'events', lambda: client.get(f'/worlds/{world_id}/events', params={'limit': 100}, headers=headers))
         if _has_failed(summary):
@@ -680,6 +1020,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 overview_approved_chapter_count_incremented,
                 character_count > 0,
                 foreshadow_count > 0,
+                continuous_ok,
                 chapter_approved_seen,
                 export.get('archive_format') == 'zip',
                 export.get('archive_encoding') == 'base64',
