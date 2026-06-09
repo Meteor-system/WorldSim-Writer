@@ -379,6 +379,13 @@ def test_export_markdown_enriches_existing_files_with_obsidian_metadata(client, 
     assert 'chapter_number: 1' in chapter_markdown
     assert 'tags:\n  - worldsim/chapter' in chapter_markdown
     assert '[[World]]' in chapter_markdown
+    assert '- Chapter Goal: 推进档案门廊线索' in chapter_markdown
+    assert '## Context Summary' in chapter_markdown
+    assert '林砚发现门廊中的玉佩线索。' in chapter_markdown
+    assert '## Review Hints' in chapter_markdown
+    assert '- 确认玉佩线索是否进入伏笔台账' in chapter_markdown
+    assert chapter_markdown.index('## Context Summary') < chapter_markdown.index('## Content')
+    assert chapter_markdown.index('## Review Hints') < chapter_markdown.index('## Content')
     assert approved['approved_content'] in chapter_markdown
 
 

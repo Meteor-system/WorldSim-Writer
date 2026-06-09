@@ -20,6 +20,10 @@ from app.world.models import World
 from app.world.service import require_owned_world
 
 
+def _approved_draft_for_chapter(chapter: Chapter):
+    return next((draft for draft in chapter.drafts if draft.draft_version == chapter.approved_version), None)
+
+
 def build_world_archive_payload(db: Session, world: World) -> dict:
     approved_chapters = list(
         db.scalars(
@@ -31,6 +35,22 @@ def build_world_archive_payload(db: Session, world: World) -> dict:
             .order_by(Chapter.id)
         )
     )
+    approved_chapter_payloads = []
+    for chapter in approved_chapters:
+        approved_draft = _approved_draft_for_chapter(chapter)
+        approved_chapter_payloads.append(
+            {
+                'id': chapter.id,
+                'title': chapter.title,
+                'status': chapter.status,
+                'approved_version': chapter.approved_version,
+                'base_world_version': chapter.base_world_version,
+                'chapter_goal': chapter.chapter_goal,
+                'context_summary': approved_draft.context_summary if approved_draft else '',
+                'review_hints': deepcopy(approved_draft.review_hints) if approved_draft else [],
+                'approved_content': chapter.approved_content,
+            }
+        )
     events = list(db.scalars(select(EventLog).where(EventLog.world_id == world.id).order_by(EventLog.id)))
     return {
         'world': {
@@ -47,17 +67,7 @@ def build_world_archive_payload(db: Session, world: World) -> dict:
         'characters': deepcopy(world.current_characters),
         'relations': deepcopy(world.current_relations),
         'foreshadows': deepcopy(world.current_foreshadows),
-        'approved_chapters': [
-            {
-                'id': chapter.id,
-                'title': chapter.title,
-                'status': chapter.status,
-                'approved_version': chapter.approved_version,
-                'base_world_version': chapter.base_world_version,
-                'approved_content': chapter.approved_content,
-            }
-            for chapter in approved_chapters
-        ],
+        'approved_chapters': approved_chapter_payloads,
         'events': [
             {
                 'id': event.id,
@@ -291,6 +301,10 @@ def _frontmatter(data: dict[str, Any]) -> str:
 
 def _markdown_cell(value: Any) -> str:
     return _markdown_value(value).replace('\n', ' ').replace('|', '\\|') or '暂无'
+
+
+def _markdown_list(items: list[Any]) -> list[str]:
+    return [f"- {_markdown_value(item)}" for item in items] if items else ['- 暂无']
 
 
 def _safe_segment(value: str | None, fallback: str) -> str:
@@ -549,6 +563,15 @@ def _chapter_markdown(chapter: dict[str, Any], sequence: int) -> str:
             f"- Status: {chapter['status']}",
             f"- Approved Version: {chapter['approved_version']}",
             f"- Base World Version: {chapter['base_world_version']}",
+            f"- Chapter Goal: {chapter.get('chapter_goal') or ''}",
+            '',
+            '## Context Summary',
+            '',
+            chapter.get('context_summary') or '暂无',
+            '',
+            '## Review Hints',
+            '',
+            *_markdown_list(chapter.get('review_hints') or []),
             '',
             '## Content',
             '',
