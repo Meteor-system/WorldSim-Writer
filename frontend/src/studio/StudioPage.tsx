@@ -85,6 +85,11 @@ function materialReferenceListSentence(titles: string[]): string {
   return `本章参考候选素材：${titles.join('、')}。`;
 }
 
+function statusText(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '未设置';
+  return labelStatus(String(value));
+}
+
 function MaterialReferenceCards({ context, compact = false }: { context?: ChapterExecutionContext | null; compact?: boolean }) {
   const references = context?.material_references ?? [];
   if (references.length === 0) return null;
@@ -1087,7 +1092,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                           checked={selectedCharacterChangeIndexes.includes(changeIndex)}
                           onChange={() => void toggleCharacterSelection(changeIndex)}
                         />
-                        <span>角色：{change.name} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</span>
+                        <span>角色：{change.name} · 状态：{statusText(change.before.status)} → {statusText(change.after.status)}</span>
                       </label>
                     );
                   })}
@@ -1101,7 +1106,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                           checked={selectedForeshadowChangeIndexes.includes(changeIndex)}
                           onChange={() => void toggleForeshadowSelection(changeIndex)}
                         />
-                        <span>伏笔：{change.title} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</span>
+                        <span>伏笔：{change.title} · 状态：{statusText(change.before.status)} → {statusText(change.after.status)}</span>
                       </label>
                     );
                   })}

@@ -633,6 +633,10 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('Approval Readiness')).toBeInTheDocument();
     expect(screen.getByText('建议复核后批准')).toBeInTheDocument();
     expect(screen.getByText('Critic 高风险')).toBeInTheDocument();
+    expect(screen.getByText('角色：林砚 · 状态：进行中 → 开始调查密信')).toBeInTheDocument();
+    expect(screen.getByText('伏笔：裂纹玉佩 · 状态：已埋下 → 推进中')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('状态：active → 开始调查密信');
+    expect(document.body).not.toHaveTextContent('状态：planted → advanced');
     expect(screen.getByText('拟提交变化只是草稿建议；只有勾选并点击「写入正史并更新世界」后才会更新正式世界。')).toBeInTheDocument();
     expect(screen.getByText('状态：开始调查密信')).toBeInTheDocument();
     expect(screen.getByText('状态：推进中')).toBeInTheDocument();
