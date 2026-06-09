@@ -1145,7 +1145,7 @@ describe('WorldPage Narrative Control Center', () => {
     expect(getWorldPulse).toHaveBeenCalledWith(7);
     expect(getArcPlan).toHaveBeenCalledWith(7);
     expect(await screen.findByText('World Pulse')).toBeInTheDocument();
-    expect(await screen.findByText('Arc Mode / Closure Plan')).toBeInTheDocument();
+    expect(await screen.findByText('篇章收束计划')).toBeInTheDocument();
     expect(await screen.findByText('Narrative Health')).toBeInTheDocument();
     expect(await screen.findByText('Open Threads Board')).toBeInTheDocument();
     expect((await screen.findAllByText('章节历史')).length).toBeGreaterThan(0);

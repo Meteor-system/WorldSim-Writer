@@ -21,7 +21,7 @@ const arcPlan: ArcPlanResponse = {
       title: '黑匣子脉冲',
       rationale: '超过建议回收窗口，请优先推进或收束。',
       suggested_next_step: '下一章优先回收该伏笔。',
-      related_character_ids: [1],
+      related_character_ids: [1, 2],
       related_foreshadow_ids: [9],
     },
   ],
@@ -37,16 +37,25 @@ describe('ArcPlanPanel', () => {
   it('renders mode, budget, goal, guidance, and closure items', () => {
     render(<ArcPlanPanel arcPlan={arcPlan} loading={false} error="" />);
 
-    expect(screen.getByText('Arc Mode / Closure Plan')).toBeInTheDocument();
-    expect(screen.getByText('模式：converge')).toBeInTheDocument();
-    expect(screen.getByText('扩张预算：locked')).toBeInTheDocument();
+    expect(screen.getByText('篇章收束计划')).toBeInTheDocument();
+    expect(screen.getByText('叙事阶段：收束旧线索')).toBeInTheDocument();
+    expect(screen.getByText('开放新线索：暂停新增')).toBeInTheDocument();
     expect(screen.getByText('开放线索压力过高，下一章应优先收束旧承诺。')).toBeInTheDocument();
     expect(screen.getByText('第 5 章建议目标')).toBeInTheDocument();
     expect(screen.getByText('回收黑匣子脉冲，并让许砚做出阶段性选择。')).toBeInTheDocument();
     expect(screen.getByText('优先兑现旧承诺')).toBeInTheDocument();
     expect(screen.getByText('黑匣子脉冲')).toBeInTheDocument();
-    expect(screen.getByText('close · must_close')).toBeInTheDocument();
-    expect(screen.getByText('关联伏笔：9')).toBeInTheDocument();
+    expect(screen.getByText('处理方式：本章收束 · 优先级：必须处理')).toBeInTheDocument();
+    expect(screen.getByText('线索来源：伏笔线索')).toBeInTheDocument();
+    expect(screen.getByText('关联角色：2 位')).toBeInTheDocument();
+    expect(screen.getByText('关联伏笔：1 条')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('Arc Mode / Closure Plan');
+    expect(document.body).not.toHaveTextContent('模式：converge');
+    expect(document.body).not.toHaveTextContent('扩张预算：locked');
+    expect(document.body).not.toHaveTextContent('close · must_close');
+    expect(document.body).not.toHaveTextContent('foreshadow:9');
+    expect(document.body).not.toHaveTextContent('关联伏笔：9');
+    expect(document.body).not.toHaveTextContent('关联角色：1、2');
   });
 
   it('renders empty state', () => {
