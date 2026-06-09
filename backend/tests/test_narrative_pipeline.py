@@ -279,6 +279,13 @@ def test_continuous_two_chapters_use_latest_context_and_stale_third_draft_is_blo
         json={'chapter_goal': '第一章建立湿信线索'},
     ).json()
     assert client.post(f"/chapters/{first_draft['chapter_id']}/approve", headers=auth(token)).status_code == 200
+    updated_canon = '第二章前设定：城主府外墙刻着三枚潮汐符印，只有湿信能显影。'
+    canon_update = client.put(
+        f'/worlds/{world_id}/canon',
+        headers=auth(token),
+        json={'truth_canon': updated_canon, 'edit_reason': '第二章前更新 Story Bible'},
+    )
+    assert canon_update.status_code == 200
 
     prep = client.get(f'/worlds/{world_id}/next-chapter-prep', headers=auth(token)).json()
     second_goal = '用户修改后的第二章目标：林砚在城主府外墙试探沈微霜。'
@@ -291,9 +298,9 @@ def test_continuous_two_chapters_use_latest_context_and_stale_third_draft_is_blo
 
     assert second_draft_response.status_code == 200
     second_prompt = '\n'.join(message['content'] for message in llm.messages[1])
+    assert f'世界设定：{updated_canon}' in second_prompt
     assert '上一章摘要：林砚与沈微霜在雨巷交换湿信线索。' in second_prompt
-    assert '世界设定：青岚城由城主府、云河剑宗与地下商盟共同影响。' in second_prompt
-    assert '世界版本：2' in second_prompt
+    assert '世界版本：3' in second_prompt
     assert 'status=开始调查密信' in second_prompt
     assert "goals=['追查湿信来源']" in second_prompt
     assert '裂纹玉佩, status=advanced' in second_prompt
@@ -302,7 +309,7 @@ def test_continuous_two_chapters_use_latest_context_and_stale_third_draft_is_blo
 
     overview = client.get(f'/worlds/{world_id}/overview', headers=auth(token)).json()
     assert overview['approved_chapter_count'] == 2
-    assert overview['world_version'] == 3
+    assert overview['world_version'] == 4
 
     third_prep = client.get(f'/worlds/{world_id}/next-chapter-prep', headers=auth(token)).json()
     third_goal = '第三章继续追查灵井余波'
