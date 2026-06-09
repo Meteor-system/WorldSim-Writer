@@ -88,6 +88,12 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
         </div>
       </article>
 
+      <section className="rounded-2xl bg-white/35 p-4">
+        <h3 className="font-black text-[#3b2511]">当前 Story Bible</h3>
+        <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">正式设定版本：{labelWorldVersion(prep.truth_canon_version)}</p>
+        <p className="manuscript mt-2 text-sm">{prep.truth_canon_excerpt || '暂无正式设定摘要。'}</p>
+      </section>
+
       {prep.previous_chapter_summary && (
         <section className="rounded-2xl bg-white/35 p-4">
           <h3 className="font-black text-[#3b2511]">上一章摘要</h3>

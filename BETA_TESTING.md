@@ -93,10 +93,11 @@ Use `http://localhost:5173` with the backend on `http://localhost:8000`.
 5. Generate a chapter draft.
 6. Review the draft, proposed changes, approval preview, readiness, and consistency information.
 7. Approve the draft.
-8. Return to the world overview.
-9. Confirm `world_version` changes from `1` to `2`.
-10. Confirm a `chapter_approved` event appears and at least one character or foreshadow projection changed when the model proposed changes.
-11. Export Markdown and confirm a ZIP download link plus inline preview files appear.
+8. Continue to the next chapter or refresh the world overview, then confirm the 下一章准备台 shows the current Story Bible version/excerpt alongside the previous chapter summary and any priority foreshadows.
+9. Return to the world overview.
+10. Confirm `world_version` changes from `1` to `2`.
+11. Confirm a `chapter_approved` event appears and at least one character or foreshadow projection changed when the model proposed changes.
+12. Export Markdown and confirm a ZIP download link plus inline preview files appear.
 
 ## 6. Archive/read-only spot checks
 

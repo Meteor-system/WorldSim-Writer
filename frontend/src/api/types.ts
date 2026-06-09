@@ -729,6 +729,8 @@ export type NextChapterPrepEvent = {
 export type NextChapterPrepResponse = {
   world_id: number;
   world_version: number;
+  truth_canon_version: number;
+  truth_canon_excerpt: string;
   next_chapter_number: number;
   suggested_goal: string;
   previous_chapter_summary: string | null;

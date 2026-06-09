@@ -1084,6 +1084,8 @@ def get_next_chapter_prep(db: Session, user: User, world_id: int) -> dict:
     return {
         'world_id': world.id,
         'world_version': world.world_version,
+        'truth_canon_version': world.truth_canon_version,
+        'truth_canon_excerpt': world.truth_canon.strip(),
         'next_chapter_number': next_chapter_number,
         'suggested_goal': suggested_goal,
         'previous_chapter_summary': _previous_chapter_summary(db, latest_chapter),

@@ -184,6 +184,8 @@ def test_next_chapter_prep_uses_high_priority_character_arc_progression_hint(cli
     payload = response.json()
     assert payload['world_id'] == world_id
     assert payload['world_version'] == 2
+    assert payload['truth_canon_version'] == 1
+    assert payload['truth_canon_excerpt'] == '青岚城由城主府、云河剑宗与地下商盟共同影响。灵脉衰退正在改变各方力量平衡，主角必须查清城主府叛乱传闻的真相。'
     assert payload['next_chapter_number'] == 2
     assert payload['suggested_goal'] == '林砚带着湿信赴城主府外墙，并设置一次试探。'
     assert payload['previous_chapter_summary'] == '林砚与沈微霜在雨巷交换湿信线索。'

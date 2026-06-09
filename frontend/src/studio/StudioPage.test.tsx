@@ -306,6 +306,8 @@ const approvedWorld: WorldOverview = {
 const nextPrepForSecondChapter: NextChapterPrepResponse = {
   world_id: 7,
   world_version: 2,
+  truth_canon_version: 1,
+  truth_canon_excerpt: '灵脉正在衰退。',
   next_chapter_number: 2,
   suggested_goal: '第二章建议：林砚沿湿信追到城主府外墙。',
   previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',

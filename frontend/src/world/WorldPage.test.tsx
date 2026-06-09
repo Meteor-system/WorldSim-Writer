@@ -292,6 +292,8 @@ beforeEach(() => {
   vi.mocked(getNextChapterPrep).mockResolvedValue({
     world_id: 7,
     world_version: 2,
+    truth_canon_version: 1,
+    truth_canon_excerpt: '灵脉正在衰退。',
     next_chapter_number: 2,
     suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
     previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',
@@ -440,6 +442,8 @@ describe('WorldPage operations dashboard', () => {
     vi.mocked(getNextChapterPrep).mockResolvedValueOnce({
       world_id: 7,
       world_version: 2,
+      truth_canon_version: 1,
+      truth_canon_excerpt: '灵脉正在衰退。',
       next_chapter_number: 2,
       suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
       previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',
@@ -470,6 +474,8 @@ describe('WorldPage operations dashboard', () => {
     vi.mocked(getNextChapterPrep).mockResolvedValueOnce({
       world_id: 7,
       world_version: 2,
+      truth_canon_version: 1,
+      truth_canon_excerpt: '灵脉正在衰退。',
       next_chapter_number: 2,
       suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
       previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',
@@ -957,6 +963,8 @@ describe('WorldPage Story Arc Planner', () => {
     vi.mocked(getNextChapterPrep).mockResolvedValueOnce({
       world_id: 7,
       world_version: 2,
+      truth_canon_version: 1,
+      truth_canon_excerpt: '灵脉正在衰退。',
       next_chapter_number: 2,
       suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
       previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',
@@ -1168,6 +1176,8 @@ describe('WorldPage Narrative Control Center', () => {
       .mockResolvedValueOnce({
         world_id: 7,
         world_version: 2,
+        truth_canon_version: 1,
+        truth_canon_excerpt: '灵脉正在衰退。',
         next_chapter_number: 2,
         suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
         previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',
@@ -1184,6 +1194,8 @@ describe('WorldPage Narrative Control Center', () => {
       .mockResolvedValueOnce({
         world_id: 7,
         world_version: 2,
+        truth_canon_version: 1,
+        truth_canon_excerpt: '灵脉正在衰退。',
         next_chapter_number: 2,
         suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
         previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',

@@ -5,6 +5,8 @@ import { buildExecutionContextFromPrep, buildManualExecutionContext, withEditedG
 const prep: NextChapterPrepResponse = {
   world_id: 7,
   world_version: 2,
+  truth_canon_version: 1,
+  truth_canon_excerpt: '灵脉正在衰退。',
   next_chapter_number: 2,
   suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
   previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',

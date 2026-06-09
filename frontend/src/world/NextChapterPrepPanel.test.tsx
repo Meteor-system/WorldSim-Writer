@@ -8,6 +8,8 @@ import { NextChapterPrepPanel } from './NextChapterPrepPanel';
 const prep: NextChapterPrepResponse = {
   world_id: 7,
   world_version: 2,
+  truth_canon_version: 1,
+  truth_canon_excerpt: '青岚城由城主府、云河剑宗与地下商盟共同影响。灵脉衰退正在改变各方力量平衡，主角必须查清城主府叛乱传闻的真相。',
   next_chapter_number: 2,
   suggested_goal: '林砚带着湿信赴城主府外墙，并设置一次试探。',
   previous_chapter_summary: '林砚与沈微霜在雨巷交换湿信线索。',
@@ -94,6 +96,11 @@ describe('NextChapterPrepPanel', () => {
     expect(document.body).not.toHaveTextContent('Next Chapter Prep');
     expect(screen.getByText('第 2 章建议目标')).toBeInTheDocument();
     expect(screen.getByText('林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
+    expect(screen.getByText('当前 Story Bible')).toBeInTheDocument();
+    expect(screen.getByText('正式设定版本：第 1 版')).toBeInTheDocument();
+    expect(screen.getByText('青岚城由城主府、云河剑宗与地下商盟共同影响。灵脉衰退正在改变各方力量平衡，主角必须查清城主府叛乱传闻的真相。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('truth_canon_version');
+    expect(document.body).not.toHaveTextContent('truth_canon_excerpt');
     expect(screen.getByText('上一章摘要')).toBeInTheDocument();
     expect(screen.getByText('林砚与沈微霜在雨巷交换湿信线索。')).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('previous_chapter_summary');

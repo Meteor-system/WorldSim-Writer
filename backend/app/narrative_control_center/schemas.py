@@ -94,6 +94,8 @@ class NextChapterPrepEvent(BaseModel):
 class NextChapterPrepResponse(BaseModel):
     world_id: int
     world_version: int
+    truth_canon_version: int
+    truth_canon_excerpt: str
     next_chapter_number: int
     suggested_goal: str
     previous_chapter_summary: str | None = None
