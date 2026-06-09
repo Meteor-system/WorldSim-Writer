@@ -448,9 +448,12 @@ def test_export_markdown_adds_vault_manifest_for_archive_verification(client, mo
     assert '- [[Events/Event-001]] `Events/Event-001.md`' in manifest
 
 
-def test_export_markdown_adds_story_bible_and_event_notes_with_wikilinks(client, monkeypatch):
+def test_export_markdown_adds_story_bible_and_event_notes_with_wikilinks(client, db_session, monkeypatch):
     token, world_id = register_and_create_world(client, 'markdown-story-events@example.com')
     approved = approve_chapter(client, token, world_id, monkeypatch)
+    world = db_session.get(World, world_id)
+    world.current_foreshadows = [world.current_foreshadows[0] | {'source_chapter_id': approved['id']}]
+    db_session.commit()
 
     response = client.post(f'/worlds/{world_id}/export/markdown', headers=auth_headers(token))
 
@@ -486,6 +489,9 @@ def test_export_markdown_adds_story_bible_and_event_notes_with_wikilinks(client,
     assert all(f"chapter_id: {approved['id']}" not in content for content in event_notes)
     assert all('character_id' not in content for content in event_notes)
     assert all('foreshadow_id' not in content for content in event_notes)
+
+    foreshadow_note = next(content for path, content in files_by_path.items() if path.startswith('Foreshadows/'))
+    assert '- Source Chapter: [[Chapters/Chapter-001]]' in foreshadow_note
 
 
 def test_export_markdown_sanitizes_and_deduplicates_markdown_paths(client, db_session):

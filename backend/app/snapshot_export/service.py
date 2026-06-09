@@ -452,7 +452,12 @@ def _character_markdown(character: dict[str, Any], relations: list[dict[str, Any
     return '\n'.join(lines) + '\n'
 
 
-def _foreshadow_markdown(foreshadow: dict[str, Any], character_by_id: dict[int, dict[str, Any]], character_paths: dict[int, str]) -> str:
+def _foreshadow_markdown(
+    foreshadow: dict[str, Any],
+    character_by_id: dict[int, dict[str, Any]],
+    character_paths: dict[int, str],
+    chapter_paths: dict[int, str],
+) -> str:
     related_character_lines = []
     for character_id in foreshadow.get('related_character_ids', []):
         name = _character_name(character_by_id, character_id)
@@ -460,6 +465,7 @@ def _foreshadow_markdown(foreshadow: dict[str, Any], character_by_id: dict[int, 
             related_character_lines.append(f"[[{_wiki_path(character_paths[character_id])}]] {name}")
         else:
             related_character_lines.append(name)
+    source_chapter_link = _foreshadow_source_chapter_link(foreshadow, chapter_paths)
     return '\n'.join(
         [
             _frontmatter(
@@ -480,7 +486,7 @@ def _foreshadow_markdown(foreshadow: dict[str, Any], character_by_id: dict[int, 
             f"- Type: {foreshadow.get('foreshadow_type', '')}",
             f"- Status: {foreshadow.get('status', '')}",
             f"- Urgency: {foreshadow.get('urgency_level', '')}",
-            f"- Source Chapter: {foreshadow.get('source_chapter_id') or ''}",
+            f"- Source Chapter: {source_chapter_link}",
             f"- Related Characters: {_markdown_value(related_character_lines)}",
             f"- Expected Resolution: {foreshadow.get('expected_resolution_window') or ''}",
             '',
@@ -550,6 +556,13 @@ def _chapter_markdown(chapter: dict[str, Any], sequence: int) -> str:
             '',
         ]
     )
+
+
+def _foreshadow_source_chapter_link(foreshadow: dict[str, Any], chapter_paths: dict[int, str]) -> str:
+    source_chapter_id = foreshadow.get('source_chapter_id')
+    if source_chapter_id in chapter_paths:
+        return f"[[{_wiki_path(chapter_paths[source_chapter_id])}]]"
+    return str(source_chapter_id or '')
 
 
 def _event_chapter_link(event: dict[str, Any], chapter_paths: dict[int, str]) -> str:
@@ -909,7 +922,7 @@ def render_markdown_bundle(payload: dict[str, Any]) -> list[dict[str, str]]:
     files.extend(
         {
             'path': foreshadow_paths[foreshadow['id']],
-            'content': _foreshadow_markdown(foreshadow, character_by_id, character_paths),
+            'content': _foreshadow_markdown(foreshadow, character_by_id, character_paths, chapter_paths),
         }
         for foreshadow in payload['foreshadows']
     )
