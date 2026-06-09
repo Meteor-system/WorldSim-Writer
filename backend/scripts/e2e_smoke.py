@@ -674,11 +674,12 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             )
             if _has_failed(summary):
                 return _finalize_summary(summary)
-            if not _require_fields(summary, 'continuous_canon_update', canon, ['world_version']):
+            if not _require_fields(summary, 'continuous_canon_update', canon, ['world_version', 'truth_canon_version']):
                 return _finalize_summary(summary)
-            if not _require_int_fields(summary, 'continuous_canon_update', canon, ['world_version']):
+            if not _require_int_fields(summary, 'continuous_canon_update', canon, ['world_version', 'truth_canon_version']):
                 return _finalize_summary(summary)
             canon_world_version = canon['world_version']
+            canon_truth_canon_version = canon['truth_canon_version']
             expected_canon_world_version = overview_world_version + 1
             if canon_world_version != expected_canon_world_version:
                 summary['failed_step'] = 'continuous_canon_update'
@@ -692,10 +693,12 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 summary,
                 'next_chapter_prep',
                 prep,
-                ['world_version', 'next_chapter_number', 'previous_chapter_summary'],
+                ['world_version', 'truth_canon_version', 'truth_canon_excerpt', 'next_chapter_number', 'previous_chapter_summary'],
             ):
                 return _finalize_summary(summary)
-            if not _require_int_fields(summary, 'next_chapter_prep', prep, ['world_version', 'next_chapter_number']):
+            if not _require_int_fields(summary, 'next_chapter_prep', prep, ['world_version', 'truth_canon_version', 'next_chapter_number']):
+                return _finalize_summary(summary)
+            if not _require_string_fields(summary, 'next_chapter_prep', prep, ['truth_canon_excerpt']):
                 return _finalize_summary(summary)
             for field in ['source_signals', 'priority_characters', 'priority_foreshadows', 'progression_hints', 'continuity_warnings', 'recent_events', 'material_references']:
                 if not _require_list(summary, 'next_chapter_prep', prep, field):
@@ -703,6 +706,11 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             if prep.get('world_version') != canon_world_version:
                 summary['failed_step'] = 'next_chapter_prep'
                 summary['error'] = 'WORLD_VERSION_NOT_INCREMENTED'
+                return _finalize_summary(summary)
+            prep_truth_canon_excerpt_matches = prep.get('truth_canon_excerpt') == SECOND_CHAPTER_CANON
+            if prep.get('truth_canon_version') != canon_truth_canon_version or not prep_truth_canon_excerpt_matches:
+                summary['failed_step'] = 'next_chapter_prep'
+                summary['error'] = 'CANON_EVIDENCE_NOT_CURRENT'
                 return _finalize_summary(summary)
             if not prep.get('previous_chapter_summary'):
                 summary['failed_step'] = 'next_chapter_prep'
@@ -759,11 +767,12 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             )
             if _has_failed(summary):
                 return _finalize_summary(summary)
-            if not _require_fields(summary, 'stale_canon_update', stale_canon, ['world_version']):
+            if not _require_fields(summary, 'stale_canon_update', stale_canon, ['world_version', 'truth_canon_version']):
                 return _finalize_summary(summary)
-            if not _require_int_fields(summary, 'stale_canon_update', stale_canon, ['world_version']):
+            if not _require_int_fields(summary, 'stale_canon_update', stale_canon, ['world_version', 'truth_canon_version']):
                 return _finalize_summary(summary)
             stale_world_version = stale_canon['world_version']
+            stale_truth_canon_version = stale_canon['truth_canon_version']
 
             try:
                 stale_response = client.post(
@@ -789,10 +798,12 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 summary,
                 'fresh_next_chapter_prep',
                 fresh_prep,
-                ['world_version', 'next_chapter_number', 'previous_chapter_summary'],
+                ['world_version', 'truth_canon_version', 'truth_canon_excerpt', 'next_chapter_number', 'previous_chapter_summary'],
             ):
                 return _finalize_summary(summary)
-            if not _require_int_fields(summary, 'fresh_next_chapter_prep', fresh_prep, ['world_version', 'next_chapter_number']):
+            if not _require_int_fields(summary, 'fresh_next_chapter_prep', fresh_prep, ['world_version', 'truth_canon_version', 'next_chapter_number']):
+                return _finalize_summary(summary)
+            if not _require_string_fields(summary, 'fresh_next_chapter_prep', fresh_prep, ['truth_canon_excerpt']):
                 return _finalize_summary(summary)
             for field in ['source_signals', 'priority_characters', 'priority_foreshadows', 'progression_hints', 'continuity_warnings', 'recent_events', 'material_references']:
                 if not _require_list(summary, 'fresh_next_chapter_prep', fresh_prep, field):
@@ -800,6 +811,11 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             if fresh_prep.get('world_version') != stale_world_version:
                 summary['failed_step'] = 'fresh_next_chapter_prep'
                 summary['error'] = 'WORLD_VERSION_NOT_INCREMENTED'
+                return _finalize_summary(summary)
+            fresh_prep_truth_canon_excerpt_matches = fresh_prep.get('truth_canon_excerpt') == STALE_DRAFT_CANON
+            if fresh_prep.get('truth_canon_version') != stale_truth_canon_version or not fresh_prep_truth_canon_excerpt_matches:
+                summary['failed_step'] = 'fresh_next_chapter_prep'
+                summary['error'] = 'CANON_EVIDENCE_NOT_CURRENT'
                 return _finalize_summary(summary)
 
             fresh_context = _execution_context_from_prep(fresh_prep, FRESH_SECOND_CHAPTER_GOAL)
@@ -945,6 +961,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 'enabled': True,
                 'canon_world_version': canon_world_version,
                 'prep_world_version': prep.get('world_version'),
+                'prep_truth_canon_version': prep.get('truth_canon_version'),
+                'prep_truth_canon_excerpt_matches': prep_truth_canon_excerpt_matches,
                 'previous_chapter_summary_present': bool(prep.get('previous_chapter_summary')),
                 'priority_foreshadow_count': priority_foreshadow_count,
                 'second_draft_source_world_version': second_draft.get('source_world_version'),
@@ -954,6 +972,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 'stale_world_version': stale_world_version,
                 'stale_draft_rejected': stale_draft_rejected,
                 'fresh_prep_world_version': fresh_prep.get('world_version'),
+                'fresh_prep_truth_canon_version': fresh_prep.get('truth_canon_version'),
+                'fresh_prep_truth_canon_excerpt_matches': fresh_prep_truth_canon_excerpt_matches,
                 'fresh_draft_source_world_version': fresh_draft_source_world_version,
                 'fresh_context_goal_matches': fresh_context_goal_matches,
                 'fresh_previous_chapter_summary_present': bool(fresh_execution_context.get('previous_chapter_summary')),

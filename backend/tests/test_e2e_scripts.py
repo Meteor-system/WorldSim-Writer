@@ -55,14 +55,14 @@ def overview_response(world_version=2, approved_chapter_count=1):
     )
 
 
-def world_response(world_version=3, truth_canon='第二章前设定：城主府外墙刻着三枚潮汐符印。'):
+def world_response(world_version=3, truth_canon='第二章前设定：城主府外墙刻着三枚潮汐符印。', truth_canon_version=None):
     return json_response(
         {
             'id': 10,
             'title': '青岚城风云',
             'genre_template': 'xianxia_intrigue',
             'truth_canon': truth_canon,
-            'truth_canon_version': world_version,
+            'truth_canon_version': truth_canon_version if truth_canon_version is not None else world_version,
             'world_version': world_version,
             'status': 'active',
             'tone_profile': {},
@@ -73,11 +73,18 @@ def world_response(world_version=3, truth_canon='第二章前设定：城主府�
     )
 
 
-def next_chapter_prep_response(world_version=3, previous_summary='林砚在雨夜发现神秘书阁。'):
+def next_chapter_prep_response(
+    world_version=3,
+    previous_summary='林砚在雨夜发现神秘书阁。',
+    truth_canon_excerpt='第二章前设定：城主府外墙刻着三枚潮汐符印。',
+    truth_canon_version=None,
+):
     return json_response(
         {
             'world_id': 10,
             'world_version': world_version,
+            'truth_canon_version': truth_canon_version if truth_canon_version is not None else world_version,
+            'truth_canon_excerpt': truth_canon_excerpt,
             'next_chapter_number': 2,
             'suggested_goal': '继续追查城主府密道',
             'previous_chapter_summary': previous_summary,
@@ -234,11 +241,17 @@ def test_e2e_smoke_script_optionally_checks_continuous_second_chapter_and_stale_
     monkeypatch.setenv('E2E_CONTINUOUS_CHAPTERS', '1')
     monkeypatch.delenv('E2E_REAL_LLM', raising=False)
     module = load_e2e_smoke_module()
-    second_prep = next_chapter_prep_response(world_version=3).json()
+    second_prep = next_chapter_prep_response(
+        world_version=3,
+        truth_canon_excerpt=module.SECOND_CHAPTER_CANON,
+        truth_canon_version=2,
+    ).json()
     second_context = module._execution_context_from_prep(second_prep, module.SECOND_CHAPTER_GOAL)
     fresh_second_prep = next_chapter_prep_response(
         world_version=4,
         previous_summary='第二章重新准备前仍承接第一章摘要。',
+        truth_canon_excerpt=module.STALE_DRAFT_CANON,
+        truth_canon_version=3,
     ).json()
     fresh_second_context = module._execution_context_from_prep(fresh_second_prep, module.FRESH_SECOND_CHAPTER_GOAL)
     transport = SequencedTransport(
@@ -252,10 +265,10 @@ def test_e2e_smoke_script_optionally_checks_continuous_second_chapter_and_stale_
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 1}),
             overview_response(world_version=2, approved_chapter_count=1),
-            world_response(world_version=3),
+            world_response(world_version=3, truth_canon_version=2),
             json_response(second_prep),
             json_response({'chapter_id': 21, 'draft_id': 31, 'draft_version': 1, 'source_world_version': 3, 'execution_context': second_context}),
-            world_response(world_version=4, truth_canon='第三章前设定：灵井只在子夜回声。'),
+            world_response(world_version=4, truth_canon='第三章前设定：灵井只在子夜回声。', truth_canon_version=3),
             json_response({'detail': 'WORLD_VERSION_MISMATCH'}, status_code=409),
             json_response(fresh_second_prep),
             json_response({'chapter_id': 22, 'draft_id': 32, 'draft_version': 1, 'source_world_version': 4, 'execution_context': fresh_second_context}),
@@ -276,6 +289,8 @@ def test_e2e_smoke_script_optionally_checks_continuous_second_chapter_and_stale_
     assert summary['checks']['continuous_chapters']['enabled'] is True
     assert summary['checks']['continuous_chapters']['canon_world_version'] == 3
     assert summary['checks']['continuous_chapters']['prep_world_version'] == 3
+    assert summary['checks']['continuous_chapters']['prep_truth_canon_version'] == 2
+    assert summary['checks']['continuous_chapters']['prep_truth_canon_excerpt_matches'] is True
     assert summary['checks']['continuous_chapters']['previous_chapter_summary_present'] is True
     assert summary['checks']['continuous_chapters']['priority_foreshadow_count'] == 1
     assert summary['checks']['continuous_chapters']['stale_draft_rejected'] is True
@@ -286,6 +301,8 @@ def test_e2e_smoke_script_optionally_checks_continuous_second_chapter_and_stale_
     assert summary['checks']['continuous_chapters']['second_priority_foreshadow_count'] == 1
     assert summary['checks']['continuous_chapters']['stale_world_version'] == 4
     assert summary['checks']['continuous_chapters']['fresh_prep_world_version'] == 4
+    assert summary['checks']['continuous_chapters']['fresh_prep_truth_canon_version'] == 3
+    assert summary['checks']['continuous_chapters']['fresh_prep_truth_canon_excerpt_matches'] is True
     assert summary['checks']['continuous_chapters']['fresh_context_goal_matches'] is True
     assert summary['checks']['continuous_chapters']['fresh_previous_chapter_summary_present'] is True
     assert summary['checks']['continuous_chapters']['fresh_priority_foreshadow_count'] == 1
