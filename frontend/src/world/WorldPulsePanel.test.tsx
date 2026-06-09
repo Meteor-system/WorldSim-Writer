@@ -36,14 +36,27 @@ describe('WorldPulsePanel', () => {
   it('renders headline, status, mode, indicators, focus, and actions', () => {
     render(<WorldPulsePanel pulse={pulse} loading={false} error="" />);
 
-    expect(screen.getByText('World Pulse')).toBeInTheDocument();
-    expect(screen.getByText('World Pulse：开放线索压力较高，建议下一章优先收束。')).toBeInTheDocument();
-    expect(screen.getByText('状态：urgent')).toBeInTheDocument();
-    expect(screen.getByText('模式：converge')).toBeInTheDocument();
+    expect(screen.getByText('世界心跳')).toBeInTheDocument();
+    expect(screen.getByText('世界心跳：开放线索压力较高，建议下一章优先收束。')).toBeInTheDocument();
+    expect(screen.getByText('状态：需要立刻处理')).toBeInTheDocument();
+    expect(screen.getByText('模式：叙事收束')).toBeInTheDocument();
     expect(screen.getByText('叙事健康')).toBeInTheDocument();
+    expect(screen.getByText('84/100 · 需要观察')).toBeInTheDocument();
+    expect(screen.getByText('来自叙事健康度的聚合风险。')).toBeInTheDocument();
     expect(screen.getByText('开放线索')).toBeInTheDocument();
     expect(screen.getByText('处理开放线索压力')).toBeInTheDocument();
+    expect(screen.getByText('优先级：需要立刻处理')).toBeInTheDocument();
+    expect(screen.getByText('建议：查看开放线索看板。')).toBeInTheDocument();
+    expect(screen.getByText('线索来源：伏笔线索')).toBeInTheDocument();
     expect(screen.getByText('查看开放线索看板')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('Operational Overview');
+    expect(document.body).not.toHaveTextContent('Narrative Health');
+    expect(document.body).not.toHaveTextContent('84/100 · watch');
+    expect(document.body).not.toHaveTextContent('状态：urgent');
+    expect(document.body).not.toHaveTextContent('模式：converge');
+    expect(document.body).not.toHaveTextContent('查看 Open Threads Board。');
+    expect(document.body).not.toHaveTextContent('关联线索：foreshadow:9');
+    expect(document.body).not.toHaveTextContent('foreshadow:9');
   });
 
   it('renders empty state', () => {
