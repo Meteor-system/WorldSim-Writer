@@ -733,6 +733,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             if not _require_optional_dict(summary, 'second_draft', second_draft, 'execution_context'):
                 return _finalize_summary(summary)
             second_execution_context = second_draft.get('execution_context') or {}
+            second_priority_foreshadow_count = len(second_execution_context.get('priority_foreshadows') or [])
+            second_context_goal_matches = second_execution_context.get('goal') == SECOND_CHAPTER_GOAL
             if second_draft.get('source_world_version') != canon_world_version:
                 summary['failed_step'] = 'second_draft'
                 summary['error'] = 'WORLD_VERSION_MISMATCH'
@@ -741,7 +743,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 summary['failed_step'] = 'second_draft'
                 summary['error'] = 'EXECUTION_CONTEXT_NOT_CURRENT'
                 return _finalize_summary(summary)
-            if not second_execution_context.get('priority_foreshadows'):
+            if second_priority_foreshadow_count == 0:
                 summary['failed_step'] = 'second_draft'
                 summary['error'] = 'EXECUTION_CONTEXT_FORESHADOWS_MISSING'
                 return _finalize_summary(summary)
@@ -822,6 +824,8 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             fresh_draft_version = fresh_draft['draft_version']
             fresh_draft_source_world_version = fresh_draft['source_world_version']
             fresh_execution_context = fresh_draft.get('execution_context') or {}
+            fresh_priority_foreshadow_count = len(fresh_execution_context.get('priority_foreshadows') or [])
+            fresh_context_goal_matches = fresh_execution_context.get('goal') == FRESH_SECOND_CHAPTER_GOAL
             if fresh_draft_source_world_version != stale_world_version:
                 summary['failed_step'] = 'fresh_second_draft'
                 summary['error'] = 'WORLD_VERSION_MISMATCH'
@@ -830,7 +834,7 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 summary['failed_step'] = 'fresh_second_draft'
                 summary['error'] = 'EXECUTION_CONTEXT_NOT_CURRENT'
                 return _finalize_summary(summary)
-            if not fresh_execution_context.get('priority_foreshadows'):
+            if fresh_priority_foreshadow_count == 0:
                 summary['failed_step'] = 'fresh_second_draft'
                 summary['error'] = 'EXECUTION_CONTEXT_FORESHADOWS_MISSING'
                 return _finalize_summary(summary)
@@ -943,8 +947,18 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
                 'prep_world_version': prep.get('world_version'),
                 'previous_chapter_summary_present': bool(prep.get('previous_chapter_summary')),
                 'priority_foreshadow_count': priority_foreshadow_count,
+                'second_draft_source_world_version': second_draft.get('source_world_version'),
+                'second_context_goal_matches': second_context_goal_matches,
+                'second_previous_chapter_summary_present': bool(second_execution_context.get('previous_chapter_summary')),
+                'second_priority_foreshadow_count': second_priority_foreshadow_count,
+                'stale_world_version': stale_world_version,
                 'stale_draft_rejected': stale_draft_rejected,
+                'fresh_prep_world_version': fresh_prep.get('world_version'),
                 'fresh_draft_source_world_version': fresh_draft_source_world_version,
+                'fresh_context_goal_matches': fresh_context_goal_matches,
+                'fresh_previous_chapter_summary_present': bool(fresh_execution_context.get('previous_chapter_summary')),
+                'fresh_priority_foreshadow_count': fresh_priority_foreshadow_count,
+                'expected_second_world_version_after': stale_world_version + 1,
                 'second_chapter_approved': second_approved.get('status') == 'approved',
                 'approved_chapter_count_incremented': second_chapter_count_incremented,
             }

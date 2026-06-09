@@ -280,6 +280,16 @@ def test_e2e_smoke_script_optionally_checks_continuous_second_chapter_and_stale_
     assert summary['checks']['continuous_chapters']['priority_foreshadow_count'] == 1
     assert summary['checks']['continuous_chapters']['stale_draft_rejected'] is True
     assert summary['checks']['continuous_chapters']['fresh_draft_source_world_version'] == 4
+    assert summary['checks']['continuous_chapters']['second_draft_source_world_version'] == 3
+    assert summary['checks']['continuous_chapters']['second_context_goal_matches'] is True
+    assert summary['checks']['continuous_chapters']['second_previous_chapter_summary_present'] is True
+    assert summary['checks']['continuous_chapters']['second_priority_foreshadow_count'] == 1
+    assert summary['checks']['continuous_chapters']['stale_world_version'] == 4
+    assert summary['checks']['continuous_chapters']['fresh_prep_world_version'] == 4
+    assert summary['checks']['continuous_chapters']['fresh_context_goal_matches'] is True
+    assert summary['checks']['continuous_chapters']['fresh_previous_chapter_summary_present'] is True
+    assert summary['checks']['continuous_chapters']['fresh_priority_foreshadow_count'] == 1
+    assert summary['checks']['continuous_chapters']['expected_second_world_version_after'] == 5
     assert summary['checks']['continuous_chapters']['second_chapter_approved'] is True
     assert summary['checks']['continuous_chapters']['approved_chapter_count_incremented'] is True
     assert [request.url.path for request in transport.requests] == [
