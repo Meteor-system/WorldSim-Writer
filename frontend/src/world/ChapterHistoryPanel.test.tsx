@@ -105,7 +105,8 @@ describe('ChapterHistoryPanel', () => {
     render(<ChapterHistoryPanel history={history} loading={false} onLoadDetail={onLoadDetail} />);
 
     expect(screen.getByText('章节历史')).toBeInTheDocument();
-    expect(screen.getByText('第一章 雨巷密谈 · v2 · 世界 1 → 2')).toBeInTheDocument();
+    expect(screen.getByText('已批准章节历史')).toBeInTheDocument();
+    expect(screen.getByText('第一章 雨巷密谈 · 批准稿第 2 版 · 世界第 1 版 → 第 2 版')).toBeInTheDocument();
     expect(screen.getByText('角色变化 1')).toBeInTheDocument();
     expect(screen.getByText('伏笔变化 1')).toBeInTheDocument();
     expect(screen.getByText('林砚停在雨巷口，掌心玉佩微微发烫。')).toBeInTheDocument();
@@ -114,7 +115,8 @@ describe('ChapterHistoryPanel', () => {
 
     expect(onLoadDetail).toHaveBeenCalledWith(11);
     expect(await screen.findByText('章节详情')).toBeInTheDocument();
-    expect(screen.getByText('世界版本：1 → 2')).toBeInTheDocument();
+    expect(screen.getByText('第一章 雨巷密谈 · 批准稿第 2 版')).toBeInTheDocument();
+    expect(screen.getByText('世界进度：第 1 版 → 第 2 版')).toBeInTheDocument();
     expect(screen.getByText('林砚停在雨巷口，掌心玉佩微微发烫。')).toBeInTheDocument();
     expect(screen.getByText('审批结算说明')).toBeInTheDocument();
     expect(screen.getByText('候选素材写作参考')).toBeInTheDocument();
@@ -130,18 +132,26 @@ describe('ChapterHistoryPanel', () => {
     expect(screen.getByText('正式结算：角色变化 1 条，伏笔变化 1 条。')).toBeInTheDocument();
     expect(screen.getByText('角色变化')).toBeInTheDocument();
     expect(screen.getByText('角色：林砚')).toBeInTheDocument();
-    expect(screen.getByText('状态：active → 开始调查密信')).toBeInTheDocument();
+    expect(screen.getByText('状态：进行中 → 开始调查密信')).toBeInTheDocument();
     expect(screen.getByText('目标：追查湿信来源')).toBeInTheDocument();
     expect(screen.getByText('伏笔变化')).toBeInTheDocument();
     expect(screen.getByText('伏笔：裂纹玉佩')).toBeInTheDocument();
-    expect(screen.getByText('状态：planted → advanced')).toBeInTheDocument();
+    expect(screen.getByText('状态：已埋下 → 推进中')).toBeInTheDocument();
     expect(screen.getByText('正式事件')).toBeInTheDocument();
     expect(screen.queryByText('chapter_approved · 世界 1 → 2')).not.toBeInTheDocument();
     expect(screen.queryByText(/character_change · character #1/)).not.toBeInTheDocument();
     expect(screen.queryByText(/foreshadow_change · foreshadow #1/)).not.toBeInTheDocument();
-    expect(screen.getByText('Critic：章节冲突清晰，但第二段信息揭示偏快。')).toBeInTheDocument();
+    expect(screen.getByText('编辑建议：章节冲突清晰，但第二段信息揭示偏快。')).toBeInTheDocument();
     expect(screen.getByText('角色弧线：本章推动林砚从被动等待转向主动追查。')).toBeInTheDocument();
-    expect(screen.getByText('执行上下文快照')).toBeInTheDocument();
+    expect(screen.getByText('写作依据快照')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('Approved Chapter History');
+    expect(document.body).not.toHaveTextContent('Chapter Detail');
+    expect(document.body).not.toHaveTextContent('第一章 雨巷密谈 · v2 · 世界 1 → 2');
+    expect(document.body).not.toHaveTextContent('世界版本：1 → 2');
+    expect(document.body).not.toHaveTextContent('状态：active → 开始调查密信');
+    expect(document.body).not.toHaveTextContent('状态：planted → advanced');
+    expect(document.body).not.toHaveTextContent('Critic：');
+    expect(document.body).not.toHaveTextContent('执行上下文快照');
     expect(screen.getByText('目标：林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
     expect(screen.getByText('优先伏笔：裂纹玉佩')).toBeInTheDocument();

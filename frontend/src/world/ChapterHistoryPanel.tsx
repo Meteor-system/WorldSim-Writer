@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ChapterHistoryChange, ChapterHistoryDetailResponse, ChapterHistoryResponse } from '../api/types';
+import { labelStatus, labelWorldVersion } from './displayLabels';
 
 type Props = {
   history: ChapterHistoryResponse | null;
@@ -8,10 +9,11 @@ type Props = {
   onLoadDetail: (chapterId: number) => Promise<ChapterHistoryDetailResponse>;
 };
 
-function valueText(value: unknown): string {
+function valueText(value: unknown, fieldName?: string): string {
   if (Array.isArray(value)) return value.map(String).join('、') || '无';
   if (value === null || value === undefined || value === '') return '未设置';
-  return String(value);
+  const text = String(value);
+  return fieldName === 'status' ? labelStatus(text) : text;
 }
 
 function contextNames(values: Array<{ name?: string; title?: string }>): string {
@@ -41,7 +43,7 @@ function changeTarget(change: ChapterHistoryChange, nameLookup: Record<number, s
 function changeLines(change: ChapterHistoryChange): string[] {
   const lines: string[] = [];
   if (change.before?.status !== undefined || change.after?.status !== undefined) {
-    lines.push(`状态：${valueText(change.before?.status)} → ${valueText(change.after?.status)}`);
+    lines.push(`状态：${valueText(change.before?.status, 'status')} → ${valueText(change.after?.status, 'status')}`);
   }
   if (change.after?.current_goals !== undefined) {
     lines.push(`目标：${valueText(change.after.current_goals)}`);
@@ -119,7 +121,7 @@ export function ChapterHistoryPanel({ history, loading, error, onLoadDetail }: P
   return (
     <section className="book-card space-y-5 p-5">
       <div>
-        <p className="chapter-kicker">Approved Chapter History</p>
+        <p className="chapter-kicker">已批准章节历史</p>
         <h2 className="text-2xl font-black text-[#34210f]">章节历史</h2>
       </div>
 
@@ -132,7 +134,7 @@ export function ChapterHistoryPanel({ history, loading, error, onLoadDetail }: P
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="font-black text-[#3b2511]">
-                    {chapter.title} · v{chapter.approved_version} · 世界 {chapter.base_world_version} → {chapter.world_version_after}
+                    {chapter.title} · 批准稿第 {chapter.approved_version} 版 · 世界{labelWorldVersion(chapter.base_world_version)} → {labelWorldVersion(chapter.world_version_after)}
                   </h3>
                   <p className="manuscript mt-2 text-sm">{chapter.approved_excerpt}</p>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold text-[#5e3b1c]">
@@ -156,13 +158,13 @@ export function ChapterHistoryPanel({ history, loading, error, onLoadDetail }: P
       {selectedDetail && (
         <article className="space-y-4 rounded-2xl border border-amber-900/15 bg-amber-50/35 p-4">
           <div>
-            <p className="chapter-kicker">Chapter Detail</p>
+            <p className="chapter-kicker">章节复盘</p>
             <h3 className="text-xl font-black text-[#34210f]">章节详情</h3>
             <p className="mt-2 text-sm font-bold text-[#5e3b1c]">
-              {selectedDetail.title} · v{selectedDetail.approved_version}
+              {selectedDetail.title} · 批准稿第 {selectedDetail.approved_version} 版
             </p>
             <p className="mt-1 text-sm font-bold text-[#5e3b1c]">
-              世界版本：{selectedDetail.world_version_before} → {selectedDetail.world_version_after}
+              世界进度：{labelWorldVersion(selectedDetail.world_version_before)} → {labelWorldVersion(selectedDetail.world_version_after)}
             </p>
           </div>
 
@@ -174,7 +176,7 @@ export function ChapterHistoryPanel({ history, loading, error, onLoadDetail }: P
           <div className="rounded-2xl bg-white/35 p-4">
             <h4 className="font-black text-[#3b2511]">审批结算说明</h4>
             <p className="manuscript mt-2 text-sm">
-              世界版本：第 {selectedDetail.world_version_before} 版 → 第 {selectedDetail.world_version_after} 版。
+              世界进度：{labelWorldVersion(selectedDetail.world_version_before)} → {labelWorldVersion(selectedDetail.world_version_after)}。
             </p>
             <p className="manuscript mt-1 text-sm">
               正式结算：角色变化 {selectedDetail.character_changes.length} 条，伏笔变化 {selectedDetail.foreshadow_changes.length} 条。
@@ -200,7 +202,7 @@ export function ChapterHistoryPanel({ history, loading, error, onLoadDetail }: P
 
           {selectedDetail.execution_context && (
             <div className="rounded-2xl bg-white/35 p-4">
-              <h4 className="font-black text-[#3b2511]">执行上下文快照</h4>
+              <h4 className="font-black text-[#3b2511]">写作依据快照</h4>
               <p className="manuscript mt-2 text-sm">目标：{selectedDetail.execution_context.goal}</p>
               <p className="manuscript mt-1 text-sm">推荐 POV：{selectedDetail.execution_context.recommended_pov.name ?? '暂无'}</p>
               <p className="manuscript mt-1 text-sm">优先角色：{contextNames(selectedDetail.execution_context.priority_characters)}</p>
@@ -208,7 +210,7 @@ export function ChapterHistoryPanel({ history, loading, error, onLoadDetail }: P
             </div>
           )}
 
-          {selectedDetail.critic_summary && <p className="manuscript rounded-2xl bg-white/35 p-3">Critic：{selectedDetail.critic_summary}</p>}
+          {selectedDetail.critic_summary && <p className="manuscript rounded-2xl bg-white/35 p-3">编辑建议：{selectedDetail.critic_summary}</p>}
           {selectedDetail.character_arc_summary && <p className="manuscript rounded-2xl bg-white/35 p-3">角色弧线：{selectedDetail.character_arc_summary}</p>}
 
           <ChangeList title="角色变化" changes={selectedDetail.character_changes} targetLabel="角色" nameLookup={nameLookup(selectedDetail.execution_context?.priority_characters ?? [], 'character_id')} />

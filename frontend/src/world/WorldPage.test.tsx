@@ -1149,7 +1149,7 @@ describe('WorldPage Narrative Control Center', () => {
     expect(await screen.findByText('Narrative Health')).toBeInTheDocument();
     expect(await screen.findByText('Open Threads Board')).toBeInTheDocument();
     expect((await screen.findAllByText('章节历史')).length).toBeGreaterThan(0);
-    expect(screen.getByText('第一章 雨巷密谈 · v1 · 世界 1 → 2')).toBeInTheDocument();
+    expect(screen.getByText('第一章 雨巷密谈 · 批准稿第 1 版 · 世界第 1 版 → 第 2 版')).toBeInTheDocument();
     expect(screen.getByText('下一章准备台')).toBeInTheDocument();
     expect(screen.getByText('林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
     expect(await screen.findByText('世界历史记录')).toBeInTheDocument();
