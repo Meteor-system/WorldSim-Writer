@@ -399,7 +399,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByText('Writer Draft')).toBeInTheDocument();
     expect(screen.getByText('世界已创建，第一章正在草稿审阅中')).toBeInTheDocument();
     expect(screen.getByText('这章尚未写入正史；只有点击「写入正史并更新世界」后，世界进度、事件历史和正式设定才会更新。')).toBeInTheDocument();
-    expect(screen.getByText('当前世界进度仍为 v1，草稿基准为 v1。')).toBeInTheDocument();
+    expect(screen.getByText('当前世界进度仍为 第 1 版，草稿依据为 第 1 版。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('当前世界进度仍为 v1');
     expect(screen.getByText('写入正史前确认')).toBeInTheDocument();
     expect(screen.queryByText('世界推进结算')).not.toBeInTheDocument();
     expect(createChapter).toHaveBeenCalledWith(7, expect.objectContaining({
@@ -531,7 +532,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     const user = userEvent.setup();
     render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext }} onBack={vi.fn()} onApproved={vi.fn()} />);
 
-    expect(screen.getByText('本章执行上下文')).toBeInTheDocument();
+    expect(screen.getByText('本章写作依据')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('本章执行上下文');
     expect(screen.getByText('来源：下一章准备台')).toBeInTheDocument();
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
     expect(screen.getByText('优先角色：林砚')).toBeInTheDocument();
@@ -561,15 +563,17 @@ describe('StudioPage Review Studio 2.0 controls', () => {
         recommended_pov: { character_id: 1, name: '林砚' },
       }),
     }));
-    expect(await screen.findByText('已冻结执行上下文：下一章准备台 · v2')).toBeInTheDocument();
-    expect(document.body).not.toHaveTextContent('已冻结执行上下文：next_chapter_prep · v2');
+    expect(await screen.findByText('写作依据已锁定：下一章准备台 · 第 2 版')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('已冻结执行上下文');
+    expect(document.body).not.toHaveTextContent('next_chapter_prep · v2');
   });
 
   it('creates manual context when Studio opens without NCC execution context', async () => {
     const user = userEvent.setup();
     render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
 
-    expect(screen.getByText('本章暂无 NCC 执行上下文。创建章节时会根据当前目标生成手动上下文快照。')).toBeInTheDocument();
+    expect(screen.getByText('本章还没有固定写作依据。创建章节时会保存当前目标、世界进度和下一章准备信息。')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('NCC 执行上下文');
     await user.type(screen.getByLabelText('章节目标'), '手动输入章节目标');
     expect(screen.getByRole('button', { name: '创建章节' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '用候选素材参考创建章节' })).not.toBeInTheDocument();
@@ -592,7 +596,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.click(await screen.findByRole('button', { name: '生成大纲' }));
     await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
 
-    expect(await screen.findByText('执行上下文快照')).toBeInTheDocument();
+    expect(await screen.findByText('写作依据快照')).toBeInTheDocument();
     expect(screen.getByText('目标：林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
     expect(screen.getByText('连续性提醒：下一章需要补足试探过程。')).toBeInTheDocument();
     expect(screen.getAllByText('雨夜审讯（来源：旧设定.md）').length).toBeGreaterThan(0);
@@ -642,7 +646,9 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
 
     expect(screen.getByText('创作流程')).toBeInTheDocument();
-    expect(screen.getByText('世界进度：1')).toBeInTheDocument();
+    expect(screen.getByText('世界进度：第 1 版')).toBeInTheDocument();
+    expect(screen.getByText('裂纹玉佩 · 已埋下')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('裂纹玉佩 · planted');
 
     await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
     await user.click(screen.getByRole('button', { name: '创建章节' }));
@@ -928,7 +934,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('正史结算')).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('Canon Settlement');
     expect(onApproved).not.toHaveBeenCalled();
-    expect(screen.getByText('世界进度 v1 → v2')).toBeInTheDocument();
+    expect(screen.getByText('世界进度：第 1 版 → 第 2 版')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('世界进度 v1 → v2');
     expect(screen.getByText('已写入正史章节：1')).toBeInTheDocument();
     expect(screen.getByText('角色变化：1')).toBeInTheDocument();
     expect(screen.getByText('悬念/伏笔变化：1')).toBeInTheDocument();
@@ -1035,7 +1042,9 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(goal).toBeEnabled();
     expect(screen.getByRole('button', { name: '创建章节' })).toBeEnabled();
     expect(screen.getByText('当前上下文')).toBeInTheDocument();
-    expect(screen.getByText('世界进度：2')).toBeInTheDocument();
+    expect(screen.getByText('世界进度：第 2 版')).toBeInTheDocument();
+    expect(screen.getByText('依据的世界进度：第 2 版')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('源世界版本：v2');
     expect(screen.getByText('上一章摘要：林砚与沈微霜在雨巷交换湿信线索。')).toBeInTheDocument();
 
     await user.clear(goal);

@@ -25,6 +25,28 @@ const STATUS_LABELS: Record<string, string> = {
   changed: '变化',
 };
 
+const CHANGE_TYPE_LABELS: Record<string, string> = {
+  added: '新增资料',
+  removed: '移除资料',
+  changed: '资料已更新',
+  created: '新增资料',
+  updated: '资料已更新',
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  status: '状态',
+  title: '标题',
+  name: '名称',
+  current_goals: '当前目标',
+  public_profile: '公开资料',
+  hidden_traits: '隐藏设定',
+  description: '描述',
+  urgency_level: '紧迫度',
+  world_version: '世界进度',
+  truth_canon: '正史文本',
+  truth_canon_version: '正史修订',
+};
+
 const GENRE_LABELS: Record<string, string> = {
   xianxia: '仙侠',
   xianxia_intrigue: '仙侠 · 权谋/悬疑',
@@ -74,6 +96,19 @@ export function labelEventType(value: string): string {
 
 export function labelWorldVersion(version: number | string | null | undefined): string {
   return `第 ${version ?? '?'} 版`;
+}
+
+export function labelChangeType(value: string): string {
+  return CHANGE_TYPE_LABELS[value] ?? readableToken(value);
+}
+
+export function labelFieldName(value: string): string {
+  return FIELD_LABELS[value] ?? readableToken(value);
+}
+
+export function labelSnapshotOption(id: number, version: number, label?: string | null): string {
+  void id;
+  return `${label?.trim() || '未命名保存点'} · ${labelWorldVersion(version)}`;
 }
 
 export function localizeSubtitle(subtitle: string): string {

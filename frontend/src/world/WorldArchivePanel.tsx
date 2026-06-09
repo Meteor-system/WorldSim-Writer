@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { WorldMarkdownExportResponse, WorldSnapshotCompareResponse, WorldSnapshotListResponse, WorldSnapshotSummary } from '../api/types';
+import { labelChangeType, labelFieldName, labelObjectType, labelSnapshotOption, labelWorldVersion } from './displayLabels';
 
 type Props = {
   readOnly?: boolean;
@@ -108,9 +109,9 @@ export function WorldArchivePanel({ readOnly = false, onCreateSnapshot, onExport
     <article className="book-card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="chapter-kicker">Archive</p>
-          <h3 className="mt-2 text-2xl font-black text-[#34210f]">World Archive</h3>
-          <p className="manuscript mt-2 text-sm text-[#5e3b1c]">创建当前世界版本的只读快照，或生成 Obsidian 风格 Markdown 档案。</p>
+          <p className="chapter-kicker">世界档案</p>
+          <h3 className="mt-2 text-2xl font-black text-[#34210f]">世界档案库</h3>
+          <p className="manuscript mt-2 text-sm text-[#5e3b1c]">为当前正史创建保存点，或导出可放进 Obsidian 的 Markdown ZIP。</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {!readOnly && (
@@ -135,9 +136,9 @@ export function WorldArchivePanel({ readOnly = false, onCreateSnapshot, onExport
           {snapshotError && <p className="paper-error mt-2" role="alert">{snapshotError}</p>}
           {snapshot && (
             <div className="manuscript mt-2 text-sm">
-              <p>快照已创建：版本 {snapshot.world_version}</p>
-              <p>Snapshot #{snapshot.id}</p>
-              <p className="ink-muted">{snapshot.created_at}</p>
+              <p>保存点已创建：{labelWorldVersion(snapshot.world_version)}</p>
+              <p>可在快照对比中作为回看基准。</p>
+              <p className="ink-muted">创建时间：{snapshot.created_at}</p>
             </div>
           )}
           {!snapshot && !snapshotError && <p className="ink-muted mt-2 text-sm">尚未创建本次快照。</p>}
@@ -148,11 +149,10 @@ export function WorldArchivePanel({ readOnly = false, onCreateSnapshot, onExport
           {exportError && <p className="paper-error mt-2" role="alert">{exportError}</p>}
           {markdownExport && (
             <div className="mt-2 text-sm">
-              <p className="font-black text-[#3b2511]">下载包已就绪</p>
-              <p className="manuscript mt-1">导出成功：{markdownExport.files.length} 个 Markdown 文件已生成</p>
-              <p className="mt-1 font-bold text-[#5e3b1c]">Archive：{markdownExport.archive_filename}</p>
-              <p className="manuscript mt-1 text-sm">格式：{markdownExport.archive_format} · 编码：{markdownExport.archive_encoding} · 内联预览：{markdownExport.files_are_inline ? '是' : '否'}</p>
-              <p className="manuscript mt-1 text-sm">世界版本：v{markdownExport.world_version} · 文件数：{markdownExport.files.length}</p>
+              <p className="font-black text-[#3b2511]">Obsidian ZIP 已准备好</p>
+              <p className="manuscript mt-1">导出成功：包含 {markdownExport.files.length} 个 Markdown 文件。</p>
+              <p className="mt-1 font-bold text-[#5e3b1c]">下载文件：{markdownExport.archive_filename}</p>
+              <p className="manuscript mt-1 text-sm">世界进度：{labelWorldVersion(markdownExport.world_version)} · Markdown 文件：{markdownExport.files.length} 个</p>
               <p className="manuscript mt-1 text-sm">生成时间：{markdownExport.generated_at}</p>
               {downloadUrl && (
                 <a className="secondary-button mt-3 inline-flex" href={downloadUrl} download={markdownExport.archive_filename}>
@@ -208,7 +208,7 @@ export function WorldArchivePanel({ readOnly = false, onCreateSnapshot, onExport
             <select className="paper-input mt-1" value={baseSnapshotId} onChange={(event) => setBaseSnapshotId(event.target.value)}>
               <option value="">选择基准快照</option>
               {snapshotList.map((item) => (
-                <option key={item.id} value={item.id}>#{item.id} · v{item.world_version} · {item.label ?? '未命名快照'}</option>
+                <option key={item.id} value={item.id}>{labelSnapshotOption(item.id, item.world_version, item.label)}</option>
               ))}
             </select>
           </label>
@@ -217,7 +217,7 @@ export function WorldArchivePanel({ readOnly = false, onCreateSnapshot, onExport
             <select className="paper-input mt-1" value={targetSnapshotId} onChange={(event) => setTargetSnapshotId(event.target.value)}>
               <option value="">选择目标快照</option>
               {snapshotList.map((item) => (
-                <option key={item.id} value={item.id}>#{item.id} · v{item.world_version} · {item.label ?? '未命名快照'}</option>
+                <option key={item.id} value={item.id}>{labelSnapshotOption(item.id, item.world_version, item.label)}</option>
               ))}
             </select>
           </label>
@@ -232,15 +232,15 @@ export function WorldArchivePanel({ readOnly = false, onCreateSnapshot, onExport
               <p className="manuscript mt-1 text-sm">总变更：{comparison.summary.total_changes}</p>
               <div className="mt-2 flex flex-wrap gap-2">
                 {Object.entries(comparison.summary.object_type_counts).map(([objectType, count]) => (
-                  <span key={objectType} className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-[#5e3b1c]">{objectType}：{count}</span>
+                  <span key={objectType} className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-[#5e3b1c]">{labelObjectType(objectType)}：{count}</span>
                 ))}
               </div>
             </div>
             {Object.entries(comparison.changes).flatMap(([group, changes]) => changes.map((change) => (
               <article key={`${group}-${change.object_type}-${change.object_id ?? change.title}`} className="rounded-2xl border border-amber-900/10 bg-white/50 p-3">
                 <p className="text-sm font-black text-[#3b2511]">{change.title}</p>
-                <p className="manuscript mt-1 text-sm">{change.object_type} · {change.change_type}</p>
-                {change.fields_changed.length > 0 && <p className="manuscript mt-1 text-sm">字段：{change.fields_changed.join('、')}</p>}
+                <p className="manuscript mt-1 text-sm">{labelObjectType(change.object_type)} · 变化：{labelChangeType(change.change_type)}</p>
+                {change.fields_changed.length > 0 && <p className="manuscript mt-1 text-sm">调整项：{change.fields_changed.map(labelFieldName).join('、')}</p>}
               </article>
             )))}
           </div>

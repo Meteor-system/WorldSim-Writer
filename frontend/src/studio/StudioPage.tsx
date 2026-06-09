@@ -21,6 +21,7 @@ import {
 } from '../api/client';
 import type { ApprovalPreviewResponse, ApprovalReadinessResponse, BeatCard, ChapterExecutionContext, ChapterPipelineResponse, CharacterArcReportResponse, ConsistencySummary, ConsistencyWarning, CriticReportResponse, DraftDiffResponse, DraftResponse, StudioLaunchContext, WorldOverview } from '../api/types';
 import { buildExecutionContextFromPrep, withEditedGoal } from '../world/chapterExecutionContext';
+import { labelStatus, labelWorldVersion } from '../world/displayLabels';
 import { ApprovalReadinessPanel } from './ApprovalReadinessPanel';
 import { CharacterArcPanel } from './CharacterArcPanel';
 import { CriticReportPanel } from './CriticReportPanel';
@@ -105,17 +106,17 @@ function ExecutionContextSummary({ context, frozen }: { context?: ChapterExecuti
   if (!context) {
     return (
       <div className="book-card p-5">
-        <h2 className="font-black text-[#3b2511]">本章执行上下文</h2>
-        <p className="mt-3 ink-muted">本章暂无 NCC 执行上下文。创建章节时会根据当前目标生成手动上下文快照。</p>
+        <h2 className="font-black text-[#3b2511]">本章写作依据</h2>
+        <p className="mt-3 ink-muted">本章还没有固定写作依据。创建章节时会保存当前目标、世界进度和下一章准备信息。</p>
       </div>
     );
   }
   return (
     <div className="book-card p-5">
-      <h2 className="font-black text-[#3b2511]">本章执行上下文</h2>
-      {frozen && <p className="mt-2 text-sm font-bold text-[#5e3b1c]">已冻结执行上下文：{sourceLabel(context.source)} · v{context.source_world_version}</p>}
+      <h2 className="font-black text-[#3b2511]">本章写作依据</h2>
+      {frozen && <p className="mt-2 text-sm font-bold text-[#5e3b1c]">写作依据已锁定：{sourceLabel(context.source)} · {labelWorldVersion(context.source_world_version)}</p>}
       <p className="mt-3 ink-muted">来源：{sourceLabel(context.source)}</p>
-      <p className="mt-2 ink-muted">源世界版本：v{context.source_world_version}</p>
+      <p className="mt-2 ink-muted">依据的世界进度：{labelWorldVersion(context.source_world_version)}</p>
       <p className="mt-2 ink-muted">建议章节：第 {context.next_chapter_number ?? '?'} 章</p>
       {context.previous_chapter_summary && <p className="mt-2 ink-muted">上一章摘要：{context.previous_chapter_summary}</p>}
       <p className="mt-2 ink-muted">推荐 POV：{context.recommended_pov.name ?? '暂无'}</p>
@@ -132,8 +133,8 @@ function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionConte
   if (!context) return null;
   return (
     <section className="space-y-3 rounded-2xl bg-white/35 p-4">
-      <h3 className="font-black text-[#3b2511]">执行上下文快照</h3>
-      <p className="manuscript text-sm">来源：{sourceLabel(context.source)} · v{context.source_world_version}</p>
+      <h3 className="font-black text-[#3b2511]">写作依据快照</h3>
+      <p className="manuscript text-sm">来源：{sourceLabel(context.source)} · {labelWorldVersion(context.source_world_version)}</p>
       <p className="manuscript text-sm">目标：{context.goal}</p>
       {context.previous_chapter_summary && <p className="manuscript text-sm">上一章摘要：{context.previous_chapter_summary}</p>}
       <p className="manuscript text-sm">推荐 POV：{context.recommended_pov.name ?? '暂无'}</p>
@@ -826,7 +827,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           </div>
           <div className="book-card p-5">
             <h2 className="font-black text-[#3b2511]">当前上下文</h2>
-            <p className="mt-3 ink-muted">世界进度：{localWorld.world_version}</p>
+            <p className="mt-3 ink-muted">世界进度：{labelWorldVersion(localWorld.world_version)}</p>
             <p className="mt-2 ink-muted">POV：{localWorld.characters[0]?.name ?? '未设置'}</p>
             <p className="mt-2 ink-muted">故事大纲进度：下一章第 {localWorld.approved_chapter_count + 1} 章</p>
           </div>
@@ -834,7 +835,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           <div className="book-card p-5">
             <h3 className="font-black text-[#3b2511]">紧迫伏笔</h3>
             <div className="mt-3 space-y-2">
-              {localWorld.foreshadows.map((item) => <p className="manuscript" key={item.id}>{item.title} · {item.status}</p>)}
+              {localWorld.foreshadows.map((item) => <p className="manuscript" key={item.id}>{item.title} · {labelStatus(item.status)}</p>)}
             </div>
           </div>
         </aside>
@@ -869,7 +870,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
               {autoStartFailedWithoutDraft && (
                 <button className="primary-button mt-4" disabled={working} onClick={() => void retryAutoStartFirstDraft()}>重新创建第一章草稿</button>
               )}
-              {draft && <p className="manuscript mt-1 text-sm text-[#26364d]">当前世界进度仍为 v{localWorld.world_version}，草稿基准为 v{chapter?.base_world_version ?? localWorld.world_version}。</p>}
+              {draft && <p className="manuscript mt-1 text-sm text-[#26364d]">当前世界进度仍为 {labelWorldVersion(localWorld.world_version)}，草稿依据为 {labelWorldVersion(chapter?.base_world_version ?? localWorld.world_version)}。</p>}
             </section>
           )}
 
@@ -894,7 +895,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                 <p className="manuscript mt-1 text-sm">世界版本：第 {settlement.worldBefore} 版 → 第 {settlement.worldAfter} 版。</p>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
-                <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">世界进度 v{settlement.worldBefore} → v{settlement.worldAfter}</p>
+                <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">世界进度：{labelWorldVersion(settlement.worldBefore)} → {labelWorldVersion(settlement.worldAfter)}</p>
                 <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">已写入正史章节：{settlement.approvedChapterCount}</p>
                 <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">角色变化：{settlement.characterChangeCount}</p>
                 <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">悬念/伏笔变化：{settlement.foreshadowChangeCount}</p>

@@ -922,14 +922,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
             <section id="story-arc-planner" className="book-card scroll-mt-6 p-5 md:col-span-2">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="chapter-kicker">Story Arc Planner</p>
+                  <p className="chapter-kicker">故事弧线规划</p>
                   <h2 className="mt-2 text-2xl font-black text-[#34210f]">前 10 章故事弧线</h2>
                 </div>
                 <p className="ink-muted text-sm">下一章目标会按已批准章节数自动带入创作台。</p>
               </div>
               <nav aria-label="世界模块快速导航" className="mt-4 flex flex-wrap gap-2">
                 <a className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c] hover:bg-amber-200" href="#story-arc-planner">故事弧线</a>
-                <a className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c] hover:bg-amber-200" href="#narrative-control-center">叙事控制台</a>
+                <a className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c] hover:bg-amber-200" href="#narrative-control-center">下一章准备</a>
                 <a className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c] hover:bg-amber-200" href="#world-archive">导出/快照</a>
                 <a className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c] hover:bg-amber-200" href="#chapter-history">章节历史</a>
               </nav>
@@ -955,9 +955,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
 
             <section id="narrative-control-center" className="md:col-span-2 space-y-5 scroll-mt-6">
               <div>
-                <p className="chapter-kicker">Narrative Console</p>
-                <h2 className="mt-2 text-3xl font-black text-[#34210f]">Narrative Control Center</h2>
-                <p className="manuscript mt-2 text-sm text-[#5e3b1c]">查看已写入正史的世界历史记录，并准备下一章目标。</p>
+                <p className="chapter-kicker">下一章准备中心</p>
+                <h2 className="mt-2 text-3xl font-black text-[#34210f]">下一章准备中心</h2>
+                <p className="manuscript mt-2 text-sm text-[#5e3b1c]">查看已写入正史的世界历史记录，并把下一章目标准备好。</p>
                 {isArchivedWorld && (
                   <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">
                     已归档小说为只读模式；恢复写作后才能把建议带入创作台。
@@ -1026,15 +1026,15 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
         {tab === 'storyBible' && (
           <section className="space-y-5">
             <div>
-              <p className="chapter-kicker">Story Bible</p>
+              <p className="chapter-kicker">故事圣经</p>
               <h2 className="mt-2 text-3xl font-black text-[#34210f]">正史资料</h2>
-              <p className="manuscript mt-2 text-sm text-[#5e3b1c]">这里维护后续章节会读取的正式世界设定。人工修改会写入世界历史记录，并推进世界版本。</p>
+              <p className="manuscript mt-2 text-sm text-[#5e3b1c]">这里维护后续章节会读取的正式世界设定。适合记录不可轻易改变的世界规则、时间线原则和主角已确认的真相。</p>
             </div>
             <article className="book-card p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-xl font-black text-[#3b2511]">世界正史文本</h3>
-                  <p className="ink-muted mt-1 text-sm">{labelWorldVersion(world.world_version)} · 正史文本版本 {world.truth_canon_version}</p>
+                  <p className="ink-muted mt-1 text-sm">{labelWorldVersion(world.world_version)} · 设定修订：第 {world.truth_canon_version} 次</p>
                 </div>
                 {!isArchivedWorld && !canonEditing && (
                   <button className="primary-button" type="button" onClick={openCanonEditor}>编辑正史文本</button>
@@ -1045,8 +1045,10 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 <form className="mt-4 space-y-4" onSubmit={saveCanonEdit}>
                   <label className="block">
                     <span className="text-sm font-semibold text-[#4a321e]">正史文本</span>
+                    <p className="ink-muted mt-1 text-xs">保存后会记录为世界历史，并影响后续草稿读取的正式设定。</p>
                     <textarea
                       className="paper-input mt-1 min-h-40"
+                      aria-label="正史文本"
                       value={canonText}
                       onChange={(event) => setCanonText(event.target.value)}
                       required

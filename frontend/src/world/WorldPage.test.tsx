@@ -1083,8 +1083,10 @@ describe('WorldPage Story Arc Planner', () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
     expect(await screen.findByText('前 10 章故事弧线')).toBeInTheDocument();
+    expect(screen.getByText('故事弧线规划')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('Story Arc Planner');
     expect(screen.getByRole('link', { name: '故事弧线' })).toHaveAttribute('href', '#story-arc-planner');
-    expect(screen.getByRole('link', { name: '叙事控制台' })).toHaveAttribute('href', '#narrative-control-center');
+    expect(screen.getByRole('link', { name: '下一章准备' })).toHaveAttribute('href', '#narrative-control-center');
     expect(screen.getByRole('link', { name: '导出/快照' })).toHaveAttribute('href', '#world-archive');
     expect(screen.getByRole('link', { name: '章节历史' })).toHaveAttribute('href', '#chapter-history');
     expect(document.querySelector('#story-arc-planner')).toBeInTheDocument();
@@ -1109,7 +1111,8 @@ describe('WorldPage Narrative Control Center', () => {
     await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
 
     expect(await screen.findByText('已归档：写作已暂停')).toBeInTheDocument();
-    expect(await screen.findByText('Narrative Control Center')).toBeInTheDocument();
+    expect((await screen.findAllByText('下一章准备中心')).length).toBeGreaterThan(0);
+    expect(document.body).not.toHaveTextContent('Narrative Control Center');
     expect(screen.getByText('已归档小说为只读模式；恢复写作后才能把建议带入创作台。')).toBeInTheDocument();
     expect(screen.getByText('下一章准备台')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '用作下一章目标' })).not.toBeInTheDocument();
@@ -1125,7 +1128,8 @@ describe('WorldPage Narrative Control Center', () => {
     const user = userEvent.setup();
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
-    expect(await screen.findByText('Narrative Control Center')).toBeInTheDocument();
+    expect((await screen.findAllByText('下一章准备中心')).length).toBeGreaterThan(0);
+    expect(document.body).not.toHaveTextContent('Narrative Control Center');
     expect(getChapterHistory).toHaveBeenCalledWith(7);
     expect(getNextChapterPrep).toHaveBeenCalledWith(7);
     expect(getNarrativeHealth).toHaveBeenCalledWith(7);
@@ -1284,7 +1288,13 @@ describe('WorldPage Narrative Control Center', () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
     await user.click(await screen.findByRole('button', { name: '正史资料' }));
+    expect(screen.getByText('故事圣经')).toBeInTheDocument();
+    expect(screen.getByText('这里维护后续章节会读取的正式世界设定。适合记录不可轻易改变的世界规则、时间线原则和主角已确认的真相。')).toBeInTheDocument();
+    expect(screen.getByText('第 2 版 · 设定修订：第 1 次')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('Story Bible');
+    expect(document.body).not.toHaveTextContent('正史文本版本');
     await user.click(screen.getByRole('button', { name: '编辑正史文本' }));
+    expect(screen.getByText('保存后会记录为世界历史，并影响后续草稿读取的正式设定。')).toBeInTheDocument();
     const canon = screen.getByLabelText('正史文本');
     await user.clear(canon);
     await user.type(canon, '灵脉已经枯竭，青岚城只剩三口灵井。');
@@ -1329,7 +1339,7 @@ describe('WorldPage Narrative Control Center', () => {
     const onEnterStudio = vi.fn();
     render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
 
-    await screen.findByText('Narrative Control Center');
+    await screen.findAllByText('下一章准备中心');
     await user.click(screen.getByRole('button', { name: '用作下一章目标' }));
     await user.click(screen.getByRole('button', { name: '进入创作台' }));
 
@@ -1347,7 +1357,7 @@ describe('WorldPage Narrative Control Center', () => {
     const onEnterStudio = vi.fn();
     render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
 
-    await screen.findByText('Narrative Control Center');
+    await screen.findAllByText('下一章准备中心');
     await user.click(screen.getByRole('button', { name: '进入创作台并使用此目标' }));
 
     expect(onEnterStudio).toHaveBeenCalledWith(world, {
