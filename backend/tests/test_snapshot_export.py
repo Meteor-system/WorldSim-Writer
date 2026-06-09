@@ -418,6 +418,46 @@ def test_export_markdown_adds_obsidian_readme_and_index_files(client, monkeypatc
     assert '[[Timeline]]' in timeline_index
 
 
+def test_export_markdown_adds_story_bible_and_event_notes_with_wikilinks(client, monkeypatch):
+    token, world_id = register_and_create_world(client, 'markdown-story-events@example.com')
+    approved = approve_chapter(client, token, world_id, monkeypatch)
+
+    response = client.post(f'/worlds/{world_id}/export/markdown', headers=auth_headers(token))
+
+    assert response.status_code == 200
+    files_by_path = {file['path']: file['content'] for file in response.json()['files']}
+    assert 'Story Bible.md' in files_by_path
+    assert 'Events/Event-001.md' in files_by_path
+    assert 'Indexes/Events.md' in files_by_path
+
+    assert '[[Story Bible]]' in files_by_path['README.md']
+    assert '[[Story Bible]]' in files_by_path['World.md']
+    assert '[[Indexes/Events]]' in files_by_path['World.md']
+    assert '[[Events/Event-001]]' in files_by_path['Timeline.md']
+    assert '[[Chapters/Chapter-001]]' in files_by_path['Timeline.md']
+    assert '[[Events/Event-001]]' in files_by_path['Indexes/Timeline.md']
+    assert '[[Events/Event-001]]' in files_by_path['Indexes/Events.md']
+
+    story_bible = files_by_path['Story Bible.md']
+    assert story_bible.startswith('---\n')
+    assert 'worldsim_type: story_bible' in story_bible
+    assert '## Truth Canon' in story_bible
+    assert '## Story Arc' in story_bible
+    assert '[[World]]' in story_bible
+
+    event_note = files_by_path['Events/Event-001.md']
+    event_notes = [content for path, content in files_by_path.items() if path.startswith('Events/')]
+    assert event_note.startswith('---\n')
+    assert 'worldsim_type: event' in event_note
+    assert 'event_id:' in event_note
+    assert 'Event ID:' not in event_note
+    assert '[[World]]' in event_note
+    assert any('[[Chapters/Chapter-001]]' in content for content in event_notes)
+    assert all(f"chapter_id: {approved['id']}" not in content for content in event_notes)
+    assert all('character_id' not in content for content in event_notes)
+    assert all('foreshadow_id' not in content for content in event_notes)
+
+
 def test_export_markdown_sanitizes_and_deduplicates_markdown_paths(client, db_session):
     token, world_id = register_and_create_world(client, 'markdown-sanitize@example.com')
     world = db_session.get(World, world_id)

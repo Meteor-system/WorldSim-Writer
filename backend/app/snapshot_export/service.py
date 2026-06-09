@@ -320,7 +320,13 @@ def _character_name(character_by_id: dict[int, dict[str, Any]], character_id: in
     return character.get('name') if character else str(character_id or '')
 
 
-def _world_markdown(payload: dict[str, Any], character_paths: dict[int, str], foreshadow_paths: dict[int, str], chapter_paths: dict[int, str]) -> str:
+def _world_markdown(
+    payload: dict[str, Any],
+    character_paths: dict[int, str],
+    foreshadow_paths: dict[int, str],
+    chapter_paths: dict[int, str],
+    event_paths: dict[int, str],
+) -> str:
     world = payload['world']
     lines = [
         _frontmatter(
@@ -344,12 +350,14 @@ def _world_markdown(payload: dict[str, Any], character_paths: dict[int, str], fo
         '## Vault Navigation',
         '',
         '- [[README]]',
+        '- [[Story Bible]]',
         '- [[Relations]]',
         '- [[Timeline]]',
         '- [[Indexes/Characters]]',
         '- [[Indexes/Foreshadows]]',
         '- [[Indexes/Chapters]]',
         '- [[Indexes/Timeline]]',
+        '- [[Indexes/Events]]',
         '',
         '## Truth Canon',
         '',
@@ -381,7 +389,14 @@ def _world_markdown(payload: dict[str, Any], character_paths: dict[int, str], fo
         )
     else:
         lines.append('- 暂无')
-    lines.extend(['', '## Timeline', '', '- [[Timeline]]', ''])
+    lines.extend(['', '## Timeline', '', '- [[Timeline]]', '- [[Indexes/Events]]'])
+    if payload['events']:
+        lines.extend(
+            f"- [[{_wiki_path(event_paths[event['id']])}]] {event.get('event_type', '')}"
+            for event in payload['events'][:5]
+            if event.get('id') in event_paths
+        )
+    lines.append('')
     return '\n'.join(lines)
 
 
@@ -524,7 +539,6 @@ def _chapter_markdown(chapter: dict[str, Any], sequence: int) -> str:
             '',
             '- World: [[World]]',
             f"- Chapter Number: {sequence}",
-            f"- Chapter ID: {chapter['id']}",
             f"- Status: {chapter['status']}",
             f"- Approved Version: {chapter['approved_version']}",
             f"- Base World Version: {chapter['base_world_version']}",
@@ -537,7 +551,12 @@ def _chapter_markdown(chapter: dict[str, Any], sequence: int) -> str:
     )
 
 
-def _events_markdown(events: list[dict[str, Any]]) -> str:
+def _event_chapter_link(event: dict[str, Any], chapter_paths: dict[int, str]) -> str:
+    chapter_id = event.get('chapter_id')
+    return f"[[{_wiki_path(chapter_paths[chapter_id])}]]" if chapter_id in chapter_paths else ''
+
+
+def _events_markdown(events: list[dict[str, Any]], event_paths: dict[int, str], chapter_paths: dict[int, str]) -> str:
     lines = [
         _frontmatter(
             {
@@ -549,6 +568,7 @@ def _events_markdown(events: list[dict[str, Any]]) -> str:
         '# Timeline',
         '',
         '- World: [[World]]',
+        '- Event Index: [[Indexes/Events]]',
         '',
         '## Summary',
         '',
@@ -556,14 +576,116 @@ def _events_markdown(events: list[dict[str, Any]]) -> str:
         '',
         '## Event History',
         '',
-        '| ID | Version | Type | Source | Chapter | Created |',
-        '|---:|---|---|---|---|---|',
+        '| Event | Version | Type | Source | Chapter | Created |',
+        '|---|---|---|---|---|---|',
     ]
     lines.extend(
-        f"| {event['id']} | {event['world_version_before']} → {event['world_version_after']} | {_markdown_cell(event['event_type'])} | {_markdown_cell(event['source_type'])} | {event.get('chapter_id') or ''} | {event['created_at']} |"
+        f"| [[{_wiki_path(event_paths[event['id']])}]] | {event['world_version_before']} → {event['world_version_after']} | {_markdown_cell(event['event_type'])} | {_markdown_cell(event['source_type'])} | {_event_chapter_link(event, chapter_paths)} | {event['created_at']} |"
         for event in events
+        if event.get('id') in event_paths
     )
     return '\n'.join(lines) + '\n'
+
+
+def _story_bible_markdown(payload: dict[str, Any]) -> str:
+    world = payload['world']
+    lines = [
+        _frontmatter(
+            {
+                'worldsim_type': 'story_bible',
+                'world_id': world['id'],
+                'world_version': world['world_version'],
+                'truth_canon_version': world['truth_canon_version'],
+                'title': world['title'],
+                'tags': ['worldsim/story-bible'],
+            }
+        ),
+        '# Story Bible',
+        '',
+        '- World: [[World]]',
+        '- Characters: [[Indexes/Characters]]',
+        '- Foreshadows: [[Indexes/Foreshadows]]',
+        '',
+        '## Truth Canon',
+        '',
+        world['truth_canon'] or '暂无',
+        '',
+        '## Story Arc',
+        '',
+    ]
+    story_arc = world.get('story_arc') or []
+    lines.extend(f"- {_markdown_value(item)}" for item in story_arc) if story_arc else lines.append('- 暂无')
+    lines.append('')
+    return '\n'.join(lines)
+
+
+def _is_internal_payload_key(key: str) -> bool:
+    return key == 'commit_group_id' or key.endswith('_id') or key.endswith('_ids')
+
+
+def _scrub_event_payload_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        cleaned = {}
+        for key, nested_value in value.items():
+            if _is_internal_payload_key(str(key)):
+                continue
+            scrubbed = _scrub_event_payload_value(nested_value)
+            if scrubbed in ({}, []):
+                continue
+            cleaned[key] = scrubbed
+        return cleaned
+    if isinstance(value, list):
+        cleaned_items = []
+        for item in value:
+            scrubbed = _scrub_event_payload_value(item)
+            if scrubbed in ({}, []):
+                continue
+            cleaned_items.append(scrubbed)
+        return cleaned_items
+    return value
+
+
+def _event_payload_lines(payload: dict[str, Any]) -> list[str]:
+    lines = []
+    for key, value in payload.items():
+        if _is_internal_payload_key(str(key)):
+            continue
+        scrubbed = _scrub_event_payload_value(value)
+        if scrubbed in ({}, []):
+            continue
+        lines.append(f"- {key}: {_markdown_value(scrubbed)}")
+    return lines or ['- 暂无']
+
+
+def _event_markdown(event: dict[str, Any], sequence: int, chapter_paths: dict[int, str]) -> str:
+    chapter_link = _event_chapter_link(event, chapter_paths) or '无关联章节'
+    lines = [
+        _frontmatter(
+            {
+                'worldsim_type': 'event',
+                'event_id': event['id'],
+                'event_number': sequence,
+                'event_type': event['event_type'],
+                'source_type': event['source_type'],
+                'world_version_before': event['world_version_before'],
+                'world_version_after': event['world_version_after'],
+                'tags': ['worldsim/event'],
+            }
+        ),
+        f"# Event {sequence:03d}: {event['event_type']}",
+        '',
+        '- World: [[World]]',
+        f'- Related Chapter: {chapter_link}',
+        f"- World Version: {event['world_version_before']} → {event['world_version_after']}",
+        f"- Source: {event['source_type']}",
+        f"- Created: {event['created_at']}",
+        '',
+        '## Details',
+        '',
+    ]
+    lines.extend(_event_payload_lines(event.get('payload') or {}))
+    lines.append('')
+    return '\n'.join(lines)
 
 
 def _readme_markdown(payload: dict[str, Any]) -> str:
@@ -585,12 +707,14 @@ def _readme_markdown(payload: dict[str, Any]) -> str:
             '## Main files',
             '',
             '- [[World]] — canonical world overview and vault index.',
+            '- [[Story Bible]] — canon and story arc reference.',
             '- [[Relations]] — character relationship table.',
             '- [[Timeline]] — event history exported from WorldSim.',
             '- [[Indexes/Characters]] — character directory.',
             '- [[Indexes/Foreshadows]] — foreshadow ledger directory.',
             '- [[Indexes/Chapters]] — approved chapter directory.',
             '- [[Indexes/Timeline]] — timeline helper page.',
+            '- [[Indexes/Events]] — event note directory.',
             '',
             'The original API contract is preserved: this vault is also returned as inline `files` and a base64 ZIP archive.',
             '',
@@ -657,22 +781,47 @@ def _chapters_index_markdown(chapters: list[dict[str, Any]], chapter_paths: dict
     return '\n'.join(lines) + '\n'
 
 
-def _timeline_index_markdown(events: list[dict[str, Any]]) -> str:
-    return '\n'.join(
-        [
-            _frontmatter({'worldsim_type': 'timeline_index', 'event_count': len(events), 'tags': ['worldsim/index', 'worldsim/timeline']}),
-            '# Timeline Index',
-            '',
-            '- World: [[World]]',
-            '- Event History: [[Timeline]]',
-            f'- Event Count: {len(events)}',
-            '',
-        ]
+def _timeline_index_markdown(events: list[dict[str, Any]], event_paths: dict[int, str]) -> str:
+    lines = [
+        _frontmatter({'worldsim_type': 'timeline_index', 'event_count': len(events), 'tags': ['worldsim/index', 'worldsim/timeline']}),
+        '# Timeline Index',
+        '',
+        '- World: [[World]]',
+        '- Event History: [[Timeline]]',
+        '- Event Notes: [[Indexes/Events]]',
+        f'- Event Count: {len(events)}',
+        '',
+    ]
+    lines.extend(
+        f"- [[{_wiki_path(event_paths[event['id']])}]] {event.get('event_type', '')}"
+        for event in events
+        if event.get('id') in event_paths
     )
+    lines.append('')
+    return '\n'.join(lines)
+
+
+def _events_index_markdown(events: list[dict[str, Any]], event_paths: dict[int, str]) -> str:
+    lines = [
+        _frontmatter({'worldsim_type': 'event_index', 'event_count': len(events), 'tags': ['worldsim/index', 'worldsim/event']}),
+        '# Events Index',
+        '',
+        '- World: [[World]]',
+        '- Timeline: [[Timeline]]',
+        '',
+        '| Event | Version | Type | Source | Created |',
+        '|---|---|---|---|---|',
+    ]
+    lines.extend(
+        f"| [[{_wiki_path(event_paths[event['id']])}]] | {event['world_version_before']} → {event['world_version_after']} | {_markdown_cell(event['event_type'])} | {_markdown_cell(event['source_type'])} | {event['created_at']} |"
+        for event in events
+        if event.get('id') in event_paths
+    )
+    return '\n'.join(lines) + '\n'
 
 
 def render_markdown_bundle(payload: dict[str, Any]) -> list[dict[str, str]]:
-    used_paths = {'World.md', 'Relations.md', 'Timeline.md', 'README.md'}
+    used_paths = {'World.md', 'Story Bible.md', 'Relations.md', 'Timeline.md', 'README.md'}
     character_paths = {
         character['id']: _unique_markdown_path('Characters', character.get('name'), f"Character-{character.get('id')}", used_paths)
         for character in payload['characters']
@@ -685,10 +834,15 @@ def render_markdown_bundle(payload: dict[str, Any]) -> list[dict[str, str]]:
         chapter['id']: f'Chapters/Chapter-{index:03d}.md'
         for index, chapter in enumerate(payload['approved_chapters'], start=1)
     }
+    event_paths = {
+        event['id']: f'Events/Event-{index:03d}.md'
+        for index, event in enumerate(payload['events'], start=1)
+    }
     character_by_id = {character['id']: character for character in payload['characters']}
 
     files = [
-        {'path': 'World.md', 'content': _world_markdown(payload, character_paths, foreshadow_paths, chapter_paths)},
+        {'path': 'World.md', 'content': _world_markdown(payload, character_paths, foreshadow_paths, chapter_paths, event_paths)},
+        {'path': 'Story Bible.md', 'content': _story_bible_markdown(payload)},
         {'path': 'Relations.md', 'content': _relations_markdown(payload['relations'], character_by_id, character_paths)},
     ]
     files.extend(
@@ -712,14 +866,22 @@ def render_markdown_bundle(payload: dict[str, Any]) -> list[dict[str, str]]:
         }
         for index, chapter in enumerate(payload['approved_chapters'], start=1)
     )
-    files.append({'path': 'Timeline.md', 'content': _events_markdown(payload['events'])})
+    files.extend(
+        {
+            'path': event_paths[event['id']],
+            'content': _event_markdown(event, index, chapter_paths),
+        }
+        for index, event in enumerate(payload['events'], start=1)
+    )
+    files.append({'path': 'Timeline.md', 'content': _events_markdown(payload['events'], event_paths, chapter_paths)})
     files.extend(
         [
             {'path': 'README.md', 'content': _readme_markdown(payload)},
             {'path': 'Indexes/Characters.md', 'content': _characters_index_markdown(payload['characters'], character_paths)},
             {'path': 'Indexes/Foreshadows.md', 'content': _foreshadows_index_markdown(payload['foreshadows'], foreshadow_paths)},
             {'path': 'Indexes/Chapters.md', 'content': _chapters_index_markdown(payload['approved_chapters'], chapter_paths)},
-            {'path': 'Indexes/Timeline.md', 'content': _timeline_index_markdown(payload['events'])},
+            {'path': 'Indexes/Timeline.md', 'content': _timeline_index_markdown(payload['events'], event_paths)},
+            {'path': 'Indexes/Events.md', 'content': _events_index_markdown(payload['events'], event_paths)},
         ]
     )
     return files
