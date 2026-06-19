@@ -610,3 +610,47 @@ describe('draft versioning API helpers', () => {
     expect(response.health_score).toBe(84);
   });
 });
+
+describe('apiRequest error mapping', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  function statusResponse(status: number, body: unknown) {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  it('maps a fetch TypeError to a Chinese network error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    await expect(getWorldPulse(7)).rejects.toThrow(/无法连接服务器/);
+  });
+
+  it('includes a dev hint about API_BASE_URL or CORS in dev mode', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    await expect(getWorldPulse(7)).rejects.toThrow(/API_BASE_URL|CORS/);
+  });
+
+  it('maps 401 responses to a Chinese re-login message', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(statusResponse(401, { detail: 'Unauthorized' })));
+    await expect(getWorldPulse(7)).rejects.toThrow(/登录状态已过期/);
+  });
+
+  it('maps 5xx responses to a Chinese service-unavailable message', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(statusResponse(500, { detail: 'boom' })));
+    await expect(getWorldPulse(7)).rejects.toThrow(/服务暂时不可用/);
+  });
+
+  it('preserves business detail for ordinary 4xx errors', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(statusResponse(400, { detail: '标题不能为空' })));
+    await expect(getWorldPulse(7)).rejects.toThrow('标题不能为空');
+  });
+
+  it('attaches the status code to the thrown error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(statusResponse(401, { detail: 'x' })));
+    await expect(getWorldPulse(7)).rejects.toMatchObject({ status: 401 });
+  });
+});

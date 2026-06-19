@@ -118,6 +118,14 @@ function isOpenForeshadow(status: string): boolean {
   return !['fully_resolved', 'resolved', 'abandoned'].includes(status);
 }
 
+function friendlyCreateError(err: unknown, fallback: string): string {
+  const message = err instanceof Error ? err.message : fallback;
+  if (message.includes('无法连接服务器') || message.includes('服务暂时不可用')) {
+    return '创建失败，服务器暂时不可用。你填写的内容已保留，可以稍后重试。';
+  }
+  return message;
+}
+
 function openForeshadows(world: WorldOverview): WorldOverview['foreshadows'] {
   return world.foreshadows
     .filter((item) => isOpenForeshadow(item.status))
@@ -386,6 +394,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [creating, setCreating] = useState(false);
   const [showCreationForm, setShowCreationForm] = useState(false);
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [archiveLoading, setArchiveLoading] = useState(false);
   const [archiveError, setArchiveError] = useState('');
   const [seedLibrary, setSeedLibrary] = useState<WorldSeedSummary[]>([]);
@@ -490,7 +499,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setSeedLibrary(response.seeds);
     } catch {
       setSeedLibrary([]);
-      setSeedLibraryError('世界胚胎库暂不可用');
+      setSeedLibraryError('在线胚胎库暂不可用，已为你展示本地内置模板。');
     } finally {
       setSeedLibraryLoading(false);
     }
@@ -510,6 +519,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
 
   async function loadWorld() {
     setError('');
+    setLoadError('');
     try {
       const loadedWorlds = await apiRequest<WorldSummary[]>('/worlds');
       setWorlds(loadedWorlds);
@@ -524,7 +534,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
         setShowCreationForm(false);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载世界失败');
+      setLoadError(err instanceof Error ? err.message : '加载世界失败');
     } finally {
       setLoading(false);
     }
@@ -550,7 +560,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       }
       void loadNarrativeControlCenter(overview.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建世界失败');
+      setError(friendlyCreateError(err, '创建世界失败'));
     } finally {
       setCreating(false);
     }
@@ -567,7 +577,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setShowCreationForm(false);
       void loadNarrativeControlCenter(overview.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建世界失败');
+      setError(friendlyCreateError(err, '创建世界失败'));
     } finally {
       setCreating(false);
     }
@@ -727,11 +737,23 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
             <button className="primary-button" type="button" onClick={startNewWorld}>创建新小说</button>
           </div>
           {error && <p className="paper-error mt-5" role="alert">{error}</p>}
+          {loadError ? (
+            <section className="book-card mt-8 p-6" role="alert">
+              <h2 className="text-xl font-black text-[#3b2511]">作品书架加载失败</h2>
+              <p className="manuscript mt-2 text-sm text-[#5e3b1c]">无法连接服务器，请稍后重试。</p>
+              <button className="primary-button mt-4" type="button" onClick={() => { setLoading(true); void loadWorld(); }}>重新加载</button>
+            </section>
+          ) : (
           <div className="mt-8 grid gap-5 md:grid-cols-2">
             <section className="book-card p-5">
               <h2 className="text-xl font-black text-[#3b2511]">正在创作</h2>
               <div className="mt-4 space-y-3">
-                {activeWorlds.length === 0 && <p className="ink-muted text-sm">暂无活跃小说，可创建新小说或恢复已归档作品。</p>}
+                {activeWorlds.length === 0 && (
+                  <div className="ink-muted text-sm">
+                    <p>暂无活跃小说，可创建新小说或恢复已归档作品。</p>
+                    <button className="primary-button mt-3" type="button" onClick={startNewWorld}>创建新小说</button>
+                  </div>
+                )}
                 {activeWorlds.map((item) => (
                   <article key={item.id} className="rounded-2xl bg-amber-50/60 p-3">
                     <p className="font-black text-[#34210f]">{item.title}</p>
@@ -759,6 +781,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               </div>
             </section>
           </div>
+          )}
         </div>
       </section>
     );

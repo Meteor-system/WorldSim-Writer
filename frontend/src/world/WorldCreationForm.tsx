@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   StarterCharacterCreate,
   StarterForeshadowCreate,
@@ -12,6 +12,31 @@ import type {
 } from '../api/types';
 import { clonePreset, GENRE_PRESETS } from './genrePresets';
 import { SeedLibraryPanel } from './SeedLibraryPanel';
+
+const CHARACTER_ROLE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'protagonist', label: '主角' },
+  { value: 'antagonist', label: '反派' },
+  { value: 'rival', label: '对手/竞争' },
+  { value: 'ally', label: '盟友' },
+  { value: 'mentor', label: '导师' },
+  { value: 'supporting', label: '配角' },
+  { value: 'foil', label: '陪衬' },
+];
+
+const FORESHADOW_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'plot_clue', label: '剧情线索' },
+  { value: 'magic_clue', label: '魔法线索' },
+  { value: 'world_rule_clue', label: '世界规则线索' },
+  { value: 'fate_clue', label: '命运线索' },
+  { value: 'item', label: '关键物品' },
+  { value: 'identity_secret', label: '身份秘密' },
+  { value: 'relationship_clue', label: '关系线索' },
+];
+
+function optionsWithFallback(options: { value: string; label: string }[], current: string): { value: string; label: string }[] {
+  if (!current || options.some((option) => option.value === current)) return options;
+  return [...options, { value: current, label: `当前值：${current}` }];
+}
 
 type Props = {
   creating: boolean;
@@ -81,6 +106,41 @@ export function WorldCreationForm({
   const [briefFirstChapterGoal, setBriefFirstChapterGoal] = useState('');
   const [briefDraftApplied, setBriefDraftApplied] = useState(false);
   const briefRequestIdRef = useRef(0);
+  const [focusCharacterIndex, setFocusCharacterIndex] = useState<number | null>(null);
+  const [highlightCharacterIndex, setHighlightCharacterIndex] = useState<number | null>(null);
+  const characterNameRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [undoToast, setUndoToast] = useState<{ message: string; restore: () => void } | null>(null);
+
+  useEffect(() => {
+    if (focusCharacterIndex === null) return;
+    const input = characterNameRefs.current[focusCharacterIndex];
+    if (input) {
+      input.focus();
+      input.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    }
+    setFocusCharacterIndex(null);
+  }, [focusCharacterIndex]);
+
+  useEffect(() => {
+    if (highlightCharacterIndex === null) return;
+    const timer = setTimeout(() => setHighlightCharacterIndex(null), 1600);
+    return () => clearTimeout(timer);
+  }, [highlightCharacterIndex]);
+
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showUndoToast(message: string, restore: () => void) {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setUndoToast({ message, restore });
+    undoTimerRef.current = setTimeout(() => setUndoToast(null), 6000);
+  }
+
+  function applyUndo() {
+    if (!undoToast) return;
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    undoToast.restore();
+    setUndoToast(null);
+  }
 
   function selectPreset(key: string) {
     const preset = GENRE_PRESETS.find((item) => item.key === key) ?? GENRE_PRESETS[0];
@@ -131,26 +191,34 @@ export function WorldCreationForm({
   }
 
   function addCharacter() {
-    setForm((current) => ({
-      ...current,
-      starter_assets: {
-        ...current.starter_assets,
-        characters: [
-          ...current.starter_assets.characters,
-          {
-            name: '新角色',
-            role_type: 'supporting',
-            status: 'active',
-            public_profile: { identity: '待设定', skill: '待设定' },
-            hidden_traits: { secret: '待揭示秘密' },
-            current_goals: ['待设定目标'],
-          },
-        ],
-      },
-    }));
+    setForm((current) => {
+      const newIndex = current.starter_assets.characters.length;
+      setFocusCharacterIndex(newIndex);
+      setHighlightCharacterIndex(newIndex);
+      return {
+        ...current,
+        starter_assets: {
+          ...current.starter_assets,
+          characters: [
+            ...current.starter_assets.characters,
+            {
+              name: '新角色',
+              role_type: 'supporting',
+              status: 'active',
+              public_profile: { identity: '待设定', skill: '待设定' },
+              hidden_traits: { secret: '待揭示秘密' },
+              current_goals: ['待设定目标'],
+            },
+          ],
+        },
+      };
+    });
   }
 
   function removeCharacter(index: number) {
+    if (form.starter_assets.characters.length <= 1) return;
+    const removed = form.starter_assets.characters[index];
+    const snapshot = form;
     setForm((current) => {
       if (current.starter_assets.characters.length <= 1) return current;
       const relations = (current.starter_assets.relations ?? [])
@@ -177,6 +245,7 @@ export function WorldCreationForm({
         },
       };
     });
+    showUndoToast(`已删除角色「${removed.name}」`, () => setForm(snapshot));
   }
 
   function updateRelation(index: number, patch: Partial<StarterRelationCreate>) {
@@ -249,6 +318,8 @@ export function WorldCreationForm({
   }
 
   function removeForeshadow(index: number) {
+    const removed = form.starter_assets.foreshadows?.[index];
+    const snapshot = form;
     setForm((current) => ({
       ...current,
       starter_assets: {
@@ -256,6 +327,7 @@ export function WorldCreationForm({
         foreshadows: (current.starter_assets.foreshadows ?? []).filter((_, foreshadowIndex) => foreshadowIndex !== index),
       },
     }));
+    showUndoToast(`已删除伏笔「${removed?.title ?? ''}」`, () => setForm(snapshot));
   }
 
   function toggleForeshadowCharacter(foreshadowIndex: number, characterIndex: number) {
@@ -482,14 +554,18 @@ export function WorldCreationForm({
         </div>
         <div className="mt-4 space-y-4">
           {form.starter_assets.characters.map((character, index) => (
-            <article key={index} className="book-card grid gap-3 p-5 md:grid-cols-2">
+            <article key={index} className={`book-card grid gap-3 p-5 md:grid-cols-2 ${highlightCharacterIndex === index ? 'ring-2 ring-amber-500' : ''}`}>
               <label className="block">
                 <span className="text-sm font-semibold text-[#4a321e]">姓名</span>
-                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={character.name} onChange={(event) => updateCharacter(index, { name: event.target.value })} required />
+                <input ref={(element) => { characterNameRefs.current[index] = element; }} className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={character.name} onChange={(event) => updateCharacter(index, { name: event.target.value })} required />
               </label>
               <label className="block">
                 <span className="text-sm font-semibold text-[#4a321e]">角色类型</span>
-                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={character.role_type} onChange={(event) => updateCharacter(index, { role_type: event.target.value })} required />
+                <select className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={character.role_type} onChange={(event) => updateCharacter(index, { role_type: event.target.value })} required>
+                  {optionsWithFallback(CHARACTER_ROLE_OPTIONS, character.role_type).map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
               </label>
               <label className="block">
                 <span className="text-sm font-semibold text-[#4a321e]">公开身份</span>
@@ -569,7 +645,11 @@ export function WorldCreationForm({
               </label>
               <label className="block">
                 <span className="text-sm font-semibold text-[#4a321e]">类型</span>
-                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={foreshadow.foreshadow_type} onChange={(event) => updateForeshadow(index, { foreshadow_type: event.target.value })} required />
+                <select className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={foreshadow.foreshadow_type} onChange={(event) => updateForeshadow(index, { foreshadow_type: event.target.value })} required>
+                  {optionsWithFallback(FORESHADOW_TYPE_OPTIONS, foreshadow.foreshadow_type).map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
               </label>
               <label className="block md:col-span-2">
                 <span className="text-sm font-semibold text-[#4a321e]">描述</span>
@@ -607,6 +687,15 @@ export function WorldCreationForm({
           {creating ? '正在冻结初始真理库...' : briefDraftApplied ? '创建世界并生成第一章草稿' : '创建自定义世界'}
         </button>
       </div>
+
+      {undoToast && (
+        <div className="fixed inset-x-0 bottom-6 z-50 flex justify-center px-4" role="status" aria-live="polite">
+          <div className="flex items-center gap-4 rounded-full border border-amber-900/20 bg-[#34210f] px-5 py-3 text-sm text-amber-50 shadow-lg">
+            <span>{undoToast.message}</span>
+            <button type="button" className="font-bold text-amber-200 underline" onClick={applyUndo}>撤销</button>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

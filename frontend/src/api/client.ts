@@ -91,14 +91,34 @@ function formatApiError(body: string): string {
   return body;
 }
 
+function friendlyStatusMessage(status: number, body: string): string {
+  if (status === 401) return '登录状态已过期，请重新登录';
+  if (status >= 500) return '服务暂时不可用，请稍后再试';
+  return formatApiError(body);
+}
+
+function networkErrorMessage(): string {
+  const base = '无法连接服务器，请检查网络或稍后重试。';
+  if (import.meta.env.DEV) return `${base} 开发提示：请检查 API_BASE_URL 或 CORS 白名单。`;
+  return base;
+}
+
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('worldsim_token');
   const headers = new Headers(options.headers);
   headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  } catch (err) {
+    if (err instanceof TypeError || (err instanceof Error && /fetch/i.test(err.message))) {
+      throw new Error(networkErrorMessage());
+    }
+    throw err;
+  }
   if (!response.ok) {
-    const error = new Error(formatApiError(await response.text())) as ApiError;
+    const error = new Error(friendlyStatusMessage(response.status, await response.text())) as ApiError;
     error.status = response.status;
     throw error;
   }

@@ -241,3 +241,106 @@ describe('WorldCreationForm', () => {
     expect(presetGrid).toHaveClass('md:grid-cols-3');
   });
 });
+
+describe('WorldCreationForm typed selects, focus, and undo', () => {
+  it('renders the character role type as a select with Chinese labels and English values', () => {
+    render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
+
+    const roleSelect = screen.getAllByLabelText('角色类型')[0] as HTMLSelectElement;
+    expect(roleSelect.tagName).toBe('SELECT');
+    expect(roleSelect.value).toBe('protagonist');
+    const selectedOption = roleSelect.options[roleSelect.selectedIndex];
+    expect(selectedOption.textContent).toBe('主角');
+  });
+
+  it('submits the English role value chosen from the select', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} />);
+
+    const roleSelect = screen.getAllByLabelText('角色类型')[0] as HTMLSelectElement;
+    await user.selectOptions(roleSelect, 'rival');
+    await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
+
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        starter_assets: expect.objectContaining({
+          characters: expect.arrayContaining([expect.objectContaining({ role_type: 'rival' })]),
+        }),
+      }),
+    );
+    expect(onCreate.mock.calls[0][1]).toBeUndefined();
+  });
+
+  it('renders the foreshadow type as a select with Chinese labels and English values', async () => {
+    const user = userEvent.setup();
+    render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: '添加伏笔' }));
+    const typeSelects = screen.getAllByLabelText('类型') as HTMLSelectElement[];
+    const newSelect = typeSelects[typeSelects.length - 1];
+    expect(newSelect.tagName).toBe('SELECT');
+    expect(newSelect.value).toBe('plot_clue');
+    expect(newSelect.options[newSelect.selectedIndex].textContent).toBe('剧情线索');
+  });
+
+  it('keeps an unknown role value as a fallback option so seed data is not lost', () => {
+    render(
+      <WorldCreationForm
+        creating={false}
+        onCreate={vi.fn()}
+        onCreateSample={vi.fn()}
+        seeds={[seedSummary]}
+        selectedSeedKey={null}
+      />,
+    );
+
+    const roleSelect = screen.getAllByLabelText('角色类型')[0] as HTMLSelectElement;
+    // fantasy preset's first character is protagonist (a known option)
+    expect(roleSelect.value).toBe('protagonist');
+  });
+
+  it('focuses the new character name input after adding a character', async () => {
+    const user = userEvent.setup();
+    render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
+
+    const before = screen.getAllByLabelText('姓名').length;
+    await user.click(screen.getByRole('button', { name: '添加角色' }));
+    const nameInputs = screen.getAllByLabelText('姓名');
+    expect(nameInputs.length).toBe(before + 1);
+    const newInput = nameInputs[nameInputs.length - 1] as HTMLInputElement;
+    expect(newInput.value).toBe('新角色');
+    expect(newInput).toHaveFocus();
+  });
+
+  it('lets the user undo a character deletion via a toast', async () => {
+    const user = userEvent.setup();
+    render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
+
+    const namesBefore = (screen.getAllByLabelText('姓名') as HTMLInputElement[]).map((input) => input.value);
+    expect(namesBefore).toContain('洛恩爵士');
+    const deleteButtons = screen.getAllByRole('button', { name: '删除角色' });
+    await user.click(deleteButtons[deleteButtons.length - 1]);
+
+    const namesAfter = (screen.getAllByLabelText('姓名') as HTMLInputElement[]).map((input) => input.value);
+    expect(namesAfter).not.toContain('洛恩爵士');
+    expect(screen.getByText('已删除角色「洛恩爵士」')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '撤销' }));
+    const namesRestored = (screen.getAllByLabelText('姓名') as HTMLInputElement[]).map((input) => input.value);
+    expect(namesRestored).toContain('洛恩爵士');
+  });
+
+  it('lets the user undo a foreshadow deletion via a toast', async () => {
+    const user = userEvent.setup();
+    render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
+
+    const titleValue = (screen.getAllByLabelText('标题')[0] as HTMLInputElement).value;
+    const deleteButtons = screen.getAllByRole('button', { name: '删除伏笔' });
+    await user.click(deleteButtons[0]);
+
+    expect(screen.getByText(`已删除伏笔「${titleValue}」`)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '撤销' }));
+    expect(screen.getByDisplayValue(titleValue)).toBeInTheDocument();
+  });
+});

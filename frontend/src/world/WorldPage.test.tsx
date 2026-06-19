@@ -872,6 +872,60 @@ describe('WorldPage bookshelf', () => {
     expect(listWorldSeeds).toHaveBeenCalled();
   });
 
+  it('shows an error card with retry instead of an empty state when loading worlds fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockRejectedValueOnce(new Error('无法连接服务器，请检查网络或稍后重试。'))
+      .mockResolvedValueOnce([]);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('作品书架加载失败')).toBeInTheDocument();
+    expect(screen.queryByText('暂无活跃小说，可创建新小说或恢复已归档作品。')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '重新加载' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '重新加载' }));
+    expect(apiRequest).toHaveBeenNthCalledWith(2, '/worlds');
+  });
+
+  it('shows a create CTA inside the active empty state when all worlds are archived', async () => {
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockResolvedValueOnce([
+      { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'archived', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+    ]);
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('作品书架')).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: '创建新小说' }).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('falls back to local templates copy when the seed library is unavailable', async () => {
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockResolvedValueOnce([]);
+    vi.mocked(listWorldSeeds).mockReset();
+    vi.mocked(listWorldSeeds).mockRejectedValueOnce(new Error('boom'));
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('在线胚胎库暂不可用，已为你展示本地内置模板。')).toBeInTheDocument();
+  });
+
+  it('shows a content-preserving copy when world creation fails on a server error', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockResolvedValueOnce([]);
+    vi.mocked(createWorld).mockRejectedValue(new Error('服务暂时不可用，请稍后再试'));
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
+
+    expect(await screen.findByText('创建失败，服务器暂时不可用。你填写的内容已保留，可以稍后重试。')).toBeInTheDocument();
+  });
+
   it('still auto-opens a single existing world', async () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
