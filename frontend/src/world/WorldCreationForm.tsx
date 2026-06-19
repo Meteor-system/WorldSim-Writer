@@ -83,6 +83,21 @@ function mapIndexAfterRemoval(index: number, removedIndex: number): number | nul
   return index;
 }
 
+type WizardStep = {
+  key: 'genesis' | 'brief' | 'basics' | 'characters' | 'relations' | 'confirm';
+  label: string;
+  caption: string;
+};
+
+const WIZARD_STEPS: WizardStep[] = [
+  { key: 'genesis', label: '世界胚胎', caption: '从模板、在线胚胎或示例世界开始，3 分钟跑通故事循环。' },
+  { key: 'brief', label: '一句话开书', caption: '写一句故事想法，生成可编辑的创建草稿。' },
+  { key: 'basics', label: '基础设定', caption: '确认世界标题、题材、叙事风格与真理库。' },
+  { key: 'characters', label: '角色', caption: '编辑预置角色，列表可在此区域内滚动。' },
+  { key: 'relations', label: '关系与伏笔', caption: '设置初始关系与伏笔，列表可在此区域内滚动。' },
+  { key: 'confirm', label: '确认创建', caption: '检查摘要，确认无误后冻结为初始世界状态。' },
+];
+
 export function WorldCreationForm({
   creating,
   onCreate,
@@ -95,6 +110,7 @@ export function WorldCreationForm({
   onCreateSeed,
   onExpandBrief,
 }: Props) {
+  const [stepIndex, setStepIndex] = useState(0);
   const [selectedPresetKey, setSelectedPresetKey] = useState(GENRE_PRESETS[0].key);
   const [activeSeedKey, setActiveSeedKey] = useState<string | null>(selectedSeedKey);
   const [form, setForm] = useState<WorldCreateRequest>(() => clonePreset(GENRE_PRESETS[0]));
@@ -394,6 +410,9 @@ export function WorldCreationForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    // Only the confirm step commits. Enter pressed inside an earlier step's input
+    // must not create the world.
+    if (WIZARD_STEPS[stepIndex].key !== 'confirm') return;
     if (briefDraftApplied) {
       const firstChapterGoal = briefFirstChapterGoal.trim();
       await onCreate(form, firstChapterGoal ? { autoStartFirstDraft: true, firstChapterGoal } : { autoStartFirstDraft: true });
@@ -402,290 +421,387 @@ export function WorldCreationForm({
     await onCreate(form);
   }
 
+  const currentStep = WIZARD_STEPS[stepIndex];
+  const isFirstStep = stepIndex === 0;
+  const isLastStep = stepIndex === WIZARD_STEPS.length - 1;
+  const characterCount = form.starter_assets.characters.length;
+  const relationCount = form.starter_assets.relations?.length ?? 0;
+  const foreshadowCount = form.starter_assets.foreshadows?.length ?? 0;
+
+  function goToStep(index: number) {
+    setStepIndex(Math.min(Math.max(index, 0), WIZARD_STEPS.length - 1));
+  }
+
   return (
-    <form onSubmit={submit} className="motion-page-enter mx-auto max-w-5xl px-6 py-10 text-left" data-testid="world-creation-form">
-      <section className="surface-layer rounded-[28px] border border-amber-900/15 bg-amber-100/60 p-5 shadow-sm" data-testid="newcomer-loop-panel">
-        <p className="chapter-kicker">3-Minute World Loop</p>
-        <h1 className="mt-2 text-3xl font-black text-[#34210f]">3 分钟开始运营你的故事世界</h1>
-        <p className="manuscript mt-3 text-sm text-[#5e3b1c]">
-          不需要先填完后台表单：先选一个高张力世界胚胎，生成第一章，写入正史，再查看角色、悬念/伏笔和世界进度如何变化。
-        </p>
-        <ol className="mt-4 grid gap-3 text-sm md:grid-cols-4">
-          {['选世界胚胎', '生成第一章', '写入正史', '查看世界变化'].map((step, index) => (
-            <li key={step} className="rounded-2xl bg-white/60 p-3 font-black text-[#3b2511]">
-              <span className="mr-2 rounded-full bg-amber-900 px-2 py-0.5 text-xs text-amber-50">{index + 1}</span>
-              {step}
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <div className="mt-8 text-center">
-        <p className="chapter-kicker">World Genesis</p>
-        <h1 className="mt-3 text-4xl font-black text-[#34210f]">创建世界工坊</h1>
-        <p className="manuscript mx-auto mt-4 max-w-2xl">
-          从官方题材模板开始，编辑真理库、角色关系与伏笔，然后冻结为你的初始世界状态。
-        </p>
-        <button className="secondary-button mt-5" disabled={creating} type="button" onClick={onCreateSample}>
-          创建内置示例世界
-        </button>
-      </div>
-
-      <section className="book-card mt-8 p-5" data-testid="brief-world-entry-panel">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+    <form onSubmit={submit} className="motion-page-enter mx-auto flex max-h-[calc(100vh-7rem)] max-w-6xl flex-col px-4 py-6 text-left md:px-6" data-testid="world-creation-form">
+      <header className="surface-layer rounded-[28px] border border-amber-900/15 bg-amber-100/60 p-5 shadow-sm" data-testid="newcomer-loop-panel">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div>
-            <p className="chapter-kicker">一句话创建故事世界</p>
-            <h2 className="mt-2 text-2xl font-black text-[#34210f]">一句话开书</h2>
-            <p className="manuscript mt-2 text-sm text-[#5e3b1c]">写下一个故事点子，系统会生成可编辑的创建草稿。</p>
-            <p className="manuscript mt-1 text-sm font-bold text-[#5e3b1c]">生成草稿只会填入下方表单，不会创建世界，也不会写入正史。</p>
+            <p className="chapter-kicker">World Genesis</p>
+            <h1 className="mt-1 text-3xl font-black text-[#34210f]">创建故事世界</h1>
           </div>
+          <p className="text-sm font-black text-amber-900">{`步骤 ${stepIndex + 1} / ${WIZARD_STEPS.length}`}</p>
         </div>
-        <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
-          <label className="block">
-            <span className="text-sm font-semibold text-[#4a321e]">一句话故事想法</span>
-            <textarea
-              className="mt-1 min-h-24 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3"
-              value={brief}
-              onChange={(event) => setBrief(event.target.value)}
-              placeholder="例如：一个所有人出生时都会被分配未来死因的王国"
-              disabled={briefLoading}
-            />
-          </label>
-          <div className="flex items-end gap-2">
-            <button className="primary-button" type="button" disabled={briefLoading || !onExpandBrief} onClick={() => void submitBriefDraft()}>
-              {briefLoading ? '正在生成可编辑草稿…' : '生成创建草稿'}
+        <p className="manuscript mt-2 text-sm text-[#5e3b1c]">
+          <span className="font-black text-[#3b2511]">{currentStep.label}</span>：{currentStep.caption}
+        </p>
+      </header>
+
+      <div className="mt-5 grid min-h-0 flex-1 gap-5 md:grid-cols-[200px_1fr]">
+        <nav className="flex flex-row gap-2 overflow-x-auto md:flex-col md:overflow-visible" aria-label="创建步骤导航">
+          {WIZARD_STEPS.map((step, index) => (
+            <button
+              key={step.key}
+              type="button"
+              aria-label={`步骤：${step.label}`}
+              aria-current={index === stepIndex ? 'step' : undefined}
+              onClick={() => goToStep(index)}
+              className={`flex shrink-0 items-center gap-2 rounded-2xl border px-3 py-2 text-left text-sm font-bold transition md:shrink ${
+                index === stepIndex
+                  ? 'border-amber-900 bg-amber-900 text-amber-50'
+                  : 'border-amber-900/20 bg-white/60 text-[#4a321e] hover:bg-amber-50'
+              }`}
+            >
+              <span className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${index === stepIndex ? 'bg-amber-50 text-amber-900' : 'bg-amber-900/10 text-[#4a321e]'}`}>{index + 1}</span>
+              {step.label}
             </button>
-            {briefLoading && <button className="secondary-button" type="button" onClick={cancelBriefDraft}>取消生成</button>}
-          </div>
-        </div>
-        {briefError && <p className="paper-error mt-4 text-left" role="alert">{briefError}</p>}
-        {briefSuccess && (
-          <section className="mt-4 rounded-2xl bg-amber-50/70 p-4" aria-live="polite">
-            <p className="font-black text-[#3b2511]">{briefSuccess}</p>
-            <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">现在还没有创建世界，也没有写入正史。只有点击“创建世界并生成第一章草稿”后才会创建。</p>
-            <p className="manuscript mt-1 text-sm font-bold text-[#5e3b1c]">确认创建后会进入第一章草稿审阅；第一章仍需在创作台点击“写入正史并更新世界”才会正式生效。</p>
-            {briefDraftApplied && (
-              <div className="mt-4">
-                <label className="text-sm font-semibold text-[#4a321e]" htmlFor="brief-first-chapter-goal">第一章草稿目标</label>
-                <textarea
-                  id="brief-first-chapter-goal"
-                  className="mt-1 min-h-24 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3"
-                  value={briefFirstChapterGoal}
-                  onChange={(event) => setBriefFirstChapterGoal(event.target.value)}
-                  placeholder="写下第一章要完成的开场目标"
-                  aria-describedby="brief-first-chapter-goal-help"
+          ))}
+        </nav>
+
+        <div className="book-card min-h-0 flex-1 overflow-y-auto p-5" data-testid="wizard-step-content">
+          {currentStep.key === 'genesis' && (
+            <div className="space-y-6">
+              <section>
+                <p className="chapter-kicker">3-Minute World Loop</p>
+                <h2 className="mt-2 text-2xl font-black text-[#34210f]">3 分钟开始运营你的故事世界</h2>
+                <p className="manuscript mt-2 text-sm text-[#5e3b1c]">
+                  先选一个高张力世界胚胎或模板，生成第一章，写入正史，再查看角色、伏笔和世界进度如何变化。
+                </p>
+                <ol className="mt-4 grid gap-3 text-sm md:grid-cols-4">
+                  {['选世界胚胎', '生成第一章', '写入正史', '查看世界变化'].map((step, index) => (
+                    <li key={step} className="rounded-2xl bg-amber-50/70 p-3 font-black text-[#3b2511]">
+                      <span className="mr-2 rounded-full bg-amber-900 px-2 py-0.5 text-xs text-amber-50">{index + 1}</span>
+                      {step}
+                    </li>
+                  ))}
+                </ol>
+                <button className="secondary-button mt-4" disabled={creating} type="button" onClick={onCreateSample}>
+                  创建内置示例世界
+                </button>
+              </section>
+
+              {seeds.length > 0 || seedLoading || seedError ? (
+                <SeedLibraryPanel
+                  seeds={seeds}
+                  selectedSeedKey={activeSeedKey}
+                  loading={seedLoading}
+                  error={seedError}
+                  onApplySeed={applySeed}
+                  onCreateSeed={(seedKey) => void onCreateSeed?.(seedKey)}
                 />
-                <p id="brief-first-chapter-goal-help" className="manuscript mt-1 text-xs text-[#5e3b1c]">可修改；它只用于进入创作台生成草稿，不会写入正史。</p>
-              </div>
-            )}
-            {briefNotes.rationale && <p className="manuscript mt-3 text-sm">{briefNotes.rationale}</p>}
-            {(briefNotes.assumptions?.length ?? 0) > 0 && (
-              <div className="mt-3">
-                <p className="text-sm font-bold text-[#5e3b1c]">草稿补全时采用的假设</p>
-                <ul className="manuscript mt-1 list-disc space-y-1 pl-5 text-sm">{briefNotes.assumptions?.map((item) => <li key={item}>{item}</li>)}</ul>
-              </div>
-            )}
-            {(briefNotes.safety_notes?.length ?? 0) > 0 && (
-              <div className="mt-3">
-                <p className="text-sm font-bold text-[#5e3b1c]">安全提示</p>
-                <ul className="manuscript mt-1 list-disc space-y-1 pl-5 text-sm">{briefNotes.safety_notes?.map((item) => <li key={item}>{item}</li>)}</ul>
-              </div>
-            )}
-          </section>
-        )}
-      </section>
+              ) : null}
 
-      {seeds.length > 0 || seedLoading || seedError ? (
-        <section className="mt-8">
-          <SeedLibraryPanel
-            seeds={seeds}
-            selectedSeedKey={activeSeedKey}
-            loading={seedLoading}
-            error={seedError}
-            onApplySeed={applySeed}
-            onCreateSeed={(seedKey) => void onCreateSeed?.(seedKey)}
-          />
-        </section>
-      ) : null}
+              <section data-testid="genre-preset-grid" className="grid gap-4 md:grid-cols-3">
+                {GENRE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.key}
+                    type="button"
+                    onClick={() => selectPreset(preset.key)}
+                    className={`book-card motion-soft-lift p-4 text-left transition ${
+                      selectedPresetKey === preset.key ? 'border-amber-900 bg-amber-100/70' : 'hover:bg-amber-50'
+                    }`}
+                  >
+                    <span className="text-lg font-black text-[#3b2511]">{preset.label}</span>
+                    <p className="mt-2 text-sm ink-muted">{preset.description}</p>
+                  </button>
+                ))}
+              </section>
+            </div>
+          )}
 
-      <section className="mt-8 grid gap-4 md:grid-cols-3" data-testid="genre-preset-grid">
-        {GENRE_PRESETS.map((preset) => (
-          <button
-            key={preset.key}
-            type="button"
-            onClick={() => selectPreset(preset.key)}
-            className={`book-card motion-soft-lift p-4 text-left transition ${
-              selectedPresetKey === preset.key ? 'border-amber-900 bg-amber-100/70' : 'hover:bg-amber-50'
-            }`}
-          >
-            <span className="text-lg font-black text-[#3b2511]">{preset.label}</span>
-            <p className="mt-2 text-sm ink-muted">{preset.description}</p>
-          </button>
-        ))}
-      </section>
-
-      <section className="book-card mt-8 grid gap-4 p-5 md:grid-cols-2">
-        <label className="block">
-          <span className="text-sm font-semibold text-[#4a321e]">世界标题</span>
-          <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required />
-        </label>
-        <label className="block">
-          <span className="text-sm font-semibold text-[#4a321e]">题材标识</span>
-          <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={form.genre_template} onChange={(event) => setForm({ ...form, genre_template: event.target.value })} required />
-        </label>
-        <label className="block">
-          <span className="text-sm font-semibold text-[#4a321e]">叙事风格</span>
-          <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={toneText(form, 'style')} onChange={(event) => updateToneField('style', event.target.value)} />
-        </label>
-        <label className="block">
-          <span className="text-sm font-semibold text-[#4a321e]">节奏提示</span>
-          <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={toneText(form, 'pacing')} onChange={(event) => updateToneField('pacing', event.target.value)} />
-        </label>
-        <label className="block md:col-span-2">
-          <span className="text-sm font-semibold text-[#4a321e]">真理库 / 世界底层设定</span>
-          <textarea className="mt-1 min-h-32 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={form.truth_canon} onChange={(event) => setForm({ ...form, truth_canon: event.target.value })} required />
-        </label>
-      </section>
-
-      <section className="mt-8">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-black text-[#34210f]">预置角色</h2>
-          <button type="button" className="secondary-button" onClick={addCharacter}>添加角色</button>
-        </div>
-        <div className="mt-4 space-y-4">
-          {form.starter_assets.characters.map((character, index) => (
-            <article key={index} className={`book-card grid gap-3 p-5 md:grid-cols-2 ${highlightCharacterIndex === index ? 'ring-2 ring-amber-500' : ''}`}>
-              <label className="block">
-                <span className="text-sm font-semibold text-[#4a321e]">姓名</span>
-                <input ref={(element) => { characterNameRefs.current[index] = element; }} className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={character.name} onChange={(event) => updateCharacter(index, { name: event.target.value })} required />
-              </label>
-              <label className="block">
-                <span className="text-sm font-semibold text-[#4a321e]">角色类型</span>
-                <select className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={character.role_type} onChange={(event) => updateCharacter(index, { role_type: event.target.value })} required>
-                  {optionsWithFallback(CHARACTER_ROLE_OPTIONS, character.role_type).map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-sm font-semibold text-[#4a321e]">公开身份</span>
-                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={profileText(character, 'identity')} onChange={(event) => updateCharacterProfile(index, 'identity', event.target.value)} />
-              </label>
-              <label className="block">
-                <span className="text-sm font-semibold text-[#4a321e]">能力/标签</span>
-                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={profileText(character, 'skill')} onChange={(event) => updateCharacterProfile(index, 'skill', event.target.value)} />
-              </label>
-              <label className="block">
-                <span className="text-sm font-semibold text-[#4a321e]">隐藏秘密</span>
-                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={hiddenText(character, 'secret')} onChange={(event) => updateCharacterHidden(index, 'secret', event.target.value)} />
-              </label>
-              <label className="block">
-                <span className="text-sm font-semibold text-[#4a321e]">命运标记</span>
-                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={character.destiny_flag ?? ''} onChange={(event) => updateCharacter(index, { destiny_flag: event.target.value })} />
-              </label>
-              <label className="block md:col-span-2">
-                <span className="text-sm font-semibold text-[#4a321e]">当前目标（用顿号、逗号或换行分隔）</span>
-                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={goalsToText(character.current_goals)} onChange={(event) => updateCharacter(index, { current_goals: textToGoals(event.target.value) })} />
-              </label>
-              <div className="md:col-span-2">
-                <button type="button" className="text-sm font-bold text-red-700" onClick={() => removeCharacter(index)} disabled={form.starter_assets.characters.length <= 1}>删除角色</button>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="mt-8">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-black text-[#34210f]">初始关系</h2>
-          <button type="button" className="secondary-button" onClick={addRelation} disabled={form.starter_assets.characters.length < 2}>添加关系</button>
-        </div>
-        <div className="mt-4 space-y-3">
-          {(form.starter_assets.relations ?? []).map((relation, index) => (
-            <article key={index} className="book-card grid gap-3 p-4 md:grid-cols-5">
-              <select className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" value={relation.source_index} onChange={(event) => updateRelation(index, { source_index: Number(event.target.value) })}>
-                {form.starter_assets.characters.map((character, characterIndex) => <option key={characterIndex} value={characterIndex}>{character.name}</option>)}
-              </select>
-              <select className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" value={relation.target_index} onChange={(event) => updateRelation(index, { target_index: Number(event.target.value) })}>
-                {form.starter_assets.characters.map((character, characterIndex) => <option key={characterIndex} value={characterIndex}>{character.name}</option>)}
-              </select>
-              <select className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" value={relation.relation_type} onChange={(event) => updateRelation(index, { relation_type: event.target.value })} required>
-                <option value="" disabled>选择关系类型</option>
-                <option value="mutual_suspicion">相互猜疑</option>
-                <option value="ally">盟友</option>
-                <option value="rival">对手/竞争</option>
-                <option value="mentor">师徒</option>
-                <option value="enemy">敌对</option>
-                <option value="friend">朋友</option>
-                <option value="family">亲属</option>
-                <option value="romantic">恋人</option>
-                <option value="stranger">陌生人</option>
-                <option value="alliance">同盟</option>
-                <option value="strained_alliance">貌合神离</option>
-                <option value="public_opponents">公开对立</option>
-              </select>
-              <input className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" type="number" min={1} max={5} value={relation.intensity ?? 1} onChange={(event) => updateRelation(index, { intensity: Number(event.target.value) })} />
-              <button type="button" className="text-sm font-bold text-red-700" onClick={() => removeRelation(index)}>删除</button>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="mt-8">
-        <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-black text-[#34210f]">初始伏笔</h2>
-          <button type="button" className="secondary-button" onClick={addForeshadow}>添加伏笔</button>
-        </div>
-        <div className="mt-4 space-y-4">
-          {(form.starter_assets.foreshadows ?? []).map((foreshadow, index) => (
-            <article key={index} className="book-card grid gap-3 p-5 md:grid-cols-2">
-              <label className="block">
-                <span className="text-sm font-semibold text-[#4a321e]">标题</span>
-                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={foreshadow.title} onChange={(event) => updateForeshadow(index, { title: event.target.value })} required />
-              </label>
-              <label className="block">
-                <span className="text-sm font-semibold text-[#4a321e]">类型</span>
-                <select className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={foreshadow.foreshadow_type} onChange={(event) => updateForeshadow(index, { foreshadow_type: event.target.value })} required>
-                  {optionsWithFallback(FORESHADOW_TYPE_OPTIONS, foreshadow.foreshadow_type).map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="block md:col-span-2">
-                <span className="text-sm font-semibold text-[#4a321e]">描述</span>
-                <textarea className="mt-1 min-h-24 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={foreshadow.description} onChange={(event) => updateForeshadow(index, { description: event.target.value })} required />
-              </label>
-              <label className="block">
-                <span className="text-sm font-semibold text-[#4a321e]">紧迫度</span>
-                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" type="number" min={1} max={5} value={foreshadow.urgency_level ?? 1} onChange={(event) => updateForeshadow(index, { urgency_level: Number(event.target.value) })} />
-              </label>
-              <label className="block">
-                <span className="text-sm font-semibold text-[#4a321e]">预计回收窗口</span>
-                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={foreshadow.expected_resolution_window ?? ''} onChange={(event) => updateForeshadow(index, { expected_resolution_window: event.target.value })} />
-              </label>
-              <div className="md:col-span-2">
-                <span className="text-sm font-semibold text-[#4a321e]">关联角色</span>
-                <div className="mt-2 flex flex-wrap gap-3">
-                  {form.starter_assets.characters.map((character, characterIndex) => (
-                    <label key={characterIndex} className="rounded-full border border-amber-900/20 bg-amber-50/60 px-3 py-2 text-sm text-[#4a321e]">
-                      <input className="mr-2" type="checkbox" checked={(foreshadow.related_character_indexes ?? []).includes(characterIndex)} onChange={() => toggleForeshadowCharacter(index, characterIndex)} />
-                      {character.name}
-                    </label>
-                  ))}
+          {currentStep.key === 'brief' && (
+            <section data-testid="brief-world-entry-panel">
+              <p className="chapter-kicker">一句话创建故事世界</p>
+              <h2 className="mt-2 text-2xl font-black text-[#34210f]">一句话开书</h2>
+              <p className="manuscript mt-2 text-sm text-[#5e3b1c]">写下一个故事点子，系统会生成可编辑的创建草稿。</p>
+              <p className="manuscript mt-1 text-sm font-bold text-[#5e3b1c]">生成草稿只会填入下方表单，不会创建世界，也不会写入正史。</p>
+              <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
+                <label className="block">
+                  <span className="text-sm font-semibold text-[#4a321e]">一句话故事想法</span>
+                  <textarea
+                    className="mt-1 min-h-24 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3"
+                    value={brief}
+                    onChange={(event) => setBrief(event.target.value)}
+                    placeholder="例如：一个所有人出生时都会被分配未来死因的王国"
+                    disabled={briefLoading}
+                  />
+                </label>
+                <div className="flex items-end gap-2">
+                  <button className="primary-button" type="button" disabled={briefLoading || !onExpandBrief} onClick={() => void submitBriefDraft()}>
+                    {briefLoading ? '正在生成可编辑草稿…' : '生成创建草稿'}
+                  </button>
+                  {briefLoading && <button className="secondary-button" type="button" onClick={cancelBriefDraft}>取消生成</button>}
                 </div>
               </div>
-              <div className="md:col-span-2">
-                <button type="button" className="text-sm font-bold text-red-700" onClick={() => removeForeshadow(index)}>删除伏笔</button>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
+              {briefError && <p className="paper-error mt-4 text-left" role="alert">{briefError}</p>}
+              {briefSuccess && (
+                <section className="mt-4 rounded-2xl bg-amber-50/70 p-4" aria-live="polite">
+                  <p className="font-black text-[#3b2511]">{briefSuccess}</p>
+                  <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">现在还没有创建世界，也没有写入正史。只有点击“创建世界并生成第一章草稿”后才会创建。</p>
+                  <p className="manuscript mt-1 text-sm font-bold text-[#5e3b1c]">确认创建后会进入第一章草稿审阅；第一章仍需在创作台点击“写入正史并更新世界”才会正式生效。</p>
+                  {briefDraftApplied && (
+                    <div className="mt-4">
+                      <label className="text-sm font-semibold text-[#4a321e]" htmlFor="brief-first-chapter-goal">第一章草稿目标</label>
+                      <textarea
+                        id="brief-first-chapter-goal"
+                        className="mt-1 min-h-24 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3"
+                        value={briefFirstChapterGoal}
+                        onChange={(event) => setBriefFirstChapterGoal(event.target.value)}
+                        placeholder="写下第一章要完成的开场目标"
+                        aria-describedby="brief-first-chapter-goal-help"
+                      />
+                      <p id="brief-first-chapter-goal-help" className="manuscript mt-1 text-xs text-[#5e3b1c]">可修改；它只用于进入创作台生成草稿，不会写入正史。</p>
+                    </div>
+                  )}
+                  {briefNotes.rationale && <p className="manuscript mt-3 text-sm">{briefNotes.rationale}</p>}
+                  {(briefNotes.assumptions?.length ?? 0) > 0 && (
+                    <div className="mt-3">
+                      <p className="text-sm font-bold text-[#5e3b1c]">草稿补全时采用的假设</p>
+                      <ul className="manuscript mt-1 list-disc space-y-1 pl-5 text-sm">{briefNotes.assumptions?.map((item) => <li key={item}>{item}</li>)}</ul>
+                    </div>
+                  )}
+                  {(briefNotes.safety_notes?.length ?? 0) > 0 && (
+                    <div className="mt-3">
+                      <p className="text-sm font-bold text-[#5e3b1c]">安全提示</p>
+                      <ul className="manuscript mt-1 list-disc space-y-1 pl-5 text-sm">{briefNotes.safety_notes?.map((item) => <li key={item}>{item}</li>)}</ul>
+                    </div>
+                  )}
+                </section>
+              )}
+            </section>
+          )}
 
-      <div className="mt-8 text-center">
-        <button className="primary-button" disabled={creating} type="submit">
-          {creating ? '正在冻结初始真理库...' : briefDraftApplied ? '创建世界并生成第一章草稿' : '创建自定义世界'}
+          {currentStep.key === 'basics' && (
+            <section className="grid gap-4 md:grid-cols-2">
+              <label className="block">
+                <span className="text-sm font-semibold text-[#4a321e]">世界标题</span>
+                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required />
+              </label>
+              <label className="block">
+                <span className="text-sm font-semibold text-[#4a321e]">题材标识</span>
+                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={form.genre_template} onChange={(event) => setForm({ ...form, genre_template: event.target.value })} required />
+              </label>
+              <label className="block">
+                <span className="text-sm font-semibold text-[#4a321e]">叙事风格</span>
+                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={toneText(form, 'style')} onChange={(event) => updateToneField('style', event.target.value)} />
+              </label>
+              <label className="block">
+                <span className="text-sm font-semibold text-[#4a321e]">节奏提示</span>
+                <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={toneText(form, 'pacing')} onChange={(event) => updateToneField('pacing', event.target.value)} />
+              </label>
+              <label className="block md:col-span-2">
+                <span className="text-sm font-semibold text-[#4a321e]">真理库 / 世界底层设定</span>
+                <textarea className="mt-1 min-h-32 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={form.truth_canon} onChange={(event) => setForm({ ...form, truth_canon: event.target.value })} required />
+              </label>
+            </section>
+          )}
+
+          {currentStep.key === 'characters' && (
+            <section>
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-black text-[#34210f]">预置角色</h2>
+                <button type="button" className="secondary-button" onClick={addCharacter}>添加角色</button>
+              </div>
+              <div className="mt-4 space-y-4">
+                {form.starter_assets.characters.map((character, index) => (
+                  <article key={index} className={`book-card grid gap-3 p-5 md:grid-cols-2 ${highlightCharacterIndex === index ? 'ring-2 ring-amber-500' : ''}`}>
+                    <label className="block">
+                      <span className="text-sm font-semibold text-[#4a321e]">姓名</span>
+                      <input ref={(element) => { characterNameRefs.current[index] = element; }} className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={character.name} onChange={(event) => updateCharacter(index, { name: event.target.value })} required />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-semibold text-[#4a321e]">角色类型</span>
+                      <select className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={character.role_type} onChange={(event) => updateCharacter(index, { role_type: event.target.value })} required>
+                        {optionsWithFallback(CHARACTER_ROLE_OPTIONS, character.role_type).map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-semibold text-[#4a321e]">公开身份</span>
+                      <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={profileText(character, 'identity')} onChange={(event) => updateCharacterProfile(index, 'identity', event.target.value)} />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-semibold text-[#4a321e]">能力/标签</span>
+                      <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={profileText(character, 'skill')} onChange={(event) => updateCharacterProfile(index, 'skill', event.target.value)} />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-semibold text-[#4a321e]">隐藏秘密</span>
+                      <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={hiddenText(character, 'secret')} onChange={(event) => updateCharacterHidden(index, 'secret', event.target.value)} />
+                    </label>
+                    <label className="block">
+                      <span className="text-sm font-semibold text-[#4a321e]">命运标记</span>
+                      <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={character.destiny_flag ?? ''} onChange={(event) => updateCharacter(index, { destiny_flag: event.target.value })} />
+                    </label>
+                    <label className="block md:col-span-2">
+                      <span className="text-sm font-semibold text-[#4a321e]">当前目标（用顿号、逗号或换行分隔）</span>
+                      <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={goalsToText(character.current_goals)} onChange={(event) => updateCharacter(index, { current_goals: textToGoals(event.target.value) })} />
+                    </label>
+                    <div className="md:col-span-2">
+                      <button type="button" className="text-sm font-bold text-red-700" onClick={() => removeCharacter(index)} disabled={form.starter_assets.characters.length <= 1}>删除角色</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {currentStep.key === 'relations' && (
+            <div className="space-y-8">
+              <section>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-black text-[#34210f]">初始关系</h2>
+                  <button type="button" className="secondary-button" onClick={addRelation} disabled={form.starter_assets.characters.length < 2}>添加关系</button>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {(form.starter_assets.relations ?? []).map((relation, index) => (
+                    <article key={index} className="book-card grid gap-3 p-4 md:grid-cols-5">
+                      <select className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" value={relation.source_index} onChange={(event) => updateRelation(index, { source_index: Number(event.target.value) })}>
+                        {form.starter_assets.characters.map((character, characterIndex) => <option key={characterIndex} value={characterIndex}>{character.name}</option>)}
+                      </select>
+                      <select className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" value={relation.target_index} onChange={(event) => updateRelation(index, { target_index: Number(event.target.value) })}>
+                        {form.starter_assets.characters.map((character, characterIndex) => <option key={characterIndex} value={characterIndex}>{character.name}</option>)}
+                      </select>
+                      <select className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" value={relation.relation_type} onChange={(event) => updateRelation(index, { relation_type: event.target.value })} required>
+                        <option value="" disabled>选择关系类型</option>
+                        <option value="mutual_suspicion">相互猜疑</option>
+                        <option value="ally">盟友</option>
+                        <option value="rival">对手/竞争</option>
+                        <option value="mentor">师徒</option>
+                        <option value="enemy">敌对</option>
+                        <option value="friend">朋友</option>
+                        <option value="family">亲属</option>
+                        <option value="romantic">恋人</option>
+                        <option value="stranger">陌生人</option>
+                        <option value="alliance">同盟</option>
+                        <option value="strained_alliance">貌合神离</option>
+                        <option value="public_opponents">公开对立</option>
+                      </select>
+                      <input className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" type="number" min={1} max={5} value={relation.intensity ?? 1} onChange={(event) => updateRelation(index, { intensity: Number(event.target.value) })} />
+                      <button type="button" className="text-sm font-bold text-red-700" onClick={() => removeRelation(index)}>删除</button>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-black text-[#34210f]">初始伏笔</h2>
+                  <button type="button" className="secondary-button" onClick={addForeshadow}>添加伏笔</button>
+                </div>
+                <div className="mt-4 space-y-4">
+                  {(form.starter_assets.foreshadows ?? []).map((foreshadow, index) => (
+                    <article key={index} className="book-card grid gap-3 p-5 md:grid-cols-2">
+                      <label className="block">
+                        <span className="text-sm font-semibold text-[#4a321e]">标题</span>
+                        <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={foreshadow.title} onChange={(event) => updateForeshadow(index, { title: event.target.value })} required />
+                      </label>
+                      <label className="block">
+                        <span className="text-sm font-semibold text-[#4a321e]">类型</span>
+                        <select className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={foreshadow.foreshadow_type} onChange={(event) => updateForeshadow(index, { foreshadow_type: event.target.value })} required>
+                          {optionsWithFallback(FORESHADOW_TYPE_OPTIONS, foreshadow.foreshadow_type).map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block md:col-span-2">
+                        <span className="text-sm font-semibold text-[#4a321e]">描述</span>
+                        <textarea className="mt-1 min-h-24 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={foreshadow.description} onChange={(event) => updateForeshadow(index, { description: event.target.value })} required />
+                      </label>
+                      <label className="block">
+                        <span className="text-sm font-semibold text-[#4a321e]">紧迫度</span>
+                        <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" type="number" min={1} max={5} value={foreshadow.urgency_level ?? 1} onChange={(event) => updateForeshadow(index, { urgency_level: Number(event.target.value) })} />
+                      </label>
+                      <label className="block">
+                        <span className="text-sm font-semibold text-[#4a321e]">预计回收窗口</span>
+                        <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={foreshadow.expected_resolution_window ?? ''} onChange={(event) => updateForeshadow(index, { expected_resolution_window: event.target.value })} />
+                      </label>
+                      <div className="md:col-span-2">
+                        <span className="text-sm font-semibold text-[#4a321e]">关联角色</span>
+                        <div className="mt-2 flex flex-wrap gap-3">
+                          {form.starter_assets.characters.map((character, characterIndex) => (
+                            <label key={characterIndex} className="rounded-full border border-amber-900/20 bg-amber-50/60 px-3 py-2 text-sm text-[#4a321e]">
+                              <input className="mr-2" type="checkbox" checked={(foreshadow.related_character_indexes ?? []).includes(characterIndex)} onChange={() => toggleForeshadowCharacter(index, characterIndex)} />
+                              {character.name}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="md:col-span-2">
+                        <button type="button" className="text-sm font-bold text-red-700" onClick={() => removeForeshadow(index)}>删除伏笔</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            </div>
+          )}
+
+          {currentStep.key === 'confirm' && (
+            <section data-testid="creation-summary">
+              <p className="chapter-kicker">Final Check</p>
+              <h2 className="mt-2 text-2xl font-black text-[#34210f]">确认创建</h2>
+              <p className="manuscript mt-2 text-sm text-[#5e3b1c]">检查下面的摘要，确认无误后冻结为你的初始世界状态。</p>
+              <dl className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className="rounded-2xl bg-amber-50/70 p-4">
+                  <dt className="text-sm font-bold text-[#5e3b1c]">世界标题</dt>
+                  <dd className="mt-1 font-black text-[#3b2511]">{form.title || '（未填写）'}</dd>
+                </div>
+                <div className="rounded-2xl bg-amber-50/70 p-4">
+                  <dt className="text-sm font-bold text-[#5e3b1c]">题材标识</dt>
+                  <dd className="mt-1 font-black text-[#3b2511]">{form.genre_template || '（未填写）'}</dd>
+                </div>
+                <div className="rounded-2xl bg-amber-50/70 p-4">
+                  <dt className="text-sm font-bold text-[#5e3b1c]">角色数量</dt>
+                  <dd className="mt-1 font-black text-[#3b2511]">{characterCount}</dd>
+                </div>
+                <div className="rounded-2xl bg-amber-50/70 p-4">
+                  <dt className="text-sm font-bold text-[#5e3b1c]">关系数量</dt>
+                  <dd className="mt-1 font-black text-[#3b2511]">{relationCount}</dd>
+                </div>
+                <div className="rounded-2xl bg-amber-50/70 p-4">
+                  <dt className="text-sm font-bold text-[#5e3b1c]">伏笔数量</dt>
+                  <dd className="mt-1 font-black text-[#3b2511]">{foreshadowCount}</dd>
+                </div>
+                <div className="rounded-2xl bg-amber-50/70 p-4">
+                  <dt className="text-sm font-bold text-[#5e3b1c]">一句话草稿</dt>
+                  <dd className="mt-1 font-black text-[#3b2511]">{briefDraftApplied ? '已应用，将生成第一章草稿' : '未使用'}</dd>
+                </div>
+                {briefDraftApplied && briefFirstChapterGoal.trim() && (
+                  <div className="rounded-2xl bg-amber-50/70 p-4 md:col-span-2">
+                    <dt className="text-sm font-bold text-[#5e3b1c]">第一章草稿目标</dt>
+                    <dd className="manuscript mt-1 text-sm text-[#3b2511]">{briefFirstChapterGoal}</dd>
+                  </div>
+                )}
+              </dl>
+            </section>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-5 flex items-center justify-between gap-3 rounded-[28px] border border-amber-900/15 bg-amber-100/60 p-4 shadow-sm">
+        <button type="button" className="secondary-button" disabled={isFirstStep} onClick={() => goToStep(stepIndex - 1)}>
+          上一步
         </button>
+        {isLastStep ? (
+          <button className="primary-button" disabled={creating} type="submit">
+            {creating ? '正在冻结初始真理库...' : briefDraftApplied ? '创建世界并生成第一章草稿' : '创建自定义世界'}
+          </button>
+        ) : (
+          <button type="button" className="primary-button" onClick={() => goToStep(stepIndex + 1)}>
+            下一步
+          </button>
+        )}
       </div>
 
       {undoToast && (

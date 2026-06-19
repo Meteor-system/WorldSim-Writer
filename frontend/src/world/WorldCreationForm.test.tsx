@@ -1,11 +1,18 @@
 import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { UserEvent } from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { WorldCreateRequest, WorldSeedSummary } from '../api/types';
 import { WorldCreationForm } from './WorldCreationForm';
 
 afterEach(() => cleanup());
+
+// The creation form is a single-screen wizard: only one step renders at a time.
+// These helpers navigate between steps via the left step navigation.
+async function goToStep(user: UserEvent, label: string) {
+  await user.click(screen.getByRole('button', { name: `步骤：${label}` }));
+}
 
 const seedSummary: WorldSeedSummary = {
   key: 'forgotten-sun-city',
@@ -45,6 +52,59 @@ const briefDraftPayload: WorldCreateRequest = {
   },
 };
 
+describe('WorldCreationForm wizard shell', () => {
+  it('shows only the first step (world genesis) by default', () => {
+    render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
+
+    // step 1 content is present
+    expect(screen.getByRole('button', { name: '创建内置示例世界' })).toBeInTheDocument();
+    expect(screen.getByTestId('genre-preset-grid')).toBeInTheDocument();
+    // progress indicator
+    expect(screen.getByText('步骤 1 / 6')).toBeInTheDocument();
+    // later steps' content is NOT in the DOM yet
+    expect(screen.queryByLabelText('世界标题')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('真理库 / 世界底层设定')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '添加角色' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '添加伏笔' })).not.toBeInTheDocument();
+  });
+
+  it('advances to the one-sentence step with the next button', async () => {
+    const user = userEvent.setup();
+    render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} onExpandBrief={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: '下一步' }));
+
+    expect(screen.getByRole('heading', { name: '一句话开书' })).toBeInTheDocument();
+    expect(screen.getByText('步骤 2 / 6')).toBeInTheDocument();
+  });
+
+  it('jumps directly to a step via the left navigation', async () => {
+    const user = userEvent.setup();
+    render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
+
+    await goToStep(user, '基础设定');
+    expect(screen.getByLabelText('世界标题')).toBeInTheDocument();
+
+    await goToStep(user, '角色');
+    expect(screen.getByRole('button', { name: '添加角色' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('世界标题')).not.toBeInTheDocument();
+  });
+
+  it('shows the create button only on the confirm step', async () => {
+    const user = userEvent.setup();
+    render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
+
+    expect(screen.queryByRole('button', { name: '创建自定义世界' })).not.toBeInTheDocument();
+    await goToStep(user, '基础设定');
+    expect(screen.queryByRole('button', { name: '创建自定义世界' })).not.toBeInTheDocument();
+
+    await goToStep(user, '确认创建');
+    expect(screen.getByRole('button', { name: '创建自定义世界' })).toBeInTheDocument();
+    // no next button on the final step
+    expect(screen.queryByRole('button', { name: '下一步' })).not.toBeInTheDocument();
+  });
+});
+
 describe('WorldCreationForm', () => {
   it('submits a custom world payload with starter assets', async () => {
     const user = userEvent.setup();
@@ -52,13 +112,17 @@ describe('WorldCreationForm', () => {
     const onCreateSample = vi.fn().mockResolvedValue(undefined);
     render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={onCreateSample} />);
 
+    await goToStep(user, '基础设定');
     await user.clear(screen.getByLabelText('世界标题'));
     await user.type(screen.getByLabelText('世界标题'), '自定义群星边境');
+
+    await goToStep(user, '关系与伏笔');
     await user.click(screen.getByRole('button', { name: '添加关系' }));
     await user.click(screen.getByRole('button', { name: '添加伏笔' }));
+
+    await goToStep(user, '确认创建');
     expect(screen.getByRole('button', { name: '创建自定义世界' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '创建世界并生成第一章草稿' })).not.toBeInTheDocument();
-    expect(screen.queryByText('确认创建后会进入第一章草稿审阅；第一章仍需在创作台点击“写入正史并更新世界”才会正式生效。')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
 
@@ -102,9 +166,12 @@ describe('WorldCreationForm', () => {
     );
 
     await user.click(screen.getByRole('button', { name: '套用到表单' }));
+    await goToStep(user, '基础设定');
+    expect(screen.getByLabelText('世界标题')).toHaveValue('无日城');
+
+    await goToStep(user, '确认创建');
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
 
-    expect(screen.getByLabelText('世界标题')).toHaveValue('无日城');
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: '无日城', genre_template: 'weird_fantasy' }));
   });
 
@@ -128,9 +195,11 @@ describe('WorldCreationForm', () => {
     expect(onCreateSeed).toHaveBeenCalledWith('forgotten-sun-city');
   });
 
-  it('renders a one-sentence story entry with canon safety copy', () => {
+  it('renders a one-sentence story entry with canon safety copy', async () => {
+    const user = userEvent.setup();
     render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} onExpandBrief={vi.fn()} />);
 
+    await goToStep(user, '一句话开书');
     expect(screen.getByRole('heading', { name: '一句话开书' })).toBeInTheDocument();
     expect(screen.getByLabelText('一句话故事想法')).toBeInTheDocument();
     expect(screen.getByText('生成草稿只会填入下方表单，不会创建世界，也不会写入正史。')).toBeInTheDocument();
@@ -148,23 +217,32 @@ describe('WorldCreationForm', () => {
     });
     render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} onExpandBrief={onExpandBrief} />);
 
+    await goToStep(user, '一句话开书');
     await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配未来死因的王国');
     await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
 
     expect(onExpandBrief).toHaveBeenCalledWith({ brief: '一个所有人出生时都会被分配未来死因的王国' });
-    expect(screen.getByLabelText('世界标题')).toHaveValue('死因王国');
-    expect(screen.getByLabelText('叙事风格')).toHaveValue('政治奇幻');
-    expect(screen.getByLabelText('真理库 / 世界底层设定')).toHaveValue('赫洛王国会在每个孩子出生时分配未来死因，命簿最近出现空白页。');
-    expect(screen.getAllByDisplayValue('莉塔').length).toBeGreaterThan(0);
     expect(screen.getByText('草稿已填入下方表单。请检查标题、设定、角色和伏笔，确认后再创建世界。')).toBeInTheDocument();
     expect(screen.getByText('现在还没有创建世界，也没有写入正史。只有点击“创建世界并生成第一章草稿”后才会创建。')).toBeInTheDocument();
     expect(screen.getByText('确认创建后会进入第一章草稿审阅；第一章仍需在创作台点击“写入正史并更新世界”才会正式生效。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '创建世界并生成第一章草稿' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '创建自定义世界' })).not.toBeInTheDocument();
     expect(screen.getByText('从死因制度补全政治奇幻世界。')).toBeInTheDocument();
     expect(screen.getByText('主角需要能接触命簿制度。')).toBeInTheDocument();
     expect(screen.getByText('这是原创世界创建草稿，不会自动创建世界或写入正史。')).toBeInTheDocument();
     expect(onCreate).not.toHaveBeenCalled();
+
+    // the generated payload populated the basic-setting step
+    await goToStep(user, '基础设定');
+    expect(screen.getByLabelText('世界标题')).toHaveValue('死因王国');
+    expect(screen.getByLabelText('叙事风格')).toHaveValue('政治奇幻');
+    expect(screen.getByLabelText('真理库 / 世界底层设定')).toHaveValue('赫洛王国会在每个孩子出生时分配未来死因，命簿最近出现空白页。');
+
+    await goToStep(user, '角色');
+    expect(screen.getAllByDisplayValue('莉塔').length).toBeGreaterThan(0);
+
+    // confirm step uses the brief-aware create button text
+    await goToStep(user, '确认创建');
+    expect(screen.getByRole('button', { name: '创建世界并生成第一章草稿' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建自定义世界' })).not.toBeInTheDocument();
   });
 
   it('starts a first-draft review path only after creating a brief-autofilled world', async () => {
@@ -173,8 +251,11 @@ describe('WorldCreationForm', () => {
     const onExpandBrief = vi.fn().mockResolvedValue({ payload: briefDraftPayload, first_chapter_goal: briefFirstChapterGoal });
     render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} onExpandBrief={onExpandBrief} />);
 
+    await goToStep(user, '一句话开书');
     await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配未来死因的王国');
     await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
+
+    await goToStep(user, '确认创建');
     await user.click(screen.getByRole('button', { name: '创建世界并生成第一章草稿' }));
 
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国' }), { autoStartFirstDraft: true, firstChapterGoal: briefFirstChapterGoal });
@@ -187,10 +268,13 @@ describe('WorldCreationForm', () => {
     const revisedGoal = '莉塔在归档夜主动调换命簿，把空白页藏进公爵审判卷宗。';
     render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} onExpandBrief={onExpandBrief} />);
 
+    await goToStep(user, '一句话开书');
     await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配未来死因的王国');
     await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
     await user.clear(screen.getByLabelText('第一章草稿目标'));
     await user.type(screen.getByLabelText('第一章草稿目标'), revisedGoal);
+
+    await goToStep(user, '确认创建');
     await user.click(screen.getByRole('button', { name: '创建世界并生成第一章草稿' }));
 
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国' }), { autoStartFirstDraft: true, firstChapterGoal: revisedGoal });
@@ -201,12 +285,17 @@ describe('WorldCreationForm', () => {
     const onExpandBrief = vi.fn().mockRejectedValue(new Error('PROTECTED_REFERENCE_TERMS'));
     render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} onExpandBrief={onExpandBrief} />);
 
+    await goToStep(user, '基础设定');
     await user.clear(screen.getByLabelText('世界标题'));
     await user.type(screen.getByLabelText('世界标题'), '手动保留标题');
+
+    await goToStep(user, '一句话开书');
     await user.type(screen.getByLabelText('一句话故事想法'), '一个魔法学校里的少年冒险故事');
     await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
 
     expect(screen.getByRole('alert')).toHaveTextContent('草稿里可能包含受保护作品的专有名称或设定，请换成更原创的一句话后重试。');
+
+    await goToStep(user, '基础设定');
     expect(screen.getByLabelText('世界标题')).toHaveValue('手动保留标题');
   });
 
@@ -216,6 +305,7 @@ describe('WorldCreationForm', () => {
     const onExpandBrief = vi.fn().mockReturnValue(new Promise((resolve) => { resolveDraft = resolve; }));
     render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} onExpandBrief={onExpandBrief} />);
 
+    await goToStep(user, '一句话开书');
     await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配未来死因的王国');
     await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
     expect(screen.getByRole('button', { name: '取消生成' })).toBeInTheDocument();
@@ -223,8 +313,9 @@ describe('WorldCreationForm', () => {
     await user.click(screen.getByRole('button', { name: '取消生成' }));
     resolveDraft({ payload: briefDraftPayload });
 
-    expect(await screen.findByLabelText('世界标题')).not.toHaveValue('死因王国');
     expect(screen.getByText('已取消生成，可以修改一句话后重新尝试。')).toBeInTheDocument();
+    await goToStep(user, '基础设定');
+    expect(screen.getByLabelText('世界标题')).not.toHaveValue('死因王国');
   });
 
   it('uses a layered responsive creation layout with motion classes', () => {
@@ -243,9 +334,11 @@ describe('WorldCreationForm', () => {
 });
 
 describe('WorldCreationForm typed selects, focus, and undo', () => {
-  it('renders the character role type as a select with Chinese labels and English values', () => {
+  it('renders the character role type as a select with Chinese labels and English values', async () => {
+    const user = userEvent.setup();
     render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
 
+    await goToStep(user, '角色');
     const roleSelect = screen.getAllByLabelText('角色类型')[0] as HTMLSelectElement;
     expect(roleSelect.tagName).toBe('SELECT');
     expect(roleSelect.value).toBe('protagonist');
@@ -258,8 +351,11 @@ describe('WorldCreationForm typed selects, focus, and undo', () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} />);
 
+    await goToStep(user, '角色');
     const roleSelect = screen.getAllByLabelText('角色类型')[0] as HTMLSelectElement;
     await user.selectOptions(roleSelect, 'rival');
+
+    await goToStep(user, '确认创建');
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
 
     expect(onCreate).toHaveBeenCalledWith(
@@ -276,6 +372,7 @@ describe('WorldCreationForm typed selects, focus, and undo', () => {
     const user = userEvent.setup();
     render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
 
+    await goToStep(user, '关系与伏笔');
     await user.click(screen.getByRole('button', { name: '添加伏笔' }));
     const typeSelects = screen.getAllByLabelText('类型') as HTMLSelectElement[];
     const newSelect = typeSelects[typeSelects.length - 1];
@@ -284,7 +381,8 @@ describe('WorldCreationForm typed selects, focus, and undo', () => {
     expect(newSelect.options[newSelect.selectedIndex].textContent).toBe('剧情线索');
   });
 
-  it('keeps an unknown role value as a fallback option so seed data is not lost', () => {
+  it('keeps an unknown role value as a fallback option so seed data is not lost', async () => {
+    const user = userEvent.setup();
     render(
       <WorldCreationForm
         creating={false}
@@ -295,6 +393,7 @@ describe('WorldCreationForm typed selects, focus, and undo', () => {
       />,
     );
 
+    await goToStep(user, '角色');
     const roleSelect = screen.getAllByLabelText('角色类型')[0] as HTMLSelectElement;
     // fantasy preset's first character is protagonist (a known option)
     expect(roleSelect.value).toBe('protagonist');
@@ -304,6 +403,7 @@ describe('WorldCreationForm typed selects, focus, and undo', () => {
     const user = userEvent.setup();
     render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
 
+    await goToStep(user, '角色');
     const before = screen.getAllByLabelText('姓名').length;
     await user.click(screen.getByRole('button', { name: '添加角色' }));
     const nameInputs = screen.getAllByLabelText('姓名');
@@ -317,6 +417,7 @@ describe('WorldCreationForm typed selects, focus, and undo', () => {
     const user = userEvent.setup();
     render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
 
+    await goToStep(user, '角色');
     const namesBefore = (screen.getAllByLabelText('姓名') as HTMLInputElement[]).map((input) => input.value);
     expect(namesBefore).toContain('洛恩爵士');
     const deleteButtons = screen.getAllByRole('button', { name: '删除角色' });
@@ -335,6 +436,7 @@ describe('WorldCreationForm typed selects, focus, and undo', () => {
     const user = userEvent.setup();
     render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
 
+    await goToStep(user, '关系与伏笔');
     const titleValue = (screen.getAllByLabelText('标题')[0] as HTMLInputElement).value;
     const deleteButtons = screen.getAllByRole('button', { name: '删除伏笔' });
     await user.click(deleteButtons[0]);

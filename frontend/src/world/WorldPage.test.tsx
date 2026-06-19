@@ -596,7 +596,7 @@ describe('WorldPage world creation', () => {
 
     render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
 
-    expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
+    expect(await screen.findByText('创建故事世界')).toBeInTheDocument();
     expect(await screen.findByText('Sandbox Seed Library')).toBeInTheDocument();
     expect(listWorldSeeds).toHaveBeenCalledOnce();
     await user.click(screen.getByRole('button', { name: '创建内置示例世界' }));
@@ -638,9 +638,11 @@ describe('WorldPage world creation', () => {
 
     render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
 
-    expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
+    expect(await screen.findByText('创建故事世界')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '步骤：一句话开书' }));
     await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配未来死因的王国');
     await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
+    await user.click(screen.getByRole('button', { name: '步骤：确认创建' }));
     await user.click(screen.getByRole('button', { name: '创建世界并生成第一章草稿' }));
 
     expect(createWorld).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国' }));
@@ -665,7 +667,8 @@ describe('WorldPage world creation', () => {
 
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
-    expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
+    expect(await screen.findByText('创建故事世界')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '步骤：确认创建' }));
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
 
     expect(createWorld).toHaveBeenCalledOnce();
@@ -867,7 +870,7 @@ describe('WorldPage bookshelf', () => {
     await user.click(await screen.findByRole('button', { name: '返回作品书架' }));
     await user.click(screen.getByRole('button', { name: '创建新小说' }));
 
-    expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
+    expect(await screen.findByText('创建故事世界')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '返回作品书架' })).toBeInTheDocument();
     expect(listWorldSeeds).toHaveBeenCalled();
   });
@@ -920,7 +923,8 @@ describe('WorldPage bookshelf', () => {
 
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
-    expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
+    expect(await screen.findByText('创建故事世界')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '步骤：确认创建' }));
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
 
     expect(await screen.findByText('创建失败，服务器暂时不可用。你填写的内容已保留，可以稍后重试。')).toBeInTheDocument();
