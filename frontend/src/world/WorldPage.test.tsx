@@ -949,12 +949,37 @@ describe('WorldPage Story Arc Planner', () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
     expect(await screen.findByText('第一章启动台')).toBeInTheDocument();
-    expect(screen.getByText('先生成前 10 章故事弧线，再把下一章目标带入创作台。')).toBeInTheDocument();
+    expect(screen.getByText('直接生成第一章草稿并进入创作台；也可以先规划前 10 章故事弧线再动笔。')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '生成第一轮故事弧线' }));
 
     expect(generateStoryArc).toHaveBeenCalledWith(7);
     expect(await screen.findByText('第 2 章标题')).toBeInTheDocument();
+  });
+
+  it('launches the first chapter draft directly from the empty-arc launchpad', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('第一章启动台')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '生成第一章草稿并进入创作台' }));
+
+    expect(onEnterStudio).toHaveBeenCalledWith(world, expect.objectContaining({
+      autoStartFirstDraft: true,
+      initialChapterGoal: expect.stringContaining('青岚城'),
+      executionContext: expect.objectContaining({
+        source: 'manual',
+        source_world_version: 2,
+        next_chapter_number: 2,
+      }),
+    }));
+    const [, launchContext] = onEnterStudio.mock.calls[0];
+    expect(launchContext.initialChapterGoal.trim().length).toBeGreaterThan(0);
+    expect(launchContext.executionContext.goal).toBe(launchContext.initialChapterGoal);
+    expect(screen.getByRole('button', { name: '生成第一轮故事弧线' })).toBeInTheDocument();
+    expect(generateStoryArc).not.toHaveBeenCalled();
   });
 
   it('shows story-operation waiting copy while generating the story arc', async () => {

@@ -311,19 +311,25 @@ type FirstChapterLaunchpadProps = {
   materialReferences: ImportMaterialReference[];
   onGenerateArc: () => void;
   onLaunchChapter: (chapter: StoryArcChapter) => void;
+  onLaunchFirstDraft: () => void;
 };
 
-function FirstChapterLaunchpad({ world, nextChapter, arcLoading, materialReferences, onGenerateArc, onLaunchChapter }: FirstChapterLaunchpadProps) {
+function FirstChapterLaunchpad({ world, nextChapter, arcLoading, materialReferences, onGenerateArc, onLaunchChapter, onLaunchFirstDraft }: FirstChapterLaunchpadProps) {
   return (
     <article className="mt-8 rounded-2xl border border-amber-900/15 bg-amber-100/60 p-4 shadow-sm">
       <p className="chapter-kicker">第一章启动台</p>
       {world.story_arc.length === 0 ? (
-        <div className="mt-3">
-          <p className="manuscript text-sm text-[#5e3b1c]">先生成前 10 章故事弧线，再把下一章目标带入创作台。</p>
-          <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">生成第一章 → 写入正史 → 查看世界变化</p>
-          <button className="primary-button mt-4" type="button" disabled={arcLoading} onClick={onGenerateArc}>
-            {arcLoading ? '故事弧线规划中…' : '生成第一轮故事弧线'}
-          </button>
+        <div className="mt-3 space-y-3">
+          <p className="manuscript text-sm font-bold text-[#5e3b1c]">生成第一章 → 写入正史 → 查看世界变化</p>
+          <p className="manuscript text-sm text-[#5e3b1c]">直接生成第一章草稿并进入创作台；也可以先规划前 10 章故事弧线再动笔。</p>
+          <div className="flex flex-wrap gap-3">
+            <button className="primary-button" type="button" disabled={arcLoading} onClick={onLaunchFirstDraft}>
+              生成第一章草稿并进入创作台
+            </button>
+            <button className="secondary-button" type="button" disabled={arcLoading} onClick={onGenerateArc}>
+              {arcLoading ? '故事弧线规划中…' : '生成第一轮故事弧线'}
+            </button>
+          </div>
         </div>
       ) : nextChapter ? (
         <div className="mt-3 space-y-3">
@@ -700,6 +706,16 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     });
   }
 
+  function launchFirstChapterDraft() {
+    if (!world) return;
+    const initialChapterGoal = buildFirstChapterGoal(world);
+    onEnterStudio(world, {
+      autoStartFirstDraft: true,
+      initialChapterGoal,
+      executionContext: buildManualExecutionContext(world, initialChapterGoal),
+    });
+  }
+
   useEffect(() => {
     void loadWorld();
   }, []);
@@ -877,6 +893,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   materialReferences={nextPrep?.material_references ?? []}
                   onGenerateArc={runStoryArcPlanner}
                   onLaunchChapter={launchStoryArcChapter}
+                  onLaunchFirstDraft={launchFirstChapterDraft}
                 />
               )}
               {error && (
