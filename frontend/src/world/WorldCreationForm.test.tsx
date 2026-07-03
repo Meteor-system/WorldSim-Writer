@@ -318,6 +318,49 @@ describe('WorldCreationForm', () => {
     expect(screen.getByLabelText('世界标题')).not.toHaveValue('死因王国');
   });
 
+  it('regenerates a draft by re-invoking brief expansion after a draft is applied', async () => {
+    const user = userEvent.setup();
+    const onExpandBrief = vi.fn().mockResolvedValue({ payload: briefDraftPayload, first_chapter_goal: briefFirstChapterGoal });
+    render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} onExpandBrief={onExpandBrief} />);
+
+    await goToStep(user, '一句话开书');
+    await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配未来死因的王国');
+    await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
+    expect(onExpandBrief).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: '重新生成草稿' }));
+
+    expect(onExpandBrief).toHaveBeenCalledTimes(2);
+    expect(onExpandBrief).toHaveBeenLastCalledWith({ brief: '一个所有人出生时都会被分配未来死因的王国' });
+  });
+
+  it('discards an applied draft and restores the default create button without creating a world', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const onExpandBrief = vi.fn().mockResolvedValue({ payload: briefDraftPayload, first_chapter_goal: briefFirstChapterGoal });
+    render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} onExpandBrief={onExpandBrief} />);
+
+    await goToStep(user, '一句话开书');
+    await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配未来死因的王国');
+    await user.click(screen.getByRole('button', { name: '生成创建草稿' }));
+
+    // brief-aware create button is active before discard
+    await goToStep(user, '确认创建');
+    expect(screen.getByRole('button', { name: '创建世界并生成第一章草稿' })).toBeInTheDocument();
+
+    await goToStep(user, '一句话开书');
+    await user.click(screen.getByRole('button', { name: '清除草稿' }));
+
+    await goToStep(user, '确认创建');
+    expect(screen.getByRole('button', { name: '创建自定义世界' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建世界并生成第一章草稿' })).not.toBeInTheDocument();
+    expect(onCreate).not.toHaveBeenCalled();
+
+    // discarded draft no longer populates the basic-setting step
+    await goToStep(user, '基础设定');
+    expect(screen.getByLabelText('世界标题')).not.toHaveValue('死因王国');
+  });
+
   it('uses a layered responsive creation layout with motion classes', () => {
     render(<WorldCreationForm creating={false} onCreate={vi.fn()} onCreateSample={vi.fn()} />);
 

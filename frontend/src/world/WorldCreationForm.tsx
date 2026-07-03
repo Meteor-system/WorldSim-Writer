@@ -408,6 +408,19 @@ export function WorldCreationForm({
     setBriefFirstChapterGoal('');
   }
 
+  function resetBriefDraft() {
+    briefRequestIdRef.current += 1;
+    setBriefLoading(false);
+    setBriefDraftApplied(false);
+    setBriefFirstChapterGoal('');
+    setBriefNotes({});
+    setBriefSuccess('');
+    setBriefError('');
+    setSelectedPresetKey(GENRE_PRESETS[0].key);
+    setActiveSeedKey(null);
+    setForm(clonePreset(GENRE_PRESETS[0]));
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     // Only the confirm step commits. Enter pressed inside an earlier step's input
@@ -561,6 +574,16 @@ export function WorldCreationForm({
                         aria-describedby="brief-first-chapter-goal-help"
                       />
                       <p id="brief-first-chapter-goal-help" className="manuscript mt-1 text-xs text-[#5e3b1c]">可修改；它只用于进入创作台生成草稿，不会写入正史。</p>
+                    </div>
+                  )}
+                  {briefDraftApplied && (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button className="secondary-button" type="button" disabled={briefLoading || !onExpandBrief} onClick={() => void submitBriefDraft()}>
+                        重新生成草稿
+                      </button>
+                      <button className="secondary-button" type="button" disabled={briefLoading} onClick={resetBriefDraft}>
+                        清除草稿
+                      </button>
                     </div>
                   )}
                   {briefNotes.rationale && <p className="manuscript mt-3 text-sm">{briefNotes.rationale}</p>}
