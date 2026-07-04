@@ -4,16 +4,20 @@ WorldSim-Writer is a long-form narrative creation system. The current MVP runs a
 
 ## Local setup
 
-Backend:
+Backend (uses a local virtualenv at `backend/.venv`):
 
 ```bash
-conda activate worldsim
 cd backend
+python -m venv .venv
+source .venv/bin/activate
 cp .env.example .env
 pip install -e '.[dev]'
 alembic upgrade head
 uvicorn app.main:app --reload
 ```
+
+Subsequent sessions only need `source backend/.venv/bin/activate` (or call the
+binaries directly, e.g. `backend/.venv/bin/uvicorn`, `backend/.venv/bin/pytest`).
 
 Frontend:
 
@@ -30,8 +34,8 @@ Set `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` in `backend/.env` before gene
 Run backend tests:
 
 ```bash
-conda activate worldsim
 cd backend
+source .venv/bin/activate
 pytest
 ```
 
