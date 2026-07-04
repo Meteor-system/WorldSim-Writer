@@ -160,6 +160,117 @@ def format_execution_context_for_prompt(execution_context: dict | None) -> str:
     return '\n'.join(lines) + '\n'
 
 
+# Default per-chapter entropy budget for the deterministic timeline stabilizer.
+# This is 审稿参考 (draft-review) guidance only. The counts here bound how much
+# a single chapter may expand the story before Studio should surface review
+# pressure; they never block approval and never touch formal canon.
+DEFAULT_ENTROPY_BUDGET: dict[str, int] = {
+    'max_new_major_facts': 2,
+    'max_new_characters': 1,
+    'max_new_foreshadows': 1,
+    'required_existing_threads_advanced': 0,
+    'required_resolutions': 0,
+}
+
+# Foreshadow statuses that retire a thread rather than push it forward.
+_RESOLVED_FORESHADOW_STATUSES = {'resolved', 'expired'}
+
+
+def compute_timeline_diff(
+    proposed_changes: dict | None,
+    current_character_ids: set[int] | None = None,
+    current_foreshadow_ids: set[int] | None = None,
+    budget: dict | None = None,
+) -> dict:
+    """Deterministic 审稿参考 (draft-review) timeline / entropy summary.
+
+    Derived purely from a draft's proposed formal changes and, when supplied,
+    the current world projection. No LLM call is involved and no state is
+    mutated: this is review metadata only. It must never change canon,
+    projections, ``world_version`` or the formal ``EventLog``, and the
+    approval path ignores it entirely. Timeline violations are advisory review
+    pressure, not an approval gate.
+    """
+    changes = proposed_changes or {}
+    character_changes = list(changes.get('characters', []) or [])
+    foreshadow_changes = list(changes.get('foreshadows', []) or [])
+
+    effective_budget = dict(DEFAULT_ENTROPY_BUDGET)
+    if budget:
+        effective_budget.update(budget)
+
+    new_canon_candidates: list[str] = []
+    new_major_facts_count = 0
+    for change in character_changes:
+        character_id = change.get('character_id')
+        if change.get('status') is not None:
+            new_major_facts_count += 1
+            new_canon_candidates.append(f'角色 {character_id} 状态更新：{change.get("status")}')
+        if change.get('current_goals'):
+            new_canon_candidates.append(f'角色 {character_id} 目标更新')
+
+    advanced_threads: list[dict] = []
+    resolved_threads: list[dict] = []
+    for change in foreshadow_changes:
+        entry = {'foreshadow_id': change.get('foreshadow_id'), 'status': change.get('status')}
+        if change.get('description_note'):
+            entry['note'] = change.get('description_note')
+        if change.get('status') in _RESOLVED_FORESHADOW_STATUSES:
+            resolved_threads.append(entry)
+        else:
+            advanced_threads.append(entry)
+
+    resolved_count = len(resolved_threads)
+
+    new_characters_count = 0
+    if current_character_ids is not None:
+        proposed_character_ids = {change.get('character_id') for change in character_changes}
+        new_characters_count = len(proposed_character_ids - current_character_ids)
+
+    new_foreshadows_count = 0
+    if current_foreshadow_ids is not None:
+        proposed_foreshadow_ids = {change.get('foreshadow_id') for change in foreshadow_changes}
+        new_foreshadows_count = len(proposed_foreshadow_ids - current_foreshadow_ids)
+
+    entropy_score = max(new_major_facts_count * 2 + len(advanced_threads) - resolved_count, 0)
+
+    violations: list[str] = []
+    if new_major_facts_count > effective_budget['max_new_major_facts']:
+        violations.append(
+            f'本章新增 {new_major_facts_count} 条主要设定变化，超过熵预算上限 {effective_budget["max_new_major_facts"]}。'
+        )
+    if new_characters_count > effective_budget['max_new_characters']:
+        violations.append(
+            f'本章新增 {new_characters_count} 个角色，超过熵预算上限 {effective_budget["max_new_characters"]}。'
+        )
+    if new_foreshadows_count > effective_budget['max_new_foreshadows']:
+        violations.append(
+            f'本章新增 {new_foreshadows_count} 条伏笔，超过熵预算上限 {effective_budget["max_new_foreshadows"]}。'
+        )
+
+    if violations:
+        timeline_risk = 'high'
+    elif entropy_score >= 5:
+        timeline_risk = 'medium'
+    else:
+        timeline_risk = 'low'
+
+    return {
+        'new_canon_candidates': new_canon_candidates,
+        'advanced_threads': advanced_threads,
+        'new_threads': [],
+        'resolved_threads': resolved_threads,
+        'resolved_count': resolved_count,
+        'new_major_facts_count': new_major_facts_count,
+        'new_characters_count': new_characters_count,
+        'new_foreshadows_count': new_foreshadows_count,
+        'entropy_score': entropy_score,
+        'timeline_risk': timeline_risk,
+        'violations': violations,
+        'budget': effective_budget,
+    }
+
+
 def _draft_payload(chapter: Chapter, draft: ChapterDraft) -> dict:
     return {
         'chapter_id': chapter.id,
@@ -181,6 +292,8 @@ def _draft_payload(chapter: Chapter, draft: ChapterDraft) -> dict:
         'outline_context': chapter.outline_context,
         'critique_report': chapter.critique_report,
         'execution_context': draft.execution_context or chapter.execution_context,
+        # 审稿参考 only — deterministic timeline/entropy summary computed on read.
+        'timeline_diff': compute_timeline_diff(draft.proposed_changes),
     }
 
 

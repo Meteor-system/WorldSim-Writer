@@ -121,6 +121,7 @@ class DraftResponse(BaseModel):
     outline_context: dict | None = None
     critique_report: dict | None = None
     execution_context: dict | None = None
+    timeline_diff: dict | None = None
 
 
 class ApproveRequest(BaseModel):

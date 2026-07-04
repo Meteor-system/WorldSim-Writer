@@ -974,6 +974,8 @@ export type DraftResponse = {
   outline_context?: Record<string, unknown>;
   critique_report?: CritiqueReport;
   execution_context?: ChapterExecutionContext | null;
+  // 审稿参考 only — deterministic timeline/entropy summary, never canon.
+  timeline_diff?: Record<string, unknown> | null;
 };
 
 export type ParagraphReviseRequest = {
