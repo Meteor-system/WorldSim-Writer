@@ -17,9 +17,9 @@ from app.import_node.schemas import (
     ImportCandidateAssetPreview,
     ImportCandidateAssetResponse,
     ImportConfirmRequest,
-    ImportMaterialReferenceResponse,
     ImportConfirmResponse,
     ImportConflict,
+    ImportMaterialReferenceResponse,
     ImportPreviewRequest,
     ImportPreviewResponse,
 )
@@ -77,7 +77,6 @@ def _title_summary_from_line(line: str, pool: str) -> tuple[str, str]:
 
 
 def _classify_line(line: str) -> str:
-    lowered = line.lower()
     if re.match(r'^(设定|规则|世界观|canon|真理)\s*[:：\-]', line, re.IGNORECASE) or any(keyword in line for keyword in CANON_KEYWORDS):
         return 'canon'
     if re.match(r'^(角色|人物)\s*[:：\-]', line) or ('：' in line and any(keyword in line for keyword in ROLE_KEYWORDS)):

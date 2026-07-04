@@ -2,7 +2,11 @@ import json
 
 import pytest
 
-from app.llm.schemas import StoryArcChapter, parse_story_arc
+from app.llm.client import LLMClient
+from app.llm.schemas import parse_story_arc
+from app.narrative.models import Chapter
+from app.world import story_arc as story_arc_service
+from app.world.models import World
 
 
 def valid_story_arc_payload(title_suffix: str = '') -> list[dict]:
@@ -43,9 +47,6 @@ def test_parse_story_arc_rejects_invalid_shape(payload):
         parse_story_arc(json.dumps(payload))
 
 
-from app.llm.client import LLMClient
-
-
 def test_llm_client_mock_generates_ten_chapter_story_arc():
     chapters = LLMClient(mock=True).generate_story_arc([])
 
@@ -81,10 +82,6 @@ def test_story_arc_client_call_does_not_force_json_object_response(monkeypatch):
     assert 'response_format' not in captured_payloads[0]
 
 
-from app.narrative.models import Chapter
-from app.world.models import World
-
-
 def register_and_create_world(client):
     token = client.post('/auth/register', json={'email': 'arc-writer@example.com', 'password': 'strongpass123'}).json()['access_token']
     world = client.post('/worlds/from-template', headers={'Authorization': f'Bearer {token}'}).json()
@@ -110,9 +107,6 @@ def test_world_overview_includes_story_arc_and_approved_chapter_count(client, db
     payload = response.json()
     assert payload['story_arc'][0]['chapter_number'] == 1
     assert payload['approved_chapter_count'] == 1
-
-
-from app.world import story_arc as story_arc_service
 
 
 class FakeStoryArcLLMClient:

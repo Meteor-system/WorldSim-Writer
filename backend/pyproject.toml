@@ -26,3 +26,28 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/import_node/router.py" = ["I001"]
+"app/llm/client.py" = ["I001"]
+"app/narrative/router.py" = ["I001"]
+"app/narrative_control_center/service.py" = ["I001"]
+"app/snapshot_export/router.py" = ["I001"]
+"app/snapshot_export/service.py" = ["I001"]
+"app/tags/router.py" = ["I001"]
+"app/tags/service.py" = ["I001"]
+"app/world/service.py" = ["I001"]
+"tests/conftest.py" = ["I001"]
+"tests/test_e2e_scripts.py" = ["I001"]
+"tests/test_migrations.py" = ["I001"]
+"tests/test_snapshot_export.py" = ["I001"]
+"tests/test_timeline_diff.py" = ["I001"]
+"tests/test_world_brief_expand.py" = ["I001"]

@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.event.models import EventLog
 from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange

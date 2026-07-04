@@ -68,10 +68,6 @@ const LIFECYCLE_LABELS: Record<ForeshadowStatus, string> = {
   expired: '已放弃',
 };
 
-function isUnresolved(statusValue: ForeshadowStatus) {
-  return statusValue === 'planted' || statusValue === 'advanced';
-}
-
 function canDropStatus(statusValue: ForeshadowStatus) {
   return statusValue === 'planted' || statusValue === 'advanced';
 }

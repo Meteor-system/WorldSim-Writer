@@ -3,7 +3,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.character.schemas import CharacterRelationResponse, CharacterResponse
-from app.event.schemas import EventLogListResponse, EventLogResponse
+from app.event.schemas import EventLogResponse
 from app.foreshadow.schemas import ForeshadowResponse
 from app.llm.schemas import StoryArcChapter
 

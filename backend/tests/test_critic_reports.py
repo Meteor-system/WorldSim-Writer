@@ -1,11 +1,10 @@
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.event.models import EventLog
 from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter
 from app.world.models import World
-
 
 CRITIC_DIMENSIONS = [
     'pacing',

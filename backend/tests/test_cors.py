@@ -1,9 +1,6 @@
-import os
-
 import pytest
 
 from app.core.config import Settings
-
 
 DEV_ORIGINS = [
     'http://localhost:5173',

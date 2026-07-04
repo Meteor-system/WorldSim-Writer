@@ -1,6 +1,6 @@
 from sqlalchemy import select
 
-from app.character.models import Character, CharacterRelation
+from app.character.models import CharacterRelation
 from app.event.models import EventLog
 from app.world.models import World
 
