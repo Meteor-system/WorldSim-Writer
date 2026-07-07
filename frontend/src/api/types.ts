@@ -493,6 +493,7 @@ export type ChapterExecutionContext = {
 export type StudioLaunchContext = {
   initialChapterGoal?: string;
   executionContext?: ChapterExecutionContext;
+  autoDraftFirstChapter?: boolean;
 };
 
 export type ChapterPipelineResponse = {

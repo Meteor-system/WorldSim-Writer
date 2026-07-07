@@ -287,6 +287,23 @@ function buildStoryArcExecutionContext(world: WorldOverview, chapter: StoryArcCh
   };
 }
 
+function buildWorldCreationDraftExecutionContext(world: WorldOverview, firstChapterGoal: string): ChapterExecutionContext {
+  return {
+    source: 'manual',
+    source_world_version: world.world_version,
+    next_chapter_number: 1,
+    goal: firstChapterGoal,
+    recommended_pov: { character_id: null, name: null },
+    source_signals: ['world_creation_draft'],
+    priority_characters: [],
+    priority_foreshadows: [],
+    progression_hints: [],
+    continuity_warnings: [],
+    recent_events: [],
+    material_references: [],
+  };
+}
+
 type FirstChapterLaunchpadProps = {
   world: WorldOverview;
   nextChapter: StoryArcChapter | null;
@@ -409,6 +426,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [arcPlanError, setArcPlanError] = useState('');
   const [analysisLoaded, setAnalysisLoaded] = useState(false);
   const [selectedExecutionContext, setSelectedExecutionContext] = useState<ChapterExecutionContext | null>(null);
+  const [worldCreationDraftGoal, setWorldCreationDraftGoal] = useState('');
   const [expandedStoryArcChapters, setExpandedStoryArcChapters] = useState<number[]>([]);
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -543,6 +561,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
     setShowCreationForm(false);
     setSelectedExecutionContext(null);
+    setWorldCreationDraftGoal('');
     setTab('overview');
   }
 
@@ -568,7 +587,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     }
   }
 
-  async function submitWorld(payload: WorldCreateRequest) {
+  async function submitWorld(payload: WorldCreateRequest, context?: { firstChapterGoal?: string }) {
     setCreating(true);
     setError('');
     try {
@@ -578,6 +597,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setWorld(overview);
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
+      setSelectedExecutionContext(null);
+      setWorldCreationDraftGoal(context?.firstChapterGoal ?? '');
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建世界失败');
     } finally {
@@ -595,6 +616,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setWorld(overview);
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
+      setWorldCreationDraftGoal('');
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建世界失败');
     } finally {
@@ -612,6 +634,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setWorld(overview);
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
+      setWorldCreationDraftGoal('');
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建灵感模板失败');
     } finally {
@@ -658,11 +681,13 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     setWorld(null);
     setShowCreationForm(false);
     setArchiveError('');
+    setWorldCreationDraftGoal('');
   }
 
   function startNewWorld() {
     setWorld(null);
     setShowCreationForm(true);
+    setWorldCreationDraftGoal('');
     void loadSeedLibrary();
   }
 
@@ -688,6 +713,16 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     onEnterStudio(world, {
       initialChapterGoal: executionContext.goal,
       executionContext,
+    });
+  }
+
+  function launchWorldCreationDraftChapter() {
+    if (!world || !worldCreationDraftGoal) return;
+    const executionContext = buildWorldCreationDraftExecutionContext(world, worldCreationDraftGoal);
+    onEnterStudio(world, {
+      initialChapterGoal: executionContext.goal,
+      executionContext,
+      autoDraftFirstChapter: true,
     });
   }
 
@@ -843,7 +878,16 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 {labelWorldVersion(world.world_version)} · {labelGenre(world.genre_template)} · {labelStatus(world.status)}
               </p>
               <p className="manuscript mt-8 text-lg">{world.truth_canon}</p>
-              {shouldShowFirstChapterOnboarding && (
+              {worldCreationDraftGoal && !isArchivedWorld && (
+                <article className="mt-6 rounded-3xl border-2 border-amber-900/20 bg-amber-100/80 p-5 shadow-sm" aria-label="创建草稿第一章入口">
+                  <p className="chapter-kicker">创建草稿</p>
+                  <h2 className="mt-2 text-2xl font-black text-[#34210f]">生成第一章草稿并进入 Studio</h2>
+                  <p className="manuscript mt-2 text-sm text-[#5e3b1c]">第一章目标：{worldCreationDraftGoal}</p>
+                  <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">只会在 Studio 创建章节草稿与审批预览；确认前不会写入正史或推进世界进度。</p>
+                  <button className="primary-button mt-4" type="button" onClick={launchWorldCreationDraftChapter}>生成第一章草稿并进入 Studio</button>
+                </article>
+              )}
+              {shouldShowFirstChapterOnboarding && !worldCreationDraftGoal && (
                 <FirstChapterOnboardingCard
                   arcLoading={arcLoading}
                   onGenerateArc={runStoryArcPlanner}

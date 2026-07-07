@@ -14,7 +14,7 @@ import { SeedLibraryPanel } from './SeedLibraryPanel';
 
 type Props = {
   creating: boolean;
-  onCreate: (payload: WorldCreateRequest) => Promise<void>;
+  onCreate: (payload: WorldCreateRequest, context?: { firstChapterGoal?: string }) => Promise<void>;
   onCreateSample: () => Promise<void>;
   onDraftFromBrief?: (brief: string) => Promise<WorldCreationDraftResponse>;
   seeds?: WorldSeedSummary[];
@@ -288,7 +288,7 @@ export function WorldCreationForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    await onCreate(form);
+    await onCreate(form, { firstChapterGoal: draftMeta?.first_chapter_goal });
   }
 
   return (

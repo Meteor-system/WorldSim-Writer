@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, confirmWorldImport, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, draftWorldFromBrief, exportWorldArchiveMarkdown, generateStoryArc, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldImports, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, previewWorldImport, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
-import type { WorldOverview, WorldSearchResponse } from '../api/types';
+import type { WorldCreateRequest, WorldOverview, WorldSearchResponse } from '../api/types';
 import { WorldPage } from './WorldPage';
 
 vi.mock('../api/client', () => ({
@@ -93,6 +93,21 @@ const newWorld: WorldOverview = {
   approved_chapter_count: 0,
   story_arc: [],
   recent_events: [],
+};
+
+const briefDraftPayload: WorldCreateRequest = {
+  title: '死因王国',
+  genre_template: 'fantasy',
+  truth_canon: '每个人出生时都会获得一个未来死因，死因记录支撑王国秩序。',
+  tone_profile: { style: '黑暗奇幻悬疑', pacing: '高张力冷启动' },
+  starter_assets: {
+    characters: [
+      { name: '伊莱', role_type: 'protagonist', public_profile: { identity: '命运抄写员' }, current_goals: ['查明死因被篡改的原因'] },
+      { name: '维拉', role_type: 'rival', public_profile: { identity: '王国命运官' }, current_goals: ['封锁死因档案'] },
+    ],
+    relations: [{ source_index: 0, target_index: 1, relation_type: 'mutual_suspicion', intensity: 4, visibility: 'private' }],
+    foreshadows: [{ title: '空白死因页', description: '伊莱的死因记录被银火烧穿。', foreshadow_type: 'fate_record_clue', status: 'planted', urgency_level: 4, related_character_indexes: [0, 1] }],
+  },
 };
 
 const storyArcWorld: WorldOverview = {
@@ -574,6 +589,50 @@ describe('WorldPage world creation', () => {
     expect(createSampleWorld).toHaveBeenCalledOnce();
     expect(apiRequest).toHaveBeenNthCalledWith(2, '/worlds/7/overview');
     expect(await screen.findByText('青岚城')).toBeInTheDocument();
+  });
+
+  it('offers a first-chapter Studio draft CTA after creating from a brief draft', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(newWorld);
+    vi.mocked(draftWorldFromBrief).mockResolvedValueOnce({
+      source_brief: '一个所有人出生时都会被分配死因的王国',
+      draft: briefDraftPayload,
+      first_chapter_goal: '让伊莱发现自己的死因记录被烧穿。',
+      generation_notes: ['已生成可编辑草稿。'],
+      safety_notes: ['确认前不会创建世界、写入正史或推进世界进度。'],
+    });
+    vi.mocked(createWorld).mockResolvedValueOnce({ id: 7 });
+
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    expect(await screen.findByText('创建世界工坊')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配死因的王国');
+    await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
+    await user.click(await screen.findByRole('button', { name: '创建自定义世界' }));
+
+    expect(createWorld).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国' }));
+    expect(await screen.findByLabelText('创建草稿第一章入口')).toBeInTheDocument();
+    expect(screen.getByText('只会在 Studio 创建章节草稿与审批预览；确认前不会写入正史或推进世界进度。')).toBeInTheDocument();
+    expect(onEnterStudio).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '生成第一章草稿并进入 Studio' }));
+
+    expect(onEnterStudio).toHaveBeenCalledWith(newWorld, {
+      initialChapterGoal: '让伊莱发现自己的死因记录被烧穿。',
+      executionContext: expect.objectContaining({
+        source: 'manual',
+        source_world_version: 1,
+        next_chapter_number: 1,
+        goal: '让伊莱发现自己的死因记录被烧穿。',
+        recommended_pov: { character_id: null, name: null },
+        source_signals: ['world_creation_draft'],
+      }),
+      autoDraftFirstChapter: true,
+    });
   });
 
   it('shows backend validation errors when custom world creation fails', async () => {

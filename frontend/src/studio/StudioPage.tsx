@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
   approveChapter,
@@ -124,6 +124,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [latestDraftVersion, setLatestDraftVersion] = useState<number | null>(null);
   const [revisionInstruction, setRevisionInstruction] = useState('');
   const [working, setWorking] = useState(false);
+  const [autoDrafting, setAutoDrafting] = useState(false);
   const [operationHint, setOperationHint] = useState('');
   const [suggestingGoal, setSuggestingGoal] = useState(false);
   const [error, setError] = useState('');
@@ -131,6 +132,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [editContent, setEditContent] = useState('');
   const titleRef = useRef<HTMLHeadingElement>(null);
   const draftTitleRef = useRef<HTMLHeadingElement>(null);
+  const autoDraftStartedRef = useRef(false);
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -150,6 +152,12 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   useEffect(() => {
     if (draft) draftTitleRef.current?.focus();
   }, [draft]);
+
+  useEffect(() => {
+    if (!launchContext?.autoDraftFirstChapter || autoDraftStartedRef.current || chapter || draft || !goal.trim()) return;
+    autoDraftStartedRef.current = true;
+    void autoDraftFirstChapterSession();
+  }, [chapter, draft, goal, launchContext?.autoDraftFirstChapter]);
 
   function paragraphList(content: string): string[] {
     return content.split('\n\n').map((paragraph) => paragraph.trim()).filter(Boolean);
@@ -282,6 +290,67 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setError(err instanceof Error ? err.message : '创建章节失败');
     } finally {
       setWorking(false);
+    }
+  }
+
+  async function autoDraftFirstChapterSession() {
+    setWorking(true);
+    setAutoDrafting(true);
+    setOperationHint('正在生成第一章草稿…');
+    setError('');
+    try {
+      const frozenContext = withEditedGoal(executionContext, localWorld, goal);
+      const created = await createChapterRequest(localWorld.id, {
+        chapter_goal: goal,
+        title: goal.slice(0, 40),
+        execution_context: frozenContext,
+      });
+      setChapter(created);
+      setOutlineBeats(created.outline_beats);
+      setOutlineContext(created.outline_context);
+      setDraft(null);
+      setApprovalPreview(null);
+      clearApprovalSelection();
+      clearApprovalConsistency();
+      setApprovalReadiness(null);
+      setCritique(null);
+      setCharacterArcReport(null);
+      setSettlement(null);
+
+      setOperationHint('正在生成第一章大纲…');
+      const outline = await generateOutline(created.id, { chapter_context: goal });
+      setOutlineBeats(outline.outline_beats);
+      setOutlineContext(outline.outline_context);
+      const outlinedChapter = {
+        ...created,
+        status: outline.status,
+        outline_beats: outline.outline_beats,
+        outline_context: outline.outline_context,
+      };
+      setChapter(outlinedChapter);
+
+      setOperationHint('正在生成第一章正文草稿…');
+      const nextDraft = normalizeDraft(await writeChapter(created.id, { outline_beats: outline.outline_beats }));
+      setDraft(nextDraft);
+      setDraftVersions([nextDraft.draft_version]);
+      setLatestDraftVersion(nextDraft.draft_version);
+      await refreshReviewStudioPanels(nextDraft);
+      setEditMode(false);
+      setEditContent('');
+      setChapter({
+        ...outlinedChapter,
+        title: nextDraft.title,
+        status: nextDraft.status ?? 'reviewing',
+        outline_beats: nextDraft.outline_beats ?? outline.outline_beats,
+        outline_context: nextDraft.outline_context ?? outline.outline_context,
+        critique_report: nextDraft.critique_report ?? {},
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '生成第一章草稿失败');
+    } finally {
+      setWorking(false);
+      setAutoDrafting(false);
+      setOperationHint('');
     }
   }
 
@@ -692,6 +761,14 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           </div>
 
           {error && <p className="paper-error" role="alert">{error}</p>}
+
+          {autoDrafting && (
+            <p className="paper-success px-4 py-2 text-sm" role="status" aria-live="polite">正在生成第一章草稿，完成后会停在 Studio 审稿，不会写入正史。</p>
+          )}
+
+          {launchContext?.autoDraftFirstChapter && draft && !settlement && !autoDrafting && (
+            <p className="paper-success px-4 py-2 text-sm" role="status" aria-live="polite">草稿已进入 Studio，确认后再写入正史。</p>
+          )}
 
           {settlement && (
             <section className="book-card space-y-4 border-2 border-emerald-500/35 bg-emerald-50/70 p-5" role="status" aria-live="polite">

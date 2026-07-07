@@ -64,7 +64,7 @@ describe('WorldCreationForm', () => {
         relations: expect.arrayContaining([expect.objectContaining({ source_index: 0, target_index: 1 })]),
         foreshadows: expect.arrayContaining([expect.objectContaining({ status: 'planted', urgency_level: expect.any(Number) })]),
       }),
-    }));
+    }), { firstChapterGoal: undefined });
   });
 
   it('calls the sample world shortcut without submitting the custom form', async () => {
@@ -108,7 +108,10 @@ describe('WorldCreationForm', () => {
     expect(screen.getByLabelText('世界标题')).toHaveValue('死因王国');
 
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
-    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: '死因王国', genre_template: 'fantasy' }));
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '死因王国', genre_template: 'fantasy' }),
+      { firstChapterGoal: '让伊莱发现自己的死因记录被烧穿。' },
+    );
   });
 
   it('applies seed payloads to the editable form', async () => {
@@ -130,7 +133,7 @@ describe('WorldCreationForm', () => {
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
 
     expect(screen.getByLabelText('世界标题')).toHaveValue('无日城');
-    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: '无日城', genre_template: 'weird_fantasy' }));
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: '无日城', genre_template: 'weird_fantasy' }), { firstChapterGoal: undefined });
   });
 
   it('calls direct seed creation callback from the seed library', async () => {

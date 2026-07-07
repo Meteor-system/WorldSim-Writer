@@ -1,8 +1,8 @@
-﻿import '@testing-library/jest-dom/vitest';
+import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
+import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalPreview, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
 import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -292,9 +292,11 @@ afterEach(() => {
   vi.mocked(apiRequest).mockClear();
   vi.mocked(approveChapter).mockClear();
   vi.mocked(checkApprovalConsistency).mockClear();
+  vi.mocked(createChapter).mockClear();
   vi.mocked(exportWorldArchiveMarkdown).mockClear();
   vi.mocked(writeChapter).mockClear();
   vi.mocked(generateOutline).mockClear();
+  vi.mocked(getApprovalPreview).mockClear();
   vi.mocked(generateCriticReport).mockClear();
   vi.mocked(getApprovalReadiness).mockClear();
   vi.mocked(reviseDraft).mockClear();
@@ -346,6 +348,49 @@ describe('StudioPage Review Studio 2.0 controls', () => {
       }),
     }));
     expect(await screen.findByText('已冻结本章设定：next_chapter_prep · v2')).toBeInTheDocument();
+  });
+
+  it('auto-generates a first chapter draft from launch context without approving canon', async () => {
+    render(
+      <StudioPage
+        world={world}
+        launchContext={{
+          initialChapterGoal: '让伊莱发现自己的死因记录被烧穿。',
+          executionContext: {
+            source: 'manual',
+            source_world_version: 1,
+            next_chapter_number: 1,
+            goal: '让伊莱发现自己的死因记录被烧穿。',
+            recommended_pov: { character_id: null, name: null },
+            source_signals: ['world_creation_draft'],
+            priority_characters: [],
+            priority_foreshadows: [],
+            progression_hints: [],
+            continuity_warnings: [],
+            recent_events: [],
+            material_references: [],
+          },
+          autoDraftFirstChapter: true,
+        }}
+        onBack={vi.fn()}
+        onApproved={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(createChapter).toHaveBeenCalledWith(7, expect.objectContaining({
+      chapter_goal: '让伊莱发现自己的死因记录被烧穿。',
+      execution_context: expect.objectContaining({
+        source: 'manual',
+        source_signals: ['world_creation_draft'],
+      }),
+    })));
+    expect(generateOutline).toHaveBeenCalledWith(11, { chapter_context: '让伊莱发现自己的死因记录被烧穿。' });
+    expect(writeChapter).toHaveBeenCalledWith(11, expect.objectContaining({ outline_beats: expect.any(Array) }));
+    expect(getApprovalPreview).toHaveBeenCalledWith(11);
+    expect(approveChapter).not.toHaveBeenCalled();
+    expect(await screen.findByText('草稿已进入 Studio，确认后再写入正史。')).toBeInTheDocument();
+    expect(await screen.findByText('写入正史前确认')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled();
   });
 
   it('creates manual context when Studio opens without NCC execution context', async () => {
