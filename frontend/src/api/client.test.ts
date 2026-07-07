@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkApprovalConsistency,
   compareWorldSnapshots,
@@ -7,6 +7,7 @@ import {
   createWorld,
   createWorldFromSeed,
   createWorldTag,
+  draftWorldFromBrief,
   updateWorldTag,
   mergeWorldTag,
   assignWorldTag,
@@ -91,6 +92,30 @@ describe('world creation API helpers', () => {
       'http://localhost:8000/worlds/from-template',
       expect.objectContaining({ method: 'POST', body: '{}' }),
     );
+  });
+
+  it('calls one-sentence world draft endpoint without creating a world', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      source_brief: '一个所有人出生时都会被分配死因的王国',
+      draft: {
+        title: '死因王国',
+        genre_template: 'fantasy',
+        truth_canon: '每个人出生时都会获得一个未来死因。',
+        starter_assets: { characters: [{ name: '伊莱', role_type: 'protagonist' }] },
+      },
+      first_chapter_goal: '让伊莱发现自己的死因记录被烧穿。',
+      generation_notes: ['已生成创建草稿。'],
+      safety_notes: ['确认前不会创建世界。'],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await draftWorldFromBrief('一个所有人出生时都会被分配死因的王国');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/worlds/draft-from-brief',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ brief: '一个所有人出生时都会被分配死因的王国' }) }),
+    );
+    expect(result.draft.title).toBe('死因王国');
   });
 
   it('calls world seed library endpoints', async () => {

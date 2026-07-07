@@ -50,6 +50,7 @@ import type {
   TagResponse,
   TagUpdateRequest,
   WorldCreateRequest,
+  WorldCreationDraftResponse,
   WorldMarkdownExportResponse,
   WorldPulseResponse,
   WorldStatusUpdateRequest,
@@ -109,6 +110,13 @@ export function createWorld(data: WorldCreateRequest) {
   return apiRequest<{ id: number }>('/worlds', {
     method: 'POST',
     body: JSON.stringify(data),
+  });
+}
+
+export function draftWorldFromBrief(brief: string) {
+  return apiRequest<WorldCreationDraftResponse>('/worlds/draft-from-brief', {
+    method: 'POST',
+    body: JSON.stringify({ brief }),
   });
 }
 

@@ -1,8 +1,8 @@
-﻿import '@testing-library/jest-dom/vitest';
+import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, confirmWorldImport, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, exportWorldArchiveMarkdown, generateStoryArc, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldImports, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, previewWorldImport, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
+import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, confirmWorldImport, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, draftWorldFromBrief, exportWorldArchiveMarkdown, generateStoryArc, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldImports, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, previewWorldImport, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
 import type { WorldOverview, WorldSearchResponse } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -18,6 +18,7 @@ vi.mock('../api/client', () => ({
   createWorldSnapshot: vi.fn(),
   createWorldTag: vi.fn(),
   deleteWorldTag: vi.fn(),
+  draftWorldFromBrief: vi.fn(),
   exportWorldArchiveMarkdown: vi.fn(),
   generateStoryArc: vi.fn(),
   getChapterHistory: vi.fn(),
@@ -138,6 +139,7 @@ beforeEach(() => {
   vi.mocked(createWorldSnapshot).mockReset();
   vi.mocked(createWorldTag).mockReset();
   vi.mocked(deleteWorldTag).mockReset();
+  vi.mocked(draftWorldFromBrief).mockReset();
   vi.mocked(exportWorldArchiveMarkdown).mockReset();
   vi.mocked(generateStoryArc).mockReset();
   vi.mocked(getChapterHistory).mockReset();

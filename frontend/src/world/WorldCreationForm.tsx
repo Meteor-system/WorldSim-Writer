@@ -1,10 +1,11 @@
-﻿import type { FormEvent } from 'react';
+import type { FormEvent } from 'react';
 import { useState } from 'react';
 import type {
   StarterCharacterCreate,
   StarterForeshadowCreate,
   StarterRelationCreate,
   WorldCreateRequest,
+  WorldCreationDraftResponse,
   WorldSeedDetail,
   WorldSeedSummary,
 } from '../api/types';
@@ -15,6 +16,7 @@ type Props = {
   creating: boolean;
   onCreate: (payload: WorldCreateRequest) => Promise<void>;
   onCreateSample: () => Promise<void>;
+  onDraftFromBrief?: (brief: string) => Promise<WorldCreationDraftResponse>;
   seeds?: WorldSeedSummary[];
   selectedSeedKey?: string | null;
   seedLoading?: boolean;
@@ -59,6 +61,7 @@ export function WorldCreationForm({
   creating,
   onCreate,
   onCreateSample,
+  onDraftFromBrief,
   seeds = [],
   selectedSeedKey = null,
   seedLoading = false,
@@ -69,11 +72,17 @@ export function WorldCreationForm({
   const [selectedPresetKey, setSelectedPresetKey] = useState(GENRE_PRESETS[0].key);
   const [activeSeedKey, setActiveSeedKey] = useState<string | null>(selectedSeedKey);
   const [form, setForm] = useState<WorldCreateRequest>(() => clonePreset(GENRE_PRESETS[0]));
+  const [brief, setBrief] = useState('');
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState('');
+  const [draftMeta, setDraftMeta] = useState<Pick<WorldCreationDraftResponse, 'first_chapter_goal' | 'generation_notes' | 'safety_notes'> | null>(null);
 
   function selectPreset(key: string) {
     const preset = GENRE_PRESETS.find((item) => item.key === key) ?? GENRE_PRESETS[0];
     setSelectedPresetKey(preset.key);
     setActiveSeedKey(null);
+    setDraftMeta(null);
+    setDraftError('');
     setForm(clonePreset(preset));
   }
 
@@ -82,6 +91,8 @@ export function WorldCreationForm({
     const seed = await onLoadSeed(seedKey);
     setSelectedPresetKey('');
     setActiveSeedKey(seedKey);
+    setDraftMeta(null);
+    setDraftError('');
     setForm(JSON.parse(JSON.stringify(seed.payload)) as WorldCreateRequest);
   }
 
@@ -253,6 +264,28 @@ export function WorldCreationForm({
     });
   }
 
+  async function generateDraftFromBrief() {
+    const normalizedBrief = brief.trim();
+    if (!normalizedBrief || !onDraftFromBrief) return;
+    setDrafting(true);
+    setDraftError('');
+    try {
+      const response = await onDraftFromBrief(normalizedBrief);
+      setSelectedPresetKey('');
+      setActiveSeedKey(null);
+      setForm(JSON.parse(JSON.stringify(response.draft)) as WorldCreateRequest);
+      setDraftMeta({
+        first_chapter_goal: response.first_chapter_goal,
+        generation_notes: response.generation_notes,
+        safety_notes: response.safety_notes,
+      });
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : '生成世界创建草稿失败');
+    } finally {
+      setDrafting(false);
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     await onCreate(form);
@@ -275,6 +308,43 @@ export function WorldCreationForm({
           ))}
         </ol>
       </section>
+
+      {onDraftFromBrief ? (
+        <section className="book-card mt-8 border-2 border-amber-900/15 bg-amber-50/70 p-5" aria-label="一句话开书">
+          <p className="chapter-kicker">一句话开书</p>
+          <h2 className="mt-2 text-2xl font-black text-[#34210f]">先说一个故事脑洞，生成可编辑世界草稿</h2>
+          <p className="manuscript mt-3 text-sm text-[#5e3b1c]">
+            这里不会直接创建世界，也不会写入正史；系统只会把你的脑洞转成下方可修改的创建表单，确认后才会创建世界。
+          </p>
+          <label className="mt-4 block">
+            <span className="text-sm font-semibold text-[#4a321e]">一句话故事想法</span>
+            <textarea
+              className="mt-1 min-h-24 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3"
+              value={brief}
+              onChange={(event) => setBrief(event.target.value)}
+              placeholder="例如：一个所有人出生时都会被分配未来死因的王国"
+            />
+          </label>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button className="primary-button" disabled={drafting || creating || !brief.trim()} type="button" onClick={() => void generateDraftFromBrief()}>
+              {drafting ? '正在生成创建草稿...' : '生成世界创建草稿'}
+            </button>
+            <p className="text-xs font-bold text-[#5e3b1c]">自动填表后仍可继续编辑；只有点击“创建自定义世界”才会创建世界。</p>
+          </div>
+          {draftError && <p className="paper-error mt-4" role="alert">{draftError}</p>}
+          {draftMeta && (
+            <div className="mt-5 rounded-2xl border border-amber-900/15 bg-white/65 p-4" role="status" aria-live="polite">
+              <p className="text-sm font-black text-[#3b2511]">世界创建草稿已填入下方表单</p>
+              <p className="manuscript mt-2 text-sm text-[#5e3b1c]">第一章目标：{draftMeta.first_chapter_goal}</p>
+              {[...draftMeta.generation_notes, ...draftMeta.safety_notes].length > 0 && (
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#5e3b1c]">
+                  {[...draftMeta.generation_notes, ...draftMeta.safety_notes].map((note) => <li key={note}>{note}</li>)}
+                </ul>
+              )}
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <div className="mt-8 text-center">
         <p className="chapter-kicker">新建世界</p>

@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
   assignWorldTag,
@@ -8,6 +8,7 @@ import {
   createSampleWorld,
   createWorld,
   createWorldFromSeed,
+  draftWorldFromBrief,
   createWorldSnapshot,
   createWorldTag,
   deleteWorldTag,
@@ -789,6 +790,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
           creating={creating}
           onCreate={submitWorld}
           onCreateSample={submitSampleWorld}
+          onDraftFromBrief={draftWorldFromBrief}
           seeds={seedLibrary}
           seedLoading={seedLibraryLoading}
           seedError={seedLibraryError}
