@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkApprovalConsistency,
   compareWorldSnapshots,
@@ -294,7 +294,7 @@ describe('world pulse API helper', () => {
       world_version: 3,
       pulse_status: 'watch',
       primary_mode: 'converge',
-      headline: 'World Pulse：建议先处理开放线索。',
+      headline: '世界近况：建议先处理开放线索。',
       indicators: [],
       focus: [],
       next_actions: [],

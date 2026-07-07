@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
 import { getCharacters, updateCharacter } from '../api/client';
 import type { Character, CharacterUpdate } from '../api/types';
 
@@ -8,7 +8,9 @@ const ROLE_LABELS: Record<string, string> = {
   protagonist: '主角',
   antagonist: '反派',
   supporting: '配角',
-  minor: '龙套',
+  minor: '次要角色',
+  ally: '盟友',
+  rival: '竞争者',
 };
 
 const STATUS_OPTIONS = ['active', 'inactive', 'dead', 'unknown'] as const;
@@ -114,7 +116,7 @@ export function CharacterManager({ worldId, onChanged, readOnly = false }: Props
         <p className="chapter-kicker">角色管理</p>
       </div>
       <p className="mt-3 rounded-2xl border border-amber-700/25 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-        {readOnly ? '已归档小说为只读模式；恢复写作后才能编辑世界资料。' : '这些编辑会正式写入世界状态，并使 world_version 增长。'}
+        {readOnly ? '已归档小说为只读模式；恢复写作后才能编辑世界资料。' : '这些编辑会正式写入世界状态，并提升世界版本。'}
       </p>
 
       {error && (
@@ -178,7 +180,7 @@ export function CharacterManager({ worldId, onChanged, readOnly = false }: Props
           >
             <div>
               <h2 className="text-xl font-black text-[#3b2511]">编辑角色</h2>
-              <p className="manuscript mt-1 text-sm">{form.name} · {form.role_type}</p>
+              <p className="manuscript mt-1 text-sm">{form.name} · {ROLE_LABELS[form.role_type] ?? form.role_type}</p>
             </div>
 
             <label className="block">

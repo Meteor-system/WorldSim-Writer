@@ -1,5 +1,6 @@
-import type { ChapterExecutionContext, NextChapterPrepResponse } from '../api/types';
+﻿import type { ChapterExecutionContext, NextChapterPrepResponse } from '../api/types';
 import { buildExecutionContextFromPrep } from './chapterExecutionContext';
+import { labelEventType, labelStatus, localizeBackendCopy } from './displayLabels';
 
 type Props = {
   prep: NextChapterPrepResponse | null;
@@ -56,7 +57,7 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
   return (
     <section className="book-card space-y-4 p-5">
       <div>
-        <p className="chapter-kicker">Next Chapter Prep</p>
+        <p className="chapter-kicker">下一章准备</p>
         <h2 className="text-2xl font-black text-[#34210f]">下一章准备台</h2>
         <p className="manuscript mt-2 text-sm text-[#5e3b1c]">下一章准备台只提供写作建议，不会自动修改世界状态。</p>
       </div>
@@ -96,9 +97,9 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
           <div className="mt-3 space-y-3">
             {prep.priority_characters.map((character) => (
               <article key={character.character_id} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
-                <p className="font-bold text-[#3b2511]">{character.name} · {character.role_type}</p>
+                <p className="font-bold text-[#3b2511]">{character.name} · {labelStatus(character.role_type)}</p>
                 <p className="manuscript mt-1 text-sm">状态：{character.status}</p>
-                <p className="manuscript mt-1 text-sm">理由：{character.reason}</p>
+                <p className="manuscript mt-1 text-sm">理由：{localizeBackendCopy(character.reason)}</p>
               </article>
             ))}
           </div>
@@ -110,8 +111,8 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
           <div className="mt-3 space-y-3">
             {prep.priority_foreshadows.map((foreshadow) => (
               <article key={foreshadow.foreshadow_id} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
-                <p className="font-bold text-[#3b2511]">{foreshadow.title} · {foreshadow.status} · urgency {foreshadow.urgency_level}</p>
-                <p className="manuscript mt-1 text-sm">理由：{foreshadow.reason}</p>
+                <p className="font-bold text-[#3b2511]">{foreshadow.title} · {labelStatus(foreshadow.status)} · 紧迫度 {foreshadow.urgency_level}</p>
+                <p className="manuscript mt-1 text-sm">理由：{localizeBackendCopy(foreshadow.reason)}</p>
               </article>
             ))}
           </div>
@@ -125,8 +126,8 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
             {prep.progression_hints.map((hint, index) => (
               <article key={`${hint.title}-${index}`} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
                 <p className="font-bold text-[#3b2511]">{hint.title}</p>
-                <p className="manuscript mt-1 text-sm">理由：{hint.rationale}</p>
-                <p className="manuscript mt-1 text-sm">建议节拍：{hint.suggested_next_beat}</p>
+                <p className="manuscript mt-1 text-sm">理由：{localizeBackendCopy(hint.rationale)}</p>
+                <p className="manuscript mt-1 text-sm">建议节拍：{localizeBackendCopy(hint.suggested_next_beat)}</p>
               </article>
             ))}
           </div>
@@ -139,7 +140,7 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
           <div className="mt-3 space-y-3">
             {prep.continuity_warnings.map((warning, index) => (
               <p key={`${warning.category}-${index}`} className={`rounded-xl border p-3 text-sm font-bold ${WARNING_CLASS[warning.severity] ?? WARNING_CLASS.low}`}>
-                {warning.message}
+                {localizeBackendCopy(warning.message)}
               </p>
             ))}
           </div>
@@ -152,7 +153,7 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
           <div className="mt-3 space-y-2">
             {prep.recent_events.map((event) => (
               <p key={event.id} className="manuscript text-sm">
-                {event.event_type} · 世界 {event.world_version_before} → {event.world_version_after}
+                {labelEventType(event.event_type)} · 世界进度 {event.world_version_before} → {event.world_version_after}
               </p>
             ))}
           </div>

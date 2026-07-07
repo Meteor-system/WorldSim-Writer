@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom/vitest';
+﻿import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -86,7 +86,7 @@ describe('WorldArchivePanel', () => {
   it('renders archive controls', () => {
     renderArchivePanel();
 
-    expect(screen.getByText('World Archive')).toBeInTheDocument();
+    expect(screen.getByText('世界档案')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '创建世界快照' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '导出世界档案' })).toBeInTheDocument();
     expect(screen.getByText('点击导出后会生成可下载 ZIP，并在下方显示内联 Markdown 预览；不会写入服务器文件系统。')).toBeInTheDocument();
@@ -101,8 +101,8 @@ describe('WorldArchivePanel', () => {
     await user.click(screen.getByRole('button', { name: '创建世界快照' }));
 
     expect(onCreateSnapshot).toHaveBeenCalledOnce();
-    expect(await screen.findByText('快照已创建：版本 3')).toBeInTheDocument();
-    expect(screen.getByText('Snapshot #12')).toBeInTheDocument();
+    expect(await screen.findByText('快照已创建：第 3 版')).toBeInTheDocument();
+    expect(screen.getByText('快照编号 #12')).toBeInTheDocument();
   });
 
   it('keeps archived archive tools read-only while preserving export and snapshot history', () => {
@@ -143,9 +143,9 @@ describe('WorldArchivePanel', () => {
 
     expect(onExportMarkdown).toHaveBeenCalledOnce();
     expect(await screen.findByText('下载包已就绪')).toBeInTheDocument();
-    expect(screen.getByText('Archive：WorldSim-青岚城-v3-markdown.zip')).toBeInTheDocument();
+    expect(screen.getByText('归档包：WorldSim-青岚城-v3-markdown.zip')).toBeInTheDocument();
     expect(screen.getByText('格式：zip · 编码：base64 · 内联预览：是')).toBeInTheDocument();
-    expect(screen.getByText('世界版本：v3 · 文件数：2')).toBeInTheDocument();
+    expect(screen.getByText('世界版本：第 3 版 · 文件数：2')).toBeInTheDocument();
     expect(screen.getByText('生成时间：2026-05-30T00:00:00Z')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '下载 Markdown ZIP' })).toHaveAttribute('href', 'blob:markdown-zip');
     expect(screen.getByRole('link', { name: '下载 Markdown ZIP' })).toHaveAttribute('download', 'WorldSim-青岚城-v3-markdown.zip');
@@ -204,7 +204,7 @@ describe('WorldArchivePanel', () => {
     expect(onListSnapshots).toHaveBeenCalledOnce();
     expect(onCompareSnapshots).toHaveBeenCalledWith(12, 13);
     expect(await screen.findByText('总变更：2')).toBeInTheDocument();
-    expect(screen.getByText('character：1')).toBeInTheDocument();
+    expect(screen.getByText('角色：1')).toBeInTheDocument();
     expect(screen.getByText('林砚')).toBeInTheDocument();
     expect(screen.getByText('字段：status')).toBeInTheDocument();
     expect(screen.getByText('雨巷铜铃')).toBeInTheDocument();

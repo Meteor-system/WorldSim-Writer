@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom/vitest';
+﻿import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -325,7 +325,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     const user = userEvent.setup();
     render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext }} onBack={vi.fn()} onApproved={vi.fn()} />);
 
-    expect(screen.getByText('本章执行上下文')).toBeInTheDocument();
+    expect(screen.getByText('本章设定（本章要写什么）')).toBeInTheDocument();
     expect(screen.getByText('来源：下一章准备台')).toBeInTheDocument();
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
     expect(screen.getByText('优先角色：林砚')).toBeInTheDocument();
@@ -344,14 +344,14 @@ describe('StudioPage Review Studio 2.0 controls', () => {
         recommended_pov: { character_id: 1, name: '林砚' },
       }),
     }));
-    expect(await screen.findByText('已冻结执行上下文：next_chapter_prep · v2')).toBeInTheDocument();
+    expect(await screen.findByText('已冻结本章设定：next_chapter_prep · v2')).toBeInTheDocument();
   });
 
   it('creates manual context when Studio opens without NCC execution context', async () => {
     const user = userEvent.setup();
     render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
 
-    expect(screen.getByText('本章暂无 NCC 执行上下文。创建章节时会根据当前目标生成手动上下文快照。')).toBeInTheDocument();
+    expect(screen.getByText('本章暂无来自下一章准备台的设定。创建章节时会根据当前目标生成手动设定快照。')).toBeInTheDocument();
     await user.type(screen.getByLabelText('章节目标'), '手动输入章节目标');
     await user.click(screen.getByRole('button', { name: '创建章节' }));
 
@@ -372,7 +372,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.click(await screen.findByRole('button', { name: '生成大纲' }));
     await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
 
-    expect(await screen.findByText('执行上下文快照')).toBeInTheDocument();
+    expect(await screen.findByText('本章设定快照')).toBeInTheDocument();
     expect(screen.getByText('目标：林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
     expect(screen.getByText('连续性提醒：下一章需要补足试探过程。')).toBeInTheDocument();
   });
@@ -690,7 +690,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
 
     expect(await screen.findByText('世界推进结算')).toBeInTheDocument();
     expect(onApproved).not.toHaveBeenCalled();
-    expect(screen.getByText('世界进度 v1 → v2')).toBeInTheDocument();
+    expect(screen.getByText('世界进度第 1 版 → 第 2 版')).toBeInTheDocument();
     expect(screen.getByText('已写入正史章节：1')).toBeInTheDocument();
     expect(screen.getByText('角色变化：1')).toBeInTheDocument();
     expect(screen.getByText('悬念/伏笔变化：1')).toBeInTheDocument();

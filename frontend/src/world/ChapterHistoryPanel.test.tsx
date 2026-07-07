@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom/vitest';
+﻿import '@testing-library/jest-dom/vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -108,7 +108,7 @@ describe('ChapterHistoryPanel', () => {
     expect(screen.getByText('chapter_approved · 世界 1 → 2')).toBeInTheDocument();
     expect(screen.getByText('Critic：章节冲突清晰，但第二段信息揭示偏快。')).toBeInTheDocument();
     expect(screen.getByText('角色弧线：本章推动林砚从被动等待转向主动追查。')).toBeInTheDocument();
-    expect(screen.getByText('执行上下文快照')).toBeInTheDocument();
+    expect(screen.getByText('本章设定快照')).toBeInTheDocument();
     expect(screen.getByText('目标：林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
     expect(screen.getByText('优先伏笔：裂纹玉佩')).toBeInTheDocument();

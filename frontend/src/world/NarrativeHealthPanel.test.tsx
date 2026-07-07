@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom/vitest';
+﻿import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { NarrativeHealthResponse } from '../api/types';
@@ -36,7 +36,7 @@ describe('NarrativeHealthPanel', () => {
   it('renders score, metrics, risks, and actions', () => {
     render(<NarrativeHealthPanel health={health} loading={false} error="" />);
 
-    expect(screen.getByText('Narrative Health')).toBeInTheDocument();
+    expect(screen.getByText('叙事健康度')).toBeInTheDocument();
     expect(screen.getByText('58/100')).toBeInTheDocument();
     expect(screen.getByText('高风险')).toBeInTheDocument();
     expect(screen.getByText('Critic 风险')).toBeInTheDocument();

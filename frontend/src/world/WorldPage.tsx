@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
   assignWorldTag,
@@ -50,13 +50,16 @@ import { labelGenre, labelStatus, labelWorldVersion } from './displayLabels';
 
 type Props = { onEnterStudio: (world: WorldOverview, context?: StudioLaunchContext) => void; autoFocusTitle?: boolean };
 
-type Tab = 'overview' | 'characters' | 'relations' | 'foreshadows';
+type Tab = 'overview' | 'write' | 'characters' | 'relations' | 'foreshadows' | 'analysis' | 'archive';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'overview', label: '世界概览' },
-  { key: 'characters', label: '角色管理' },
-  { key: 'relations', label: '关系管理' },
-  { key: 'foreshadows', label: '伏笔账本' },
+  { key: 'write', label: '继续创作' },
+  { key: 'characters', label: '角色' },
+  { key: 'relations', label: '关系' },
+  { key: 'foreshadows', label: '伏笔' },
+  { key: 'analysis', label: '运营分析' },
+  { key: 'archive', label: '归档导出' },
 ];
 
 function describeEvent(event: { event_type: string; payload: Record<string, unknown> }, world: WorldOverview): string {
@@ -118,10 +121,13 @@ function openForeshadows(world: WorldOverview): WorldOverview['foreshadows'] {
 
 function dashboardActions(world: WorldOverview, isArchivedWorld: boolean): Array<{ label: string; detail: string; primary?: boolean }> {
   const urgentForeshadow = openForeshadows(world)[0];
+  const needsFirstChapterOnboarding = !isArchivedWorld && world.approved_chapter_count === 0 && world.story_arc.length === 0;
   const actions = [
     isArchivedWorld
       ? { label: '恢复写作后继续下一章', detail: '这本小说已归档；恢复写作后再继续推进正史。' }
-      : { label: '继续下一章', detail: `下一章会继承世界进度${labelWorldVersion(world.world_version)}和已写入正史的变化。`, primary: true },
+      : needsFirstChapterOnboarding
+        ? { label: '先生成故事大纲', detail: '这本小说还没有写入正史；请先完成上方第一步引导。' }
+        : { label: '继续下一章', detail: `下一章会继承世界进度${labelWorldVersion(world.world_version)}和已写入正史的变化。`, primary: true },
   ];
   if (urgentForeshadow) {
     actions.push({
@@ -139,16 +145,16 @@ function dashboardActions(world: WorldOverview, isArchivedWorld: boolean): Array
   return actions;
 }
 
-function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowForeshadows }: { world: WorldOverview; isArchivedWorld: boolean; onContinue: () => void; onShowForeshadows: () => void }) {
+function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowForeshadows, onShowArchive }: { world: WorldOverview; isArchivedWorld: boolean; onContinue: () => void; onShowForeshadows: () => void; onShowArchive: () => void }) {
   const activeCharacters = world.characters.slice(0, 3);
   const urgentForeshadows = openForeshadows(world).slice(0, 3);
   const actions = dashboardActions(world, isArchivedWorld);
 
   return (
-    <section className="book-card mt-8 space-y-6 border-2 border-amber-900/15 bg-amber-50/70 p-6" aria-label="世界运营仪表盘">
+    <section className="book-card mt-8 space-y-6 border-2 border-amber-900/15 bg-amber-50/70 p-6" aria-label="今日创作看板">
       <div>
-        <p className="chapter-kicker">今日运营</p>
-        <h2 className="text-2xl font-black text-[#34210f]">世界运营仪表盘</h2>
+        <p className="chapter-kicker">今日创作</p>
+        <h2 className="text-2xl font-black text-[#34210f]">今日创作看板</h2>
         <p className="manuscript mt-2 text-sm text-[#5e3b1c]">今天这个故事世界需要处理什么？先看正史进度、活跃角色、悬念/伏笔和世界历史记录。</p>
       </div>
       <div className="grid gap-4 text-sm sm:grid-cols-2 xl:grid-cols-4">
@@ -200,7 +206,7 @@ function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowFo
               <p className="manuscript text-sm" key={event.id}>{describeEvent(event, world)}</p>
             ))}
           </div>
-          <a className="secondary-button mt-3 inline-block" href="#chapter-history">查看章节历史</a>
+          <button className="secondary-button mt-3" type="button" onClick={onShowArchive}>查看章节历史</button>
         </section>
       </div>
     </section>
@@ -286,7 +292,7 @@ type FirstChapterLaunchpadProps = {
 function FirstChapterLaunchpad({ world, nextChapter, arcLoading, onGenerateArc, onLaunchChapter }: FirstChapterLaunchpadProps) {
   return (
     <article className="mt-8 rounded-2xl border border-amber-900/15 bg-amber-100/60 p-4 shadow-sm">
-      <p className="chapter-kicker">First Chapter Launchpad</p>
+      <p className="chapter-kicker">第一章起点</p>
       {world.story_arc.length === 0 ? (
         <div className="mt-3">
           <p className="manuscript text-sm text-[#5e3b1c]">先生成前 10 章故事弧线，再把下一章目标带入创作台。</p>
@@ -308,7 +314,7 @@ function FirstChapterLaunchpad({ world, nextChapter, arcLoading, onGenerateArc, 
         </div>
       ) : (
         <div className="mt-3">
-          <p className="manuscript text-sm text-[#5e3b1c]">当前故事弧线已写完。可重新生成故事大纲，或在 Narrative Control Center 继续准备下一章。</p>
+          <p className="manuscript text-sm text-[#5e3b1c]">当前故事弧线已写完。可重新生成故事大纲，或在叙事运营台继续准备下一章。</p>
           <button className="secondary-button mt-4" type="button" disabled={arcLoading} onClick={onGenerateArc}>
             {arcLoading ? '故事弧线规划中…' : '重新生成故事大纲'}
           </button>
@@ -327,7 +333,7 @@ type ArchivedWorldPauseCardProps = {
 function ArchivedWorldPauseCard({ archiveLoading, onReturnToBookshelf, onRestoreWriting }: ArchivedWorldPauseCardProps) {
   return (
     <article className="mt-8 rounded-2xl border border-amber-900/15 bg-amber-100/70 p-4 shadow-sm">
-      <p className="chapter-kicker">Archived Novel</p>
+      <p className="chapter-kicker">已归档小说</p>
       <h2 className="mt-2 text-2xl font-black text-[#34210f]">已归档：写作已暂停</h2>
       <p className="manuscript mt-2 text-sm text-[#5e3b1c]">这本小说已从活跃创作中移出。快照、章节、伏笔和导出都还在。恢复写作后再进入创作台。</p>
       <div className="mt-4 flex flex-wrap gap-2">
@@ -335,6 +341,28 @@ function ArchivedWorldPauseCard({ archiveLoading, onReturnToBookshelf, onRestore
         <button className="primary-button" type="button" disabled={archiveLoading} onClick={onRestoreWriting}>
           {archiveLoading ? '恢复中...' : '恢复写作'}
         </button>
+      </div>
+    </article>
+  );
+}
+
+type FirstChapterOnboardingCardProps = {
+  arcLoading: boolean;
+  onGenerateArc: () => Promise<void> | void;
+  onOpenWriteTab: () => void;
+};
+
+function FirstChapterOnboardingCard({ arcLoading, onGenerateArc, onOpenWriteTab }: FirstChapterOnboardingCardProps) {
+  return (
+    <article className="mt-6 rounded-3xl border-2 border-amber-900/20 bg-amber-100/80 p-5 shadow-sm" aria-label="第一章写作引导">
+      <p className="chapter-kicker">第一步</p>
+      <h2 className="mt-2 text-2xl font-black text-[#34210f]">生成故事大纲 → 写第一章</h2>
+      <p className="manuscript mt-2 text-sm text-[#5e3b1c]">这本小说还没有写入正史。先生成前 10 章故事弧线，再用第一章目标进入创作台。</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button className="primary-button" type="button" disabled={arcLoading} onClick={() => void onGenerateArc()}>
+          {arcLoading ? '故事弧线规划中…' : '生成故事大纲'}
+        </button>
+        <button className="secondary-button" type="button" onClick={onOpenWriteTab}>查看继续创作页</button>
       </div>
     </article>
   );
@@ -356,9 +384,11 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [chapterHistory, setChapterHistory] = useState<ChapterHistoryResponse | null>(null);
   const [chapterHistoryLoading, setChapterHistoryLoading] = useState(false);
   const [chapterHistoryError, setChapterHistoryError] = useState('');
+  const [chapterHistoryLoaded, setChapterHistoryLoaded] = useState(false);
   const [nextPrep, setNextPrep] = useState<NextChapterPrepResponse | null>(null);
   const [nextPrepLoading, setNextPrepLoading] = useState(false);
   const [nextPrepError, setNextPrepError] = useState('');
+  const [nextPrepLoaded, setNextPrepLoaded] = useState(false);
   const [narrativeHealth, setNarrativeHealth] = useState<NarrativeHealthResponse | null>(null);
   const [narrativeHealthLoading, setNarrativeHealthLoading] = useState(false);
   const [narrativeHealthError, setNarrativeHealthError] = useState('');
@@ -371,32 +401,40 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [arcPlan, setArcPlan] = useState<ArcPlanResponse | null>(null);
   const [arcPlanLoading, setArcPlanLoading] = useState(false);
   const [arcPlanError, setArcPlanError] = useState('');
+  const [analysisLoaded, setAnalysisLoaded] = useState(false);
   const [selectedExecutionContext, setSelectedExecutionContext] = useState<ChapterExecutionContext | null>(null);
   const [expandedStoryArcChapters, setExpandedStoryArcChapters] = useState<number[]>([]);
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
 
-  async function loadNarrativeControlCenter(worldId: number) {
-    setChapterHistoryLoading(true);
-    setNextPrepLoading(true);
-    setNarrativeHealthLoading(true);
-    setOpenThreadsLoading(true);
-    setWorldPulseLoading(true);
-    setArcPlanLoading(true);
+  function resetNarrativeData() {
+    setChapterHistory(null);
+    setChapterHistoryLoading(false);
     setChapterHistoryError('');
+    setChapterHistoryLoaded(false);
+    setNextPrep(null);
+    setNextPrepLoading(false);
     setNextPrepError('');
+    setNextPrepLoaded(false);
+    setNarrativeHealth(null);
+    setNarrativeHealthLoading(false);
     setNarrativeHealthError('');
+    setOpenThreads(null);
+    setOpenThreadsLoading(false);
     setOpenThreadsError('');
+    setWorldPulse(null);
+    setWorldPulseLoading(false);
     setWorldPulseError('');
+    setArcPlan(null);
+    setArcPlanLoading(false);
     setArcPlanError('');
-    try {
-      setChapterHistory(await getChapterHistory(worldId));
-    } catch {
-      setChapterHistory(null);
-      setChapterHistoryError('章节历史暂不可用');
-    } finally {
-      setChapterHistoryLoading(false);
-    }
+    setAnalysisLoaded(false);
+  }
+
+  async function loadWriteData(worldId: number) {
+    if (nextPrepLoaded || nextPrepLoading) return;
+    setNextPrepLoading(true);
+    setNextPrepError('');
     try {
       setNextPrep(await getNextChapterPrep(worldId));
     } catch {
@@ -404,38 +442,71 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setNextPrepError('下一章准备台暂不可用');
     } finally {
       setNextPrepLoading(false);
+      setNextPrepLoaded(true);
     }
-    try {
-      setNarrativeHealth(await getNarrativeHealth(worldId));
-    } catch {
+  }
+
+  async function loadAnalysisData(worldId: number) {
+    if (analysisLoaded || worldPulseLoading || arcPlanLoading || narrativeHealthLoading || openThreadsLoading) return;
+    setWorldPulseLoading(true);
+    setArcPlanLoading(true);
+    setNarrativeHealthLoading(true);
+    setOpenThreadsLoading(true);
+    setWorldPulseError('');
+    setArcPlanError('');
+    setNarrativeHealthError('');
+    setOpenThreadsError('');
+
+    const [pulseResult, arcPlanResult, healthResult, threadsResult] = await Promise.allSettled([
+      getWorldPulse(worldId),
+      getArcPlan(worldId),
+      getNarrativeHealth(worldId),
+      getOpenThreads(worldId),
+    ]);
+
+    if (pulseResult.status === 'fulfilled') setWorldPulse(pulseResult.value);
+    else {
+      setWorldPulse(null);
+      setWorldPulseError('世界近况暂不可用');
+    }
+
+    if (arcPlanResult.status === 'fulfilled') setArcPlan(arcPlanResult.value);
+    else {
+      setArcPlan(null);
+      setArcPlanError('篇章规划暂不可用');
+    }
+
+    if (healthResult.status === 'fulfilled') setNarrativeHealth(healthResult.value);
+    else {
       setNarrativeHealth(null);
       setNarrativeHealthError('叙事健康度暂不可用');
-    } finally {
-      setNarrativeHealthLoading(false);
     }
-    try {
-      setOpenThreads(await getOpenThreads(worldId));
-    } catch {
+
+    if (threadsResult.status === 'fulfilled') setOpenThreads(threadsResult.value);
+    else {
       setOpenThreads(null);
       setOpenThreadsError('开放线索看板暂不可用');
-    } finally {
-      setOpenThreadsLoading(false);
     }
+
+    setWorldPulseLoading(false);
+    setArcPlanLoading(false);
+    setNarrativeHealthLoading(false);
+    setOpenThreadsLoading(false);
+    setAnalysisLoaded(true);
+  }
+
+  async function loadArchiveData(worldId: number) {
+    if (chapterHistoryLoaded || chapterHistoryLoading) return;
+    setChapterHistoryLoading(true);
+    setChapterHistoryError('');
     try {
-      setWorldPulse(await getWorldPulse(worldId));
+      setChapterHistory(await getChapterHistory(worldId));
     } catch {
-      setWorldPulse(null);
-      setWorldPulseError('世界心跳暂不可用');
+      setChapterHistory(null);
+      setChapterHistoryError('章节历史暂不可用');
     } finally {
-      setWorldPulseLoading(false);
-    }
-    try {
-      setArcPlan(await getArcPlan(worldId));
-    } catch {
-      setArcPlan(null);
-      setArcPlanError('篇章模式暂不可用');
-    } finally {
-      setArcPlanLoading(false);
+      setChapterHistoryLoading(false);
+      setChapterHistoryLoaded(true);
     }
   }
 
@@ -447,7 +518,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setSeedLibrary(response.seeds);
     } catch {
       setSeedLibrary([]);
-      setSeedLibraryError('世界胚胎库暂不可用');
+      setSeedLibraryError('灵感模板库暂不可用');
     } finally {
       setSeedLibraryLoading(false);
     }
@@ -457,12 +528,12 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     setError('');
     setArchiveError('');
     const overview = await apiRequest<WorldOverview>(`/worlds/${worldId}/overview`);
+    resetNarrativeData();
     setWorld(overview);
     setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
     setShowCreationForm(false);
     setSelectedExecutionContext(null);
     setTab('overview');
-    void loadNarrativeControlCenter(overview.id);
   }
 
   async function loadWorld() {
@@ -493,10 +564,10 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     try {
       const created = await createWorld(payload);
       const overview = await apiRequest<WorldOverview>(`/worlds/${created.id}/overview`);
+      resetNarrativeData();
       setWorld(overview);
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
-      void loadNarrativeControlCenter(overview.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建世界失败');
     } finally {
@@ -510,10 +581,10 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     try {
       const created = await createSampleWorld();
       const overview = await apiRequest<WorldOverview>(`/worlds/${created.id}/overview`);
+      resetNarrativeData();
       setWorld(overview);
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
-      void loadNarrativeControlCenter(overview.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建世界失败');
     } finally {
@@ -527,12 +598,12 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     try {
       const created = await createWorldFromSeed(seedKey);
       const overview = await apiRequest<WorldOverview>(`/worlds/${created.id}/overview`);
+      resetNarrativeData();
       setWorld(overview);
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
-      void loadNarrativeControlCenter(overview.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建世界胚胎失败');
+      setError(err instanceof Error ? err.message : '创建灵感模板失败');
     } finally {
       setCreating(false);
     }
@@ -618,12 +689,20 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     if (!loading && autoFocusTitle) titleRef.current?.focus();
   }, [autoFocusTitle, loading, world?.id]);
 
+  useEffect(() => {
+    if (!world) return;
+    if (tab === 'write') void loadWriteData(world.id);
+    if (tab === 'analysis') void loadAnalysisData(world.id);
+    if (tab === 'archive') void loadArchiveData(world.id);
+  }, [tab, world?.id]);
+
   const activeWorlds = worlds.filter((item) => item.status !== 'archived');
   const archivedWorlds = worlds.filter((item) => item.status === 'archived');
   const nextStoryArcChapter = world
     ? (world.story_arc.find((chapter) => chapter.chapter_number === world.approved_chapter_count + 1) ?? world.story_arc[0] ?? null)
     : null;
   const isArchivedWorld = world?.status === 'archived';
+  const shouldShowFirstChapterOnboarding = Boolean(world && !isArchivedWorld && world.approved_chapter_count === 0 && world.story_arc.length === 0);
 
   if (loading)
     return (
@@ -638,7 +717,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
         <div className="book-spread p-8 md:p-10">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="chapter-kicker">Bookshelf</p>
+              <p className="chapter-kicker">书架总览</p>
               <h1 className="mt-3 text-4xl font-black text-[#34210f]">作品书架</h1>
               <p className="manuscript mt-3 text-sm text-[#5e3b1c]">先给暂缓的小说做快照和 Markdown ZIP，再归档并切换到其他小说继续写。</p>
             </div>
@@ -731,6 +810,12 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
           ))}
         </nav>
 
+        {worlds.length > 0 && (
+          <div className="mb-6 flex flex-wrap gap-2">
+            <button className="secondary-button" type="button" onClick={returnToBookshelf}>返回作品书架</button>
+          </div>
+        )}
+
         {/* Tab content */}
         {tab === 'overview' && (
           <div className="grid gap-8 md:grid-cols-[1fr_1fr]">
@@ -747,6 +832,13 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 {labelWorldVersion(world.world_version)} · {labelGenre(world.genre_template)} · {labelStatus(world.status)}
               </p>
               <p className="manuscript mt-8 text-lg">{world.truth_canon}</p>
+              {shouldShowFirstChapterOnboarding && (
+                <FirstChapterOnboardingCard
+                  arcLoading={arcLoading}
+                  onGenerateArc={runStoryArcPlanner}
+                  onOpenWriteTab={() => setTab('write')}
+                />
+              )}
               <WorldOperationsDashboard
                 world={world}
                 isArchivedWorld={isArchivedWorld}
@@ -755,50 +847,19 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   executionContext: selectedExecutionContext ?? undefined,
                 })}
                 onShowForeshadows={() => setTab('foreshadows')}
+                onShowArchive={() => setTab('archive')}
               />
-              {isArchivedWorld ? (
+              {isArchivedWorld && (
                 <ArchivedWorldPauseCard
                   archiveLoading={archiveLoading}
                   onReturnToBookshelf={returnToBookshelf}
                   onRestoreWriting={toggleWorldArchiveStatus}
-                />
-              ) : (
-                <FirstChapterLaunchpad
-                  world={world}
-                  nextChapter={nextStoryArcChapter}
-                  arcLoading={arcLoading}
-                  onGenerateArc={runStoryArcPlanner}
-                  onLaunchChapter={launchStoryArcChapter}
                 />
               )}
               {error && (
                 <p className="paper-error mt-5" role="alert">
                   {error}
                 </p>
-              )}
-              <div className="mt-8 rounded-2xl bg-amber-50/70 p-4">
-                <p className="text-sm font-bold text-[#5e3b1c]">书架归档</p>
-                <p className="manuscript mt-1 text-sm">归档前建议先创建世界快照并导出 Markdown ZIP。</p>
-                {archiveError && <p className="paper-error mt-2" role="alert">{archiveError}</p>}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {worlds.length > 0 && <button className="secondary-button" type="button" onClick={returnToBookshelf}>返回作品书架</button>}
-                  <button className="secondary-button" type="button" disabled={archiveLoading} onClick={toggleWorldArchiveStatus}>
-                    {archiveLoading ? '更新中...' : world.status === 'archived' ? '取消归档当前小说' : '归档当前小说'}
-                  </button>
-                </div>
-              </div>
-              {!isArchivedWorld && (
-                <div className="mt-8 flex flex-wrap gap-3">
-                  <button className="primary-button" onClick={() => onEnterStudio(world, {
-                    initialChapterGoal: selectedExecutionContext?.goal,
-                    executionContext: selectedExecutionContext ?? undefined,
-                  })}>
-                    进入创作台
-                  </button>
-                  <button className="secondary-button" disabled={arcLoading} onClick={runStoryArcPlanner}>
-                    {arcLoading ? '故事弧线规划中…' : world.story_arc.length ? '重新生成故事大纲' : '生成故事大纲'}
-                  </button>
-                </div>
               )}
             </div>
             <div className="space-y-4">
@@ -834,20 +895,37 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 </div>
               </article>
             </div>
-            <section id="story-arc-planner" className="book-card scroll-mt-6 p-5 md:col-span-2">
+          </div>
+        )}
+
+        {tab === 'write' && !isArchivedWorld && (
+          <div className="space-y-6">
+            <FirstChapterLaunchpad
+              world={world}
+              nextChapter={nextStoryArcChapter}
+              arcLoading={arcLoading}
+              onGenerateArc={runStoryArcPlanner}
+              onLaunchChapter={launchStoryArcChapter}
+            />
+            <NextChapterPrepPanel
+              prep={nextPrep}
+              loading={nextPrepLoading}
+              error={nextPrepError}
+              onUseContext={setSelectedExecutionContext}
+              onEnterStudioWithContext={(context) => onEnterStudio(world, {
+                initialChapterGoal: context.goal,
+                executionContext: context,
+              })}
+            />
+            {selectedExecutionContext && <p className="rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已设为下一章目标：{selectedExecutionContext.goal}</p>}
+            <section className="book-card scroll-mt-6 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <p className="chapter-kicker">Story Arc Planner</p>
+                  <p className="chapter-kicker">故事大纲</p>
                   <h2 className="mt-2 text-2xl font-black text-[#34210f]">前 10 章故事弧线</h2>
                 </div>
                 <p className="ink-muted text-sm">下一章目标会按已批准章节数自动带入创作台。</p>
               </div>
-              <nav aria-label="世界模块快速导航" className="mt-4 flex flex-wrap gap-2">
-                <a className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c] hover:bg-amber-200" href="#story-arc-planner">故事弧线</a>
-                <a className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c] hover:bg-amber-200" href="#narrative-control-center">叙事控制台</a>
-                <a className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c] hover:bg-amber-200" href="#world-archive">导出/快照</a>
-                <a className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-xs font-bold text-[#5e3b1c] hover:bg-amber-200" href="#chapter-history">章节历史</a>
-              </nav>
               {world.story_arc.length === 0 ? (
                 <p className="manuscript mt-4">还没有故事弧线。生成后会自动为创作台填入下一章目标。</p>
               ) : (
@@ -867,66 +945,21 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 </div>
               )}
             </section>
+          </div>
+        )}
 
-            <section id="narrative-control-center" className="md:col-span-2 space-y-5 scroll-mt-6">
-              <div>
-                <p className="chapter-kicker">Narrative Console</p>
-                <h2 className="mt-2 text-3xl font-black text-[#34210f]">Narrative Control Center</h2>
-                <p className="manuscript mt-2 text-sm text-[#5e3b1c]">查看已写入正史的世界历史记录，并准备下一章目标。</p>
-                {isArchivedWorld && (
-                  <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">
-                    已归档小说为只读模式；恢复写作后才能把建议带入创作台。
-                  </p>
-                )}
-                {selectedExecutionContext && <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已设为下一章目标：{selectedExecutionContext.goal}</p>}
-              </div>
-              <WorldPulsePanel pulse={worldPulse} loading={worldPulseLoading} error={worldPulseError} />
-              <ArcPlanPanel arcPlan={arcPlan} loading={arcPlanLoading} error={arcPlanError} />
-              <NarrativeHealthPanel health={narrativeHealth} loading={narrativeHealthLoading} error={narrativeHealthError} />
-              <OpenThreadsPanel openThreads={openThreads} loading={openThreadsLoading} error={openThreadsError} />
-              <NextChapterPrepPanel
-                prep={nextPrep}
-                loading={nextPrepLoading}
-                error={nextPrepError}
-                onUseContext={isArchivedWorld ? undefined : setSelectedExecutionContext}
-                onEnterStudioWithContext={isArchivedWorld ? undefined : (context) => onEnterStudio(world, {
-                  initialChapterGoal: context.goal,
-                  executionContext: context,
-                })}
-              />
-              <WorldSearchPanel worldId={world.id} readOnly={isArchivedWorld} onSearch={searchWorld} onListTags={listWorldTags} onBulkAssignTag={bulkAssignWorldTag} />
-              <WorldTagsPanel
-                worldId={world.id}
-                readOnly={isArchivedWorld}
-                onListTags={listWorldTags}
-                onCreateTag={createWorldTag}
-                onLoadTag={getWorldTag}
-                onUpdateTag={updateWorldTag}
-                onMergeTag={mergeWorldTag}
-                onAssignTag={assignWorldTag}
-                onBulkAssignTag={bulkAssignWorldTag}
-                onUnassignTag={unassignWorldTag}
-                onDeleteTag={deleteWorldTag}
-              />
-              <div id="chapter-history" className="scroll-mt-6">
-                <ChapterHistoryPanel
-                  history={chapterHistory}
-                  loading={chapterHistoryLoading}
-                  error={chapterHistoryError}
-                  onLoadDetail={(chapterId) => getChapterHistoryDetail(chapterId)}
-                />
-              </div>
-              <WorldTimelinePanel worldId={world.id} onLoadEvents={getWorldEvents} />
-              <div id="world-archive" className="scroll-mt-6">
-                <WorldArchivePanel
-                  readOnly={isArchivedWorld}
-                  onCreateSnapshot={() => createWorldSnapshot(world.id)}
-                  onExportMarkdown={() => exportWorldArchiveMarkdown(world.id)}
-                  onListSnapshots={() => listWorldSnapshots(world.id)}
-                  onCompareSnapshots={compareWorldSnapshots}
-                />
-              </div>
-            </section>
+        {tab === 'write' && isArchivedWorld && (
+          <div className="space-y-6">
+            <ArchivedWorldPauseCard
+              archiveLoading={archiveLoading}
+              onReturnToBookshelf={returnToBookshelf}
+              onRestoreWriting={toggleWorldArchiveStatus}
+            />
+            <NextChapterPrepPanel
+              prep={nextPrep}
+              loading={nextPrepLoading}
+              error={nextPrepError}
+            />
           </div>
         )}
 
@@ -938,6 +971,73 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
 
         {tab === 'foreshadows' && (
           <ForeshadowManager worldId={world.id} characters={world.characters} onChanged={loadWorld} readOnly={isArchivedWorld} />
+        )}
+
+        {tab === 'analysis' && (
+          <section className="space-y-5">
+            <div>
+              <p className="chapter-kicker">故事管理</p>
+              <h2 className="mt-2 text-3xl font-black text-[#34210f]">故事运营分析</h2>
+              <p className="manuscript mt-2 text-sm text-[#5e3b1c]">查看故事近况、风险和开放线索，决定下一步优先处理什么。</p>
+            </div>
+            <WorldPulsePanel pulse={worldPulse} loading={worldPulseLoading} error={worldPulseError} />
+            <ArcPlanPanel arcPlan={arcPlan} loading={arcPlanLoading} error={arcPlanError} />
+            <NarrativeHealthPanel health={narrativeHealth} loading={narrativeHealthLoading} error={narrativeHealthError} />
+            <OpenThreadsPanel openThreads={openThreads} loading={openThreadsLoading} error={openThreadsError} />
+          </section>
+        )}
+
+        {tab === 'archive' && (
+          <section className="space-y-5">
+            <div>
+              <p className="chapter-kicker">档案管理</p>
+              <h2 className="mt-2 text-3xl font-black text-[#34210f]">档案与导出</h2>
+              <p className="manuscript mt-2 text-sm text-[#5e3b1c]">查看章节历史、时间线、标签和搜索结果，并管理快照与导出。</p>
+              {isArchivedWorld && (
+                <p className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">
+                  已归档小说为只读模式；可继续查看和导出档案，恢复写作后才能创建新快照。
+                </p>
+              )}
+            </div>
+            <ChapterHistoryPanel
+              history={chapterHistory}
+              loading={chapterHistoryLoading}
+              error={chapterHistoryError}
+              onLoadDetail={(chapterId) => getChapterHistoryDetail(chapterId)}
+            />
+            <WorldTimelinePanel worldId={world.id} onLoadEvents={getWorldEvents} />
+            <WorldSearchPanel worldId={world.id} readOnly={isArchivedWorld} onSearch={searchWorld} onListTags={listWorldTags} onBulkAssignTag={bulkAssignWorldTag} />
+            <WorldTagsPanel
+              worldId={world.id}
+              readOnly={isArchivedWorld}
+              onListTags={listWorldTags}
+              onCreateTag={createWorldTag}
+              onLoadTag={getWorldTag}
+              onUpdateTag={updateWorldTag}
+              onMergeTag={mergeWorldTag}
+              onAssignTag={assignWorldTag}
+              onBulkAssignTag={bulkAssignWorldTag}
+              onUnassignTag={unassignWorldTag}
+              onDeleteTag={deleteWorldTag}
+            />
+            <WorldArchivePanel
+              readOnly={isArchivedWorld}
+              onCreateSnapshot={() => createWorldSnapshot(world.id)}
+              onExportMarkdown={() => exportWorldArchiveMarkdown(world.id)}
+              onListSnapshots={() => listWorldSnapshots(world.id)}
+              onCompareSnapshots={compareWorldSnapshots}
+            />
+            <div className="rounded-2xl bg-amber-50/70 p-4">
+              <p className="text-sm font-bold text-[#5e3b1c]">书架归档</p>
+              <p className="manuscript mt-1 text-sm">归档前建议先创建世界快照并导出 Markdown ZIP。</p>
+              {archiveError && <p className="paper-error mt-2" role="alert">{archiveError}</p>}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button className="secondary-button" type="button" disabled={archiveLoading} onClick={toggleWorldArchiveStatus}>
+                  {archiveLoading ? '更新中...' : world.status === 'archived' ? '取消归档当前小说' : '归档当前小说'}
+                </button>
+              </div>
+            </div>
+          </section>
         )}
       </div>
     </section>

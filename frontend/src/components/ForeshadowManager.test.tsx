@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom/vitest';
+﻿import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -177,7 +177,7 @@ describe('ForeshadowManager', () => {
     render(<ForeshadowManager worldId={7} characters={characters} />);
 
     expect(await screen.findByText('裂纹玉佩')).toBeInTheDocument();
-    expect(screen.getByText('这些编辑会正式写入世界状态，并使 world_version 增长。')).toBeInTheDocument();
+    expect(screen.getByText('这些编辑会正式写入世界状态，并提升世界版本。')).toBeInTheDocument();
     expect(screen.getByText('玉佩出现裂纹。')).toBeInTheDocument();
     expect(screen.getByText('⚠️ 有 1 条伏笔已超过 6 章未推进，建议尽快处理')).toBeInTheDocument();
   });
@@ -185,12 +185,12 @@ describe('ForeshadowManager', () => {
   it('renders ledger summary counts and governance metadata', async () => {
     render(<ForeshadowManager worldId={7} characters={characters} />);
 
-    expect(await screen.findByText('Foreshadow Ledger')).toBeInTheDocument();
+    expect(await screen.findByText('伏笔治理台')).toBeInTheDocument();
     expect(getForeshadowLedger).toHaveBeenCalledWith(7);
     expect(screen.getByText('总数：4')).toBeInTheDocument();
     expect(screen.getByText('未收束：2')).toBeInTheDocument();
-    expect(screen.getByText('Stale：1')).toBeInTheDocument();
-    expect(screen.getByText('Overdue：1')).toBeInTheDocument();
+    expect(screen.getByText('长期未推进：1')).toBeInTheDocument();
+    expect(screen.getByText('已过窗口：1')).toBeInTheDocument();
     expect(screen.getByText('高紧迫：2')).toBeInTheDocument();
     expect(screen.getByText('高压力：2')).toBeInTheDocument();
     expect(screen.getByText('优先处理：井中红光、裂纹玉佩')).toBeInTheDocument();
@@ -198,9 +198,9 @@ describe('ForeshadowManager', () => {
     expect(screen.getByText((_, element) => element?.textContent === '收束窗口：第2-4章')).toBeInTheDocument();
     expect(screen.getByText((_, element) => element?.textContent === '关联角色：林砚')).toBeInTheDocument();
     expect(screen.getByText((_, element) => element?.textContent === '生命周期：活跃推进')).toBeInTheDocument();
-    expect(screen.getByText((_, element) => element?.textContent === '状态：advanced')).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.textContent === '状态：已推进')).toBeInTheDocument();
     expect(screen.getByText('压力：高紧迫度：4；预期收束窗口：第2-4章')).toBeInTheDocument();
-    expect(screen.getByText((_, element) => element?.textContent === '最近轨迹：advanced · 第三章 · 玉佩裂纹扩大')).toBeInTheDocument();
+    expect(screen.getByText((_, element) => element?.textContent === '最近轨迹：已推进 · 第三章 · 玉佩裂纹扩大')).toBeInTheDocument();
   });
 
   it('filters unresolved stale overdue resolved and dropped foreshadows', async () => {
@@ -215,12 +215,12 @@ describe('ForeshadowManager', () => {
     expect(screen.queryByText('旧盟约')).not.toBeInTheDocument();
     expect(screen.queryByText('废弃暗门')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Stale 1' }));
+    await user.click(screen.getByRole('button', { name: '长期未推进 1' }));
     expect(screen.getByText('井中红光')).toBeInTheDocument();
-    expect(screen.getByText('Overdue')).toBeInTheDocument();
+    expect(screen.getByText('已过收束窗口')).toBeInTheDocument();
     expect(screen.queryByText('裂纹玉佩')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Overdue 1' }));
+    await user.click(screen.getByRole('button', { name: '已过收束窗口 1' }));
     expect(screen.getByText('井中红光')).toBeInTheDocument();
     expect(screen.queryByText('裂纹玉佩')).not.toBeInTheDocument();
 

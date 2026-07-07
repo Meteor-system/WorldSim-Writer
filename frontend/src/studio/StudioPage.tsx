@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
   approveChapter,
@@ -61,15 +61,15 @@ function ExecutionContextSummary({ context, frozen }: { context?: ChapterExecuti
   if (!context) {
     return (
       <div className="book-card p-5">
-        <h2 className="font-black text-[#3b2511]">本章执行上下文</h2>
-        <p className="mt-3 ink-muted">本章暂无 NCC 执行上下文。创建章节时会根据当前目标生成手动上下文快照。</p>
+        <h2 className="font-black text-[#3b2511]">本章设定（本章要写什么）</h2>
+        <p className="mt-3 ink-muted">本章暂无来自下一章准备台的设定。创建章节时会根据当前目标生成手动设定快照。</p>
       </div>
     );
   }
   return (
     <div className="book-card p-5">
-      <h2 className="font-black text-[#3b2511]">本章执行上下文</h2>
-      {frozen && <p className="mt-2 text-sm font-bold text-[#5e3b1c]">已冻结执行上下文：{context.source} · v{context.source_world_version}</p>}
+      <h2 className="font-black text-[#3b2511]">本章设定（本章要写什么）</h2>
+      {frozen && <p className="mt-2 text-sm font-bold text-[#5e3b1c]">已冻结本章设定：{context.source} · v{context.source_world_version}</p>}
       <p className="mt-3 ink-muted">来源：{sourceLabel(context.source)}</p>
       <p className="mt-2 ink-muted">源世界版本：v{context.source_world_version}</p>
       <p className="mt-2 ink-muted">建议章节：第 {context.next_chapter_number ?? '?'} 章</p>
@@ -86,7 +86,7 @@ function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionConte
   if (!context) return null;
   return (
     <section className="space-y-3 rounded-2xl bg-white/35 p-4">
-      <h3 className="font-black text-[#3b2511]">执行上下文快照</h3>
+      <h3 className="font-black text-[#3b2511]">本章设定快照</h3>
       <p className="manuscript text-sm">来源：{sourceLabel(context.source)} · v{context.source_world_version}</p>
       <p className="manuscript text-sm">目标：{context.goal}</p>
       <p className="manuscript text-sm">推荐 POV：{context.recommended_pov.name ?? '暂无'}</p>
@@ -696,12 +696,12 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           {settlement && (
             <section className="book-card space-y-4 border-2 border-emerald-500/35 bg-emerald-50/70 p-5" role="status" aria-live="polite">
               <div>
-                <p className="chapter-kicker">Canon Settlement</p>
+                <p className="chapter-kicker">正史结算</p>
                 <h2 className="text-2xl font-black text-[#203b20]">世界推进结算</h2>
-                <p className="manuscript mt-2">这一章已写入正史 / canon，后续章节会继承本次世界变化。</p>
+                <p className="manuscript mt-2">这一章已写入正史，后续章节会继承本次世界变化。</p>
               </div>
               <div className="grid gap-3 md:grid-cols-2">
-                <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">世界进度 v{settlement.worldBefore} → v{settlement.worldAfter}</p>
+                <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">世界进度第 {settlement.worldBefore} 版 → 第 {settlement.worldAfter} 版</p>
                 <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">已写入正史章节：{settlement.approvedChapterCount}</p>
                 <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">角色变化：{settlement.characterChangeCount}</p>
                 <p className="rounded-2xl bg-white/65 p-3 font-bold text-emerald-950">悬念/伏笔变化：{settlement.foreshadowChangeCount}</p>

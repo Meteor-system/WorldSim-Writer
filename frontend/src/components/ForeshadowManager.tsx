@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
 import {
   createForeshadow,
   deleteForeshadow,
@@ -16,6 +16,7 @@ import type {
   ForeshadowStatus,
   ForeshadowUpdate,
 } from '../api/types';
+import { labelEventType } from '../world/displayLabels';
 
 type Props = { worldId: number; characters: Character[]; onChanged?: () => Promise<void> | void; readOnly?: boolean };
 
@@ -25,6 +26,8 @@ const TYPE_LABELS: Record<string, string> = {
   character: '角色',
   world: '世界',
   theme: '主题',
+  world_rule_clue: '世界规则线索',
+  magic_clue: '魔法线索',
 };
 
 const STATUS_OPTIONS = ['planted', 'advanced', 'resolved', 'expired'] as const satisfies readonly ForeshadowStatus[];
@@ -55,8 +58,8 @@ type LedgerFilter = 'all' | 'unresolved' | 'stale' | 'overdue' | 'resolved' | 'd
 const FILTER_LABELS: Record<LedgerFilter, string> = {
   all: '全部',
   unresolved: '未收束',
-  stale: 'Stale',
-  overdue: 'Overdue',
+  stale: '长期未推进',
+  overdue: '已过收束窗口',
   resolved: '已收束',
   dropped: '已放弃',
 };
@@ -320,7 +323,7 @@ export function ForeshadowManager({ worldId, characters, onChanged, readOnly = f
           </p>
           <p>
             <span className="font-semibold text-[#4a321e]">状态：</span>
-            {f.status}
+            {STATUS_LABELS[f.status]}
           </p>
           <p>
             <span className="font-semibold text-[#4a321e]">来源章节：</span>
@@ -335,8 +338,8 @@ export function ForeshadowManager({ worldId, characters, onChanged, readOnly = f
         {(isStale || isHighUrgency) && (
           <div className="flex flex-wrap gap-2 text-xs font-black">
             {isHighUrgency && <span className="rounded-full border border-red-700/25 bg-red-100 px-2 py-0.5 text-red-800">高紧迫</span>}
-            {isStale && <span className="rounded-full border border-amber-700/25 bg-amber-100 px-2 py-0.5 text-amber-900">Stale · {entry?.chapters_since_planted ?? 0} 章未推进</span>}
-            {isOverdue && <span className="rounded-full border border-red-700/25 bg-red-100 px-2 py-0.5 text-red-800">Overdue</span>}
+            {isStale && <span className="rounded-full border border-amber-700/25 bg-amber-100 px-2 py-0.5 text-amber-900">长期未推进 · {entry?.chapters_since_planted ?? 0} 章未推进</span>}
+            {isOverdue && <span className="rounded-full border border-red-700/25 bg-red-100 px-2 py-0.5 text-red-800">已过收束窗口</span>}
           </div>
         )}
 
@@ -354,7 +357,7 @@ export function ForeshadowManager({ worldId, characters, onChanged, readOnly = f
         {entry?.recent_events.length ? (
           <p className="text-xs ink-muted">
             <span className="font-semibold">最近轨迹：</span>
-            {entry.recent_events.map((event) => [event.event_type, event.chapter_title, event.note].filter(Boolean).join(' · ')).join('；')}
+            {entry.recent_events.map((event) => [STATUS_LABELS[event.event_type as ForeshadowStatus] ?? labelEventType(event.event_type), event.chapter_title, event.note].filter(Boolean).join(' · ')).join('；')}
           </p>
         ) : null}
 
@@ -467,20 +470,20 @@ export function ForeshadowManager({ worldId, characters, onChanged, readOnly = f
         </div>
       </div>
       <p className="mt-3 rounded-2xl border border-amber-700/25 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-        {readOnly ? '已归档小说为只读模式；恢复写作后才能编辑世界资料。' : '这些编辑会正式写入世界状态，并使 world_version 增长。'}
+        {readOnly ? '已归档小说为只读模式；恢复写作后才能编辑世界资料。' : '这些编辑会正式写入世界状态，并提升世界版本。'}
       </p>
 
       <section className="mt-4 rounded-3xl border border-amber-900/15 bg-amber-50/50 p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="chapter-kicker">Foreshadow Ledger</p>
+            <p className="chapter-kicker">伏笔账本</p>
             <h2 className="text-2xl font-black text-[#34210f]">伏笔治理台</h2>
           </div>
           <div className="flex flex-wrap gap-2 text-xs font-black text-[#5e3b1c]">
             <span className="rounded-full bg-white/70 px-3 py-1">总数：{summary.total}</span>
             <span className="rounded-full bg-white/70 px-3 py-1">未收束：{summary.unresolved}</span>
-            <span className="rounded-full bg-white/70 px-3 py-1">Stale：{summary.stale}</span>
-            <span className="rounded-full bg-white/70 px-3 py-1">Overdue：{summary.overdue}</span>
+            <span className="rounded-full bg-white/70 px-3 py-1">长期未推进：{summary.stale}</span>
+            <span className="rounded-full bg-white/70 px-3 py-1">已过窗口：{summary.overdue}</span>
             <span className="rounded-full bg-white/70 px-3 py-1">高紧迫：{summary.highUrgency}</span>
             <span className="rounded-full bg-white/70 px-3 py-1">高压力：{highPressure.length}</span>
           </div>

@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom/vitest';
+﻿import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -34,8 +34,8 @@ describe('RelationManager', () => {
     render(<RelationManager worldId={7} characters={characters} />);
 
     expect(await screen.findByText('林砚 → 沈微霜')).toBeInTheDocument();
-    expect(screen.getByText('这些编辑会正式写入世界状态，并使 world_version 增长。')).toBeInTheDocument();
-    expect(screen.getByText('关系：uneasy_alliance')).toBeInTheDocument();
+    expect(screen.getByText('这些编辑会正式写入世界状态，并提升世界版本。')).toBeInTheDocument();
+    expect(screen.getByText('关系：不稳定同盟')).toBeInTheDocument();
     expect(screen.getByText('强度：2')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '+ 新增关系' })).toBeInTheDocument();
   });

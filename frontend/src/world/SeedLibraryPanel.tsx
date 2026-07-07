@@ -1,4 +1,4 @@
-import type { WorldSeedSummary } from '../api/types';
+﻿import type { WorldSeedSummary } from '../api/types';
 
 type Props = {
   seeds: WorldSeedSummary[];
@@ -22,7 +22,7 @@ export function SeedLibraryPanel({ seeds, selectedSeedKey, loading, error, onApp
   if (loading) {
     return (
       <section className="book-card p-5">
-        <p className="ink-muted" role="status">正在读取世界胚胎库...</p>
+        <p className="ink-muted" role="status">正在读取灵感模板库...</p>
       </section>
     );
   }
@@ -38,7 +38,7 @@ export function SeedLibraryPanel({ seeds, selectedSeedKey, loading, error, onApp
   if (seeds.length === 0) {
     return (
       <section className="book-card p-5">
-        <p className="ink-muted">暂无可用世界胚胎。</p>
+        <p className="ink-muted">暂无可用灵感模板。</p>
       </section>
     );
   }
@@ -46,9 +46,9 @@ export function SeedLibraryPanel({ seeds, selectedSeedKey, loading, error, onApp
   return (
     <section className="book-card p-5">
       <div>
-        <p className="chapter-kicker">Sandbox Seed Library</p>
-        <h2 className="text-2xl font-black text-[#34210f]">高张力世界胚胎</h2>
-        <p className="manuscript mt-2 text-sm text-[#5e3b1c]">这些胚胎只是起跑提示：用来创建可运营的故事世界，不会被当成已经生成的章节正文。</p>
+        <p className="chapter-kicker">灵感模板库</p>
+        <h2 className="text-2xl font-black text-[#34210f]">高张力灵感模板</h2>
+        <p className="manuscript mt-2 text-sm text-[#5e3b1c]">这些模板只是起跑提示：用来创建可运营的故事世界，不会被当成已经生成的章节正文。</p>
       </div>
       <div className="mt-4 grid gap-4 md:grid-cols-2">
         {seeds.map((seed) => {
@@ -74,7 +74,7 @@ export function SeedLibraryPanel({ seeds, selectedSeedKey, loading, error, onApp
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button type="button" className="secondary-button" onClick={() => onApplySeed(seed.key)}>套用到表单</button>
-                <button type="button" className="primary-button" onClick={() => onCreateSeed(seed.key)}>直接创建此胚胎</button>
+                <button type="button" className="primary-button" onClick={() => onCreateSeed(seed.key)}>直接创建此模板</button>
               </div>
             </article>
           );

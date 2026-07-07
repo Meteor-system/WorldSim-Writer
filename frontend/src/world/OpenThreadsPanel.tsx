@@ -1,4 +1,5 @@
-import type { OpenThreadsResponse } from '../api/types';
+﻿import type { OpenThreadsResponse } from '../api/types';
+import { labelStatus, localizeBackendCopy } from './displayLabels';
 
 type Props = {
   openThreads: OpenThreadsResponse | null;
@@ -53,8 +54,8 @@ export function OpenThreadsPanel({ openThreads, loading, error }: Props) {
   return (
     <section className="book-card space-y-5 p-5">
       <div>
-        <p className="chapter-kicker">Story Convergence</p>
-        <h2 className="text-2xl font-black text-[#34210f]">Open Threads Board</h2>
+        <p className="chapter-kicker">故事收束</p>
+        <h2 className="text-2xl font-black text-[#34210f]">开放线索看板</h2>
         <p className="manuscript mt-2 text-sm text-[#5e3b1c]">整理伏笔、角色目标、弧线提示与健康风险，帮助故事从扩张走向收束。</p>
       </div>
 
@@ -72,7 +73,7 @@ export function OpenThreadsPanel({ openThreads, loading, error }: Props) {
           <p className="ink-muted mt-1 text-xs">已关闭伏笔占全部伏笔的比例。</p>
         </article>
         <article className="rounded-2xl bg-white/50 p-3">
-          <p className="text-sm font-bold text-[#5e3b1c]">叙事熵：{summary.narrative_entropy_level}</p>
+          <p className="text-sm font-bold text-[#5e3b1c]">叙事熵：{labelStatus(summary.narrative_entropy_level)}</p>
           <p className="ink-muted mt-1 text-xs">开放线索压力的粗略等级。</p>
         </article>
       </div>
@@ -83,7 +84,7 @@ export function OpenThreadsPanel({ openThreads, loading, error }: Props) {
           <div className="mt-3 space-y-2">
             {openThreads.suggested_next_actions.map((action, index) => (
               <p key={`${String(action.action_key ?? index)}`} className="manuscript text-sm">
-                <strong>{String(action.label)}</strong>：{String(action.detail)}
+                <strong>{localizeBackendCopy(String(action.label))}</strong>：{localizeBackendCopy(String(action.detail))}
               </p>
             ))}
           </div>
@@ -98,13 +99,13 @@ export function OpenThreadsPanel({ openThreads, loading, error }: Props) {
             <article key={thread.thread_id} className={`rounded-2xl border p-4 ${priorityClass(thread.priority)}`}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.18em]">[{thread.priority}] {thread.thread_type} · {thread.pressure_level}</p>
-                  <h3 className="mt-2 text-lg font-black">{thread.title}</h3>
+                  <p className="text-xs font-black tracking-[0.18em]">[{labelStatus(thread.priority)}] {labelStatus(thread.thread_type)} · {labelStatus(thread.pressure_level)}</p>
+                  <h3 className="mt-2 text-lg font-black">{localizeBackendCopy(thread.title)}</h3>
                 </div>
                 <span className="rounded-full bg-white/60 px-3 py-1 text-xs font-bold">{PRIORITY_LABELS[thread.priority] ?? thread.priority}</span>
               </div>
-              <p className="manuscript mt-3 text-sm">{thread.summary}</p>
-              <p className="manuscript mt-2 text-sm">建议：{thread.suggested_action}</p>
+              <p className="manuscript mt-3 text-sm">{localizeBackendCopy(thread.summary)}</p>
+              <p className="manuscript mt-2 text-sm">建议：{localizeBackendCopy(thread.suggested_action)}</p>
               {thread.can_seed_next_chapter_goal && <p className="mt-2 text-xs font-black text-[#5e3b1c]">可作为下一章目标种子</p>}
             </article>
           ))}

@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom/vitest';
+﻿import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -101,7 +101,7 @@ describe('WorldCreationForm', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: '直接创建此胚胎' }));
+    await user.click(screen.getByRole('button', { name: '直接创建此模板' }));
 
     expect(onCreateSeed).toHaveBeenCalledWith('forgotten-sun-city');
   });

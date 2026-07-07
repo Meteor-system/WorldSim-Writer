@@ -1,4 +1,5 @@
-import type { NarrativeHealthResponse } from '../api/types';
+﻿import type { NarrativeHealthResponse } from '../api/types';
+import { labelStatus, localizeBackendCopy } from './displayLabels';
 
 type Props = {
   health: NarrativeHealthResponse | null;
@@ -53,8 +54,8 @@ export function NarrativeHealthPanel({ health, loading, error }: Props) {
     <section className="book-card space-y-5 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="chapter-kicker">Risk Dashboard</p>
-          <h2 className="text-2xl font-black text-[#34210f]">Narrative Health</h2>
+          <p className="chapter-kicker">风险看板</p>
+          <h2 className="text-2xl font-black text-[#34210f]">叙事健康度</h2>
           <p className="manuscript mt-2 text-sm text-[#5e3b1c]">汇总 Critic、角色弧线、伏笔压力与正式事件信号，只提供建议，不修改世界状态。</p>
         </div>
         <div className={`rounded-2xl border px-4 py-3 text-right ${STATUS_CLASS[health.status]}`}>
@@ -70,7 +71,7 @@ export function NarrativeHealthPanel({ health, loading, error }: Props) {
               <h3 className="font-black text-[#3b2511]">{metric.label}</h3>
               <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-[#5e3b1c]">{metric.value}</span>
             </div>
-            <p className="manuscript mt-2 text-sm">{metric.detail}</p>
+            <p className="manuscript mt-2 text-sm">{localizeBackendCopy(metric.detail)}</p>
           </article>
         ))}
       </div>
@@ -83,9 +84,9 @@ export function NarrativeHealthPanel({ health, loading, error }: Props) {
           <div className="mt-3 space-y-3">
             {health.risks.map((risk, index) => (
               <article key={`${risk.source}-${risk.object_id ?? index}`} className={`rounded-xl border p-3 ${riskClass(risk.severity)}`}>
-                <p className="text-sm font-black">[{risk.severity}] {risk.source}{risk.object_title ? ` · ${risk.object_title}` : ''}</p>
-                <p className="manuscript mt-2 text-sm">{risk.message}</p>
-                <p className="manuscript mt-1 text-sm">建议：{risk.suggested_action}</p>
+                <p className="text-sm font-black">[{labelStatus(risk.severity)}] {labelStatus(risk.source)}{risk.object_title ? ` · ${risk.object_title}` : ''}</p>
+                <p className="manuscript mt-2 text-sm">{localizeBackendCopy(risk.message)}</p>
+                <p className="manuscript mt-1 text-sm">建议：{localizeBackendCopy(risk.suggested_action)}</p>
               </article>
             ))}
           </div>
@@ -97,7 +98,7 @@ export function NarrativeHealthPanel({ health, loading, error }: Props) {
           <h3 className="font-black text-[#3b2511]">建议下一步</h3>
           <div className="mt-3 space-y-2">
             {health.suggested_actions.map((action) => (
-              <p key={action.action_key} className="manuscript text-sm"><strong>{action.label}</strong>：{action.detail}</p>
+              <p key={action.action_key} className="manuscript text-sm"><strong>{localizeBackendCopy(action.label)}</strong>：{localizeBackendCopy(action.detail)}</p>
             ))}
           </div>
         </div>

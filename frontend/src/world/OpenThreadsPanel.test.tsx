@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom/vitest';
+﻿import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { OpenThreadsResponse } from '../api/types';
@@ -58,14 +58,14 @@ describe('OpenThreadsPanel', () => {
   it('renders convergence summary, thread cards, and actions', () => {
     render(<OpenThreadsPanel openThreads={openThreads} loading={false} error="" />);
 
-    expect(screen.getByText('Open Threads Board')).toBeInTheDocument();
+    expect(screen.getByText('开放线索看板')).toBeInTheDocument();
     expect(screen.getByText('开放线索：2')).toBeInTheDocument();
     expect(screen.getByText('必须收束：1')).toBeInTheDocument();
     expect(screen.getByText('收束比：25%')).toBeInTheDocument();
-    expect(screen.getByText('叙事熵：medium')).toBeInTheDocument();
+    expect(screen.getByText('叙事熵：中')).toBeInTheDocument();
     expect(screen.getByText('第一章 灯塔密令')).toBeInTheDocument();
     expect(screen.getByText('黑匣子脉冲')).toBeInTheDocument();
-    expect(screen.getByText('[must_close] health_risk · high')).toBeInTheDocument();
+    expect(screen.getByText('[必须收束] 健康风险 · 高')).toBeInTheDocument();
     expect(screen.getAllByText('可作为下一章目标种子').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('用最高压开放线索规划下一章')).toBeInTheDocument();
   });

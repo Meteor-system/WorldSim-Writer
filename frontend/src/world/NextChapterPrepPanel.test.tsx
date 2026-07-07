@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom/vitest';
+﻿import '@testing-library/jest-dom/vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
@@ -76,12 +76,12 @@ describe('NextChapterPrepPanel', () => {
     expect(screen.getByText('第 2 章建议目标')).toBeInTheDocument();
     expect(screen.getByText('林砚带着湿信赴城主府外墙，并设置一次试探。')).toBeInTheDocument();
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
-    expect(screen.getByText('林砚 · protagonist')).toBeInTheDocument();
-    expect(screen.getByText('裂纹玉佩 · advanced · urgency 4')).toBeInTheDocument();
+    expect(screen.getByText('林砚 · 主角')).toBeInTheDocument();
+    expect(screen.getByText('裂纹玉佩 · 推进中 · 紧迫度 4')).toBeInTheDocument();
     expect(screen.getByText('理由：高紧迫度：5；已埋设 6 章未推进')).toBeInTheDocument();
     expect(screen.getByText('试探沈微霜是否可信')).toBeInTheDocument();
     expect(screen.getByText('下一章需要补足试探过程。')).toBeInTheDocument();
-    expect(screen.getByText('chapter_approved · 世界 1 → 2')).toBeInTheDocument();
+    expect(screen.getByText('章节写入正史 · 世界进度 1 → 2')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '用作下一章目标' }));
     expect(onUseContext).toHaveBeenCalledWith(expect.objectContaining({

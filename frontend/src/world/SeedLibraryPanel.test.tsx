@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom/vitest';
+﻿import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -40,7 +40,7 @@ describe('SeedLibraryPanel', () => {
       />,
     );
 
-    expect(screen.getByText('Sandbox Seed Library')).toBeInTheDocument();
+    expect(screen.getByText('灵感模板库')).toBeInTheDocument();
     expect(screen.getByText('无日城')).toBeInTheDocument();
     expect(screen.getByText('一座所有人都忘记太阳存在过的城市。')).toBeInTheDocument();
     expect(screen.getByText('集体失忆')).toBeInTheDocument();
@@ -49,7 +49,7 @@ describe('SeedLibraryPanel', () => {
     expect(screen.getByText('当前套用中')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '套用到表单' }));
-    await user.click(screen.getByRole('button', { name: '直接创建此胚胎' }));
+    await user.click(screen.getByRole('button', { name: '直接创建此模板' }));
 
     expect(onApplySeed).toHaveBeenCalledWith('forgotten-sun-city');
     expect(onCreateSeed).toHaveBeenCalledWith('forgotten-sun-city');
@@ -57,12 +57,12 @@ describe('SeedLibraryPanel', () => {
 
   it('renders loading, error, and empty states', () => {
     const { rerender } = render(<SeedLibraryPanel seeds={[]} selectedSeedKey={null} loading error="" onApplySeed={vi.fn()} onCreateSeed={vi.fn()} />);
-    expect(screen.getByRole('status')).toHaveTextContent('正在读取世界胚胎库...');
+    expect(screen.getByRole('status')).toHaveTextContent('正在读取灵感模板库...');
 
     rerender(<SeedLibraryPanel seeds={[]} selectedSeedKey={null} loading={false} error="seed down" onApplySeed={vi.fn()} onCreateSeed={vi.fn()} />);
     expect(screen.getByRole('alert')).toHaveTextContent('seed down');
 
     rerender(<SeedLibraryPanel seeds={[]} selectedSeedKey={null} loading={false} error="" onApplySeed={vi.fn()} onCreateSeed={vi.fn()} />);
-    expect(screen.getByText('暂无可用世界胚胎。')).toBeInTheDocument();
+    expect(screen.getByText('暂无可用灵感模板。')).toBeInTheDocument();
   });
 });

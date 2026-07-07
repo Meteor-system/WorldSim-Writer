@@ -1,4 +1,5 @@
-import type { WorldPulseResponse } from '../api/types';
+﻿import type { WorldPulseResponse } from '../api/types';
+import { labelStatus, localizeBackendCopy } from './displayLabels';
 
 type Props = {
   pulse: WorldPulseResponse | null;
@@ -29,7 +30,7 @@ export function WorldPulsePanel({ pulse, loading, error }: Props) {
   if (loading) {
     return (
       <section className="book-card p-5">
-        <p className="ink-muted" role="status">正在读取世界心跳...</p>
+        <p className="ink-muted" role="status">正在读取世界近况...</p>
       </section>
     );
   }
@@ -45,7 +46,7 @@ export function WorldPulsePanel({ pulse, loading, error }: Props) {
   if (!pulse) {
     return (
       <section className="book-card p-5">
-        <p className="ink-muted">世界心跳暂无数据。</p>
+        <p className="ink-muted">世界近况暂无数据。</p>
       </section>
     );
   }
@@ -54,16 +55,16 @@ export function WorldPulsePanel({ pulse, loading, error }: Props) {
     <section className="book-card space-y-5 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="chapter-kicker">Operational Overview</p>
-          <h2 className="text-2xl font-black text-[#34210f]">World Pulse</h2>
-          <p className="manuscript mt-2 text-sm text-[#5e3b1c]">{pulse.headline}</p>
+          <p className="chapter-kicker">创作近况</p>
+          <h2 className="text-2xl font-black text-[#34210f]">世界近况</h2>
+          <p className="manuscript mt-2 text-sm text-[#5e3b1c]">{localizeBackendCopy(pulse.headline)}</p>
         </div>
         <div className="flex flex-wrap gap-2 text-sm font-black">
           <span className={`rounded-full border px-3 py-1 ${STATUS_CLASS[pulse.pulse_status] ?? STATUS_CLASS.watch}`}>
-            状态：{pulse.pulse_status}
+            状态：{labelStatus(pulse.pulse_status)}
           </span>
           <span className="rounded-full border border-amber-900/15 bg-amber-100/70 px-3 py-1 text-[#5e3b1c]">
-            模式：{pulse.primary_mode}
+            模式：{MODE_LABELS[pulse.primary_mode] ?? labelStatus(pulse.primary_mode)}
           </span>
         </div>
       </div>
@@ -72,8 +73,8 @@ export function WorldPulsePanel({ pulse, loading, error }: Props) {
         {pulse.indicators.map((indicator) => (
           <article key={indicator.key} className={`rounded-2xl border p-3 ${toneClass(indicator.status)}`}>
             <p className="text-sm font-black">{indicator.label}</p>
-            <p className="mt-1 text-lg font-black">{indicator.value}</p>
-            <p className="manuscript mt-2 text-xs">{indicator.detail}</p>
+            <p className="mt-1 text-lg font-black">{localizeBackendCopy(indicator.value)}</p>
+            <p className="manuscript mt-2 text-xs">{localizeBackendCopy(indicator.detail)}</p>
           </article>
         ))}
       </div>
@@ -86,10 +87,10 @@ export function WorldPulsePanel({ pulse, loading, error }: Props) {
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             {pulse.focus.map((item) => (
               <article key={item.focus_key} className={`rounded-2xl border p-3 ${toneClass(item.priority)}`}>
-                <p className="text-xs font-black uppercase tracking-[0.18em]">{item.priority}</p>
+                <p className="text-xs font-black tracking-[0.18em]">{labelStatus(item.priority)}</p>
                 <h4 className="mt-2 font-black">{item.title}</h4>
-                <p className="manuscript mt-2 text-sm">{item.detail}</p>
-                <p className="manuscript mt-1 text-sm">建议：{item.suggested_action}</p>
+                <p className="manuscript mt-2 text-sm">{localizeBackendCopy(item.detail)}</p>
+                <p className="manuscript mt-1 text-sm">建议：{localizeBackendCopy(item.suggested_action)}</p>
                 {item.related_thread_id && <p className="mt-2 text-xs font-bold">关联线索：{item.related_thread_id}</p>}
               </article>
             ))}
@@ -103,7 +104,7 @@ export function WorldPulsePanel({ pulse, loading, error }: Props) {
           <div className="mt-3 space-y-2">
             {pulse.next_actions.map((action) => (
               <p key={action.action_key} className="manuscript text-sm">
-                <strong>{action.label}</strong>：{action.detail}
+                <strong>{localizeBackendCopy(action.label)}</strong>：{localizeBackendCopy(action.detail)}
               </p>
             ))}
           </div>

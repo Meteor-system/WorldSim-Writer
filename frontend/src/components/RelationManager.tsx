@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+﻿import { useCallback, useEffect, useState } from 'react';
 import { createRelation, getRelations, updateRelation } from '../api/client';
 import type { Character, CharacterRelation, CharacterRelationCreate, CharacterRelationUpdate } from '../api/types';
 
@@ -14,6 +14,28 @@ type FormData = {
 };
 
 const VISIBILITY_OPTIONS = ['public', 'private', 'secret'] as const;
+
+const RELATION_LABELS: Record<string, string> = {
+  mutual_suspicion: '相互猜疑',
+  uneasy_alliance: '不稳定同盟',
+  trusted_ally: '可信盟友',
+  ally: '盟友',
+  rival: '竞争者',
+  mentor: '导师',
+  enemy: '敌对',
+  friend: '朋友',
+  family: '亲属',
+  lover: '恋人',
+  stranger: '陌生人',
+  alliance: '同盟',
+  public_conflict: '公开对立',
+};
+
+const VISIBILITY_LABELS: Record<string, string> = {
+  public: '公开',
+  private: '私下',
+  secret: '秘密',
+};
 
 function emptyForm(characters: Character[]): FormData {
   return {
@@ -129,7 +151,7 @@ export function RelationManager({ worldId, characters, onChanged, readOnly = fal
         )}
       </div>
       <p className="mt-3 rounded-2xl border border-amber-700/25 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-        {readOnly ? '已归档小说为只读模式；恢复写作后才能编辑世界资料。' : '这些编辑会正式写入世界状态，并使 world_version 增长。'}
+        {readOnly ? '已归档小说为只读模式；恢复写作后才能编辑世界资料。' : '这些编辑会正式写入世界状态，并提升世界版本。'}
       </p>
 
       {error && (
@@ -150,11 +172,11 @@ export function RelationManager({ worldId, characters, onChanged, readOnly = fal
                 <p className="text-lg font-black text-[#3b2511]">
                   {charName(relation.source_character_id)} → {charName(relation.target_character_id)}
                 </p>
-                <p className="manuscript text-sm">关系：{relation.relation_type}</p>
+                <p className="manuscript text-sm">关系：{RELATION_LABELS[relation.relation_type] ?? relation.relation_type}</p>
               </div>
               <div className="flex flex-wrap gap-2 text-xs ink-muted">
                 <span className="rounded-full border border-amber-800/20 px-2 py-0.5">强度：{relation.intensity}</span>
-                <span className="rounded-full border border-amber-800/20 px-2 py-0.5">可见性：{relation.visibility}</span>
+                <span className="rounded-full border border-amber-800/20 px-2 py-0.5">可见性：{VISIBILITY_LABELS[relation.visibility] ?? relation.visibility}</span>
               </div>
               {!readOnly && (
                 <div className="mt-auto flex gap-2 pt-2">
@@ -201,7 +223,7 @@ export function RelationManager({ worldId, characters, onChanged, readOnly = fal
               <label className="block">
                 <span className="text-sm font-semibold text-[#4a321e]">可见性</span>
                 <select className="paper-input mt-1" value={form.visibility} onChange={(event) => setForm({ ...form, visibility: event.target.value })}>
-                  {VISIBILITY_OPTIONS.map((visibility) => <option key={visibility} value={visibility}>{visibility}</option>)}
+                  {VISIBILITY_OPTIONS.map((visibility) => <option key={visibility} value={visibility}>{VISIBILITY_LABELS[visibility]}</option>)}
                 </select>
               </label>
             </div>

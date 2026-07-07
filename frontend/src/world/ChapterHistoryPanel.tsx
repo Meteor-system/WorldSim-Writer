@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import type { ChapterHistoryChange, ChapterHistoryDetailResponse, ChapterHistoryResponse } from '../api/types';
 
 type Props = {
@@ -73,7 +73,7 @@ export function ChapterHistoryPanel({ history, loading, error, onLoadDetail }: P
   return (
     <section className="book-card space-y-5 p-5">
       <div>
-        <p className="chapter-kicker">Approved Chapter History</p>
+        <p className="chapter-kicker">已批准章节</p>
         <h2 className="text-2xl font-black text-[#34210f]">章节历史</h2>
       </div>
 
@@ -110,7 +110,7 @@ export function ChapterHistoryPanel({ history, loading, error, onLoadDetail }: P
       {selectedDetail && (
         <article className="space-y-4 rounded-2xl border border-amber-900/15 bg-amber-50/35 p-4">
           <div>
-            <p className="chapter-kicker">Chapter Detail</p>
+            <p className="chapter-kicker">章节明细</p>
             <h3 className="text-xl font-black text-[#34210f]">章节详情</h3>
             <p className="mt-2 text-sm font-bold text-[#5e3b1c]">
               {selectedDetail.title} · v{selectedDetail.approved_version}
@@ -127,7 +127,7 @@ export function ChapterHistoryPanel({ history, loading, error, onLoadDetail }: P
 
           {selectedDetail.execution_context && (
             <div className="rounded-2xl bg-white/35 p-4">
-              <h4 className="font-black text-[#3b2511]">执行上下文快照</h4>
+              <h4 className="font-black text-[#3b2511]">本章设定快照</h4>
               <p className="manuscript mt-2 text-sm">目标：{selectedDetail.execution_context.goal}</p>
               <p className="manuscript mt-1 text-sm">推荐 POV：{selectedDetail.execution_context.recommended_pov.name ?? '暂无'}</p>
               <p className="manuscript mt-1 text-sm">优先角色：{contextNames(selectedDetail.execution_context.priority_characters)}</p>
