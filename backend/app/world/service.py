@@ -12,11 +12,58 @@ from app.foreshadow.models import Foreshadow, ForeshadowEvent
 from app.narrative.models import Chapter
 from app.tags.models import ObjectTag, Tag
 from app.world.models import World
+from app.core.config import get_settings
+from app.llm.client import LLMClient
 from app.world.schemas import WorldCreateRequest
 from app.world.seed_library import WORLD_SEEDS, seed_detail, seed_summary
 from app.world.templates import SAMPLE_WORLD
 
 FORESHADOW_STATUSES = {'planted', 'advanced', 'resolved', 'expired'}
+SAFE_MODEL_RUNTIME_ERRORS = {'MODEL_REQUEST_FAILED', 'MODEL_AUTH_FAILED', 'MODEL_RATE_LIMITED'}
+
+
+def _model_client(llm_client: LLMClient | None = None) -> LLMClient:
+    settings = get_settings()
+    client = llm_client or LLMClient()
+    if hasattr(client, 'mock'):
+        client.mock = settings.llm_mock
+    return client
+
+
+def _map_model_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, TimeoutError):
+        return HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail='MODEL_TIMEOUT')
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+    if isinstance(exc, RuntimeError) and str(exc) in SAFE_MODEL_RUNTIME_ERRORS:
+        return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_REQUEST_FAILED')
+
+
+def build_world_creation_draft_messages(brief: str) -> list[dict[str, str]]:
+    return [
+        {
+            'role': 'system',
+            'content': (
+                '你是 WorldSim-Writer 的 World Genesis 草稿生成器。必须只返回严格 JSON 对象，不要返回 Markdown、解释或代码块。'
+                '任务：把用户一句话故事脑洞扩展成可审阅的世界创建表单草稿，而不是直接创建世界。'
+                '返回对象只能包含字段：draft, first_chapter_goal, generation_notes, safety_notes。'
+                'draft 必须完全符合 WorldCreateRequest：title, genre_template, truth_canon, tone_profile, starter_assets。'
+                'starter_assets.characters 至少 2 个角色；relations 和 foreshadows 使用 source_index/target_index/related_character_indexes 引用角色数组索引。'
+                'foreshadow status 只能是 planted、advanced、resolved 或 expired；新世界默认优先 planted。'
+                '必须生成原创世界胚胎；如果用户 brief 指向受保护作品、角色名、专有设定或标志性桥段，应抽象为通用题材参数，不复用名称或桥段。'
+                '不得声称已经写入正史、创建世界、推进世界进度或生成正式章节。'
+            ),
+        },
+        {
+            'role': 'user',
+            'content': (
+                f'用户一句话脑洞：{brief}\n'
+                '请生成一个可由用户确认和编辑的世界创建草稿。'
+                'generation_notes 用 1-3 条说明草稿如何理解用户脑洞；safety_notes 用 1-3 条说明确认前不会写入 canon/正史。'
+            ),
+        },
+    ]
 
 
 def _sample_world_request() -> WorldCreateRequest:
@@ -37,7 +84,7 @@ def _sample_world_request() -> WorldCreateRequest:
 
 def _validate_character_index(index: int, character_count: int) -> None:
     if index < 0 or index >= character_count:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='INVALID_CHARACTER_INDEX')
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail='INVALID_CHARACTER_INDEX')
 
 
 def _validate_starter_assets(data: WorldCreateRequest) -> None:
@@ -46,7 +93,7 @@ def _validate_starter_assets(data: WorldCreateRequest) -> None:
         _validate_character_index(relation.source_index, character_count)
         _validate_character_index(relation.target_index, character_count)
         if relation.source_index == relation.target_index:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='INVALID_RELATION_SELF_REFERENCE')
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail='INVALID_RELATION_SELF_REFERENCE')
     for foreshadow in data.starter_assets.foreshadows:
         foreshadow_status = foreshadow.status if foreshadow.status is not None else 'planted'
         if foreshadow_status not in FORESHADOW_STATUSES:
@@ -99,6 +146,25 @@ def refresh_world_projection(db: Session, world: World) -> None:
     world.current_characters = [character_projection(character) for character in characters]
     world.current_foreshadows = [foreshadow_projection(foreshadow) for foreshadow in foreshadows]
     world.current_relations = [relation_projection(relation) for relation in relations]
+
+
+def generate_world_creation_draft(brief: str, llm_client: LLMClient | None = None) -> dict:
+    client = _model_client(llm_client)
+    try:
+        generated = client.generate_world_creation_draft(build_world_creation_draft_messages(brief))
+        draft = WorldCreateRequest.model_validate(generated.draft)
+        _validate_starter_assets(draft)
+    except HTTPException as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID') from exc
+    except (TimeoutError, ValueError, RuntimeError) as exc:
+        raise _map_model_error(exc) from exc
+    return {
+        'source_brief': brief,
+        'draft': draft,
+        'first_chapter_goal': generated.first_chapter_goal,
+        'generation_notes': generated.generation_notes,
+        'safety_notes': generated.safety_notes,
+    }
 
 
 def create_world_from_template(db: Session, user: User, data: WorldCreateRequest) -> World:
@@ -427,7 +493,7 @@ def search_world(db: Session, user: User, world_id: int, query: str, object_type
     world = require_owned_world(db, user, world_id)
     normalized_query = query.strip()
     if not normalized_query:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='SEARCH_QUERY_REQUIRED')
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail='SEARCH_QUERY_REQUIRED')
     needle = normalized_query.lower()
     allowed_types = _parse_object_types(object_types)
     tag_filter_data = _load_tag_filter_assignments(db, world.id, _parse_tag_filters(tags))

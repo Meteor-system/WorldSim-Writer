@@ -4,7 +4,7 @@ from pathlib import Path
 import httpx
 
 
-SCRIPT_PATH = Path('/opt/WorldSim-Writer/backend/scripts/e2e_smoke.py')
+SCRIPT_PATH = Path(__file__).resolve().parents[1] / 'scripts' / 'e2e_smoke.py'
 
 
 def load_e2e_smoke_module():

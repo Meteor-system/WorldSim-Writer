@@ -25,7 +25,7 @@ def _slugify(name: str) -> str:
     cleaned = re.sub(r'[^\w\-一-鿿]+', '', collapsed)
     cleaned = re.sub(r'-+', '-', cleaned).strip('-')
     if not cleaned:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='TAG_NAME_REQUIRED')
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail='TAG_NAME_REQUIRED')
     return cleaned
 
 
@@ -53,7 +53,7 @@ def _ensure_world_is_active(world) -> None:
 def _validate_object_type(object_type: str) -> str:
     normalized = object_type.strip().lower()
     if normalized not in SUPPORTED_OBJECT_TYPES:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='UNSUPPORTED_TAG_OBJECT_TYPE')
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail='UNSUPPORTED_TAG_OBJECT_TYPE')
     return normalized
 
 
@@ -176,7 +176,7 @@ def merge_tag(db: Session, user: User, world_id: int, source_tag_id: int, data: 
     source_tag = _require_tag(db, world.id, source_tag_id)
     target_tag = _require_tag(db, world.id, data.target_tag_id)
     if source_tag.id == target_tag.id:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail='TAG_MERGE_TARGET_REQUIRED')
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail='TAG_MERGE_TARGET_REQUIRED')
 
     source_assignments = list(db.scalars(select(ObjectTag).where(ObjectTag.tag_id == source_tag.id).order_by(ObjectTag.id)))
     target_assignments = set(

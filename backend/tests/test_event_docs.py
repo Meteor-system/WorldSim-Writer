@@ -1,6 +1,6 @@
 from pathlib import Path
 
-REPO_ROOT = Path('/opt/WorldSim-Writer')
+REPO_ROOT = Path(__file__).resolve().parents[2]
 DOC_PATHS = [
     REPO_ROOT / 'README.md',
     REPO_ROOT / 'CLAUDE.md',

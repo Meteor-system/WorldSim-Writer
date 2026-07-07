@@ -1,5 +1,20 @@
-from app.llm.schemas import ChapterGeneration
+from sqlalchemy import func, select
+
+from app.event.models import EventLog
+from app.llm.schemas import ChapterGeneration, WorldCreationDraftPayload
 from app.narrative import service as narrative_service
+from app.world import service as world_service
+from app.world.models import World
+
+
+class DraftWorldLLMClient:
+    def generate_world_creation_draft(self, messages):
+        return WorldCreationDraftPayload(
+            draft=custom_world_payload(),
+            first_chapter_goal='让许砚第一次听见跃迁灯塔低鸣。',
+            generation_notes=['已根据一句话脑洞生成可编辑世界草稿。'],
+            safety_notes=['确认前不会创建世界、写入正史或推进世界进度。'],
+        )
 
 
 class CustomWorldLLMClient:
@@ -351,6 +366,33 @@ def test_world_access_is_limited_to_owner(client):
     assert get_response.json()['detail'] == 'FORBIDDEN'
     assert overview_response.status_code == 403
     assert overview_response.json()['detail'] == 'FORBIDDEN'
+
+
+def test_draft_world_from_brief_returns_editable_payload_without_creating_world(client, db_session, monkeypatch):
+    token = register(client, 'brief-draft@example.com')
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: DraftWorldLLMClient())
+
+    response = client.post(
+        '/worlds/draft-from-brief',
+        headers=auth(token),
+        json={'brief': '一个边境殖民地依赖濒临失控的跃迁灯塔'},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['source_brief'] == '一个边境殖民地依赖濒临失控的跃迁灯塔'
+    assert payload['draft']['title'] == '群星边境'
+    assert payload['first_chapter_goal'] == '让许砚第一次听见跃迁灯塔低鸣。'
+    assert payload['safety_notes'] == ['确认前不会创建世界、写入正史或推进世界进度。']
+    assert db_session.scalar(select(func.count()).select_from(World)) == 0
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == 0
+
+
+def test_draft_world_from_brief_requires_login(client):
+    response = client.post('/worlds/draft-from-brief', json={'brief': '一个所有人出生时都会被分配死因的王国'})
+
+    assert response.status_code == 401
+    assert response.json()['detail'] == 'UNAUTHORIZED'
 
 
 def test_world_endpoints_require_login(client):

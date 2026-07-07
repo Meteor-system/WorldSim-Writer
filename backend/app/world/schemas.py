@@ -77,6 +77,23 @@ class WorldCreateRequest(BaseModel):
         return _strip_required(value)
 
 
+class WorldCreationDraftRequest(BaseModel):
+    brief: str = Field(min_length=3, max_length=800)
+
+    @field_validator('brief')
+    @classmethod
+    def validate_brief(cls, value: str) -> str:
+        return _strip_required(value)
+
+
+class WorldCreationDraftResponse(BaseModel):
+    source_brief: str
+    draft: WorldCreateRequest
+    first_chapter_goal: str
+    generation_notes: list[str] = Field(default_factory=list)
+    safety_notes: list[str] = Field(default_factory=list)
+
+
 class WorldStatusUpdateRequest(BaseModel):
     status: str
 

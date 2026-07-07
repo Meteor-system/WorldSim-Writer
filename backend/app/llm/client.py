@@ -10,12 +10,14 @@ from app.llm.schemas import (
     CritiqueReport,
     LiteraryCriticReport,
     StoryArcChapter,
+    WorldCreationDraftPayload,
     parse_chapter_generation,
     parse_chapter_outline,
     parse_character_arc_report,
     parse_critique_report,
     parse_literary_critic_report,
     parse_story_arc,
+    parse_world_creation_draft,
 )
 
 
@@ -35,6 +37,54 @@ MOCK_CHAPTER = {
     "proposed_foreshadow_changes": [
         {"foreshadow_id": 1, "status": "advanced", "description_note": "玉佩与古书产生共鸣，暗示两者关联"}
     ],
+}
+
+MOCK_WORLD_CREATION_DRAFT = {
+    "draft": {
+        "title": "死因王国",
+        "genre_template": "fantasy",
+        "truth_canon": "在这个王国里，每个人出生时都会被分配一个未来死因。死因不是诅咒，而是王权、教会和命运官共同维护的社会秩序。主角发现自己的死因被篡改，意味着有人正在改写整个王国的命运账本。",
+        "tone_profile": {"style": "黑暗奇幻悬疑", "pacing": "高张力冷启动", "theme": "命运是否可以被审判"},
+        "starter_assets": {
+            "characters": [
+                {
+                    "name": "伊莱",
+                    "role_type": "protagonist",
+                    "status": "active",
+                    "public_profile": {"identity": "低阶命运抄写员", "skill": "辨认死因纹章"},
+                    "hidden_traits": {"secret": "出生记录缺失了最后一页"},
+                    "destiny_flag": "死因被篡改者",
+                    "current_goals": ["查明自己的死因为何被改写", "确认命运官是否参与造假"],
+                },
+                {
+                    "name": "维拉",
+                    "role_type": "rival",
+                    "status": "active",
+                    "public_profile": {"identity": "王国命运官", "skill": "审判死因合法性"},
+                    "hidden_traits": {"fear": "害怕命运账本公开崩塌"},
+                    "destiny_flag": "掌握旧账本钥匙的人",
+                    "current_goals": ["阻止伊莱接触王室死因档案"],
+                },
+            ],
+            "relations": [
+                {"source_index": 0, "target_index": 1, "relation_type": "mutual_suspicion", "intensity": 4, "visibility": "private"}
+            ],
+            "foreshadows": [
+                {
+                    "title": "空白死因页",
+                    "description": "伊莱的出生死因登记页上留有一块被银火烧穿的空白，边缘残留王室封蜡。",
+                    "foreshadow_type": "fate_record_clue",
+                    "status": "planted",
+                    "urgency_level": 4,
+                    "related_character_indexes": [0, 1],
+                    "expected_resolution_window": "第3-5章",
+                }
+            ],
+        },
+    },
+    "first_chapter_goal": "让伊莱在替人誊写死因档案时发现自己的记录被银火烧穿，并在维拉赶到封锁档案室前偷看到王室封蜡。",
+    "generation_notes": ["已把一句话脑洞扩展为可审阅的世界创建表单草稿。"],
+    "safety_notes": ["草稿尚未创建世界；确认前不会写入正史或推进世界进度。"],
 }
 
 MOCK_OUTLINE = {
@@ -290,6 +340,11 @@ class LLMClient:
         if self.mock:
             return ChapterOutline.model_validate(MOCK_OUTLINE)
         return parse_chapter_outline(self._post_json(messages, temperature=0.4))
+
+    def generate_world_creation_draft(self, messages: list[dict[str, str]]) -> WorldCreationDraftPayload:
+        if self.mock:
+            return WorldCreationDraftPayload.model_validate(MOCK_WORLD_CREATION_DRAFT)
+        return parse_world_creation_draft(self._post_json(messages, temperature=0.5))
 
     def generate_chapter(self, messages: list[dict[str, str]]) -> ChapterGeneration:
         if self.mock:

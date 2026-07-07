@@ -46,6 +46,21 @@ class StoryArcChapter(BaseModel):
         return hints
 
 
+class WorldCreationDraftPayload(BaseModel):
+    draft: dict[str, Any]
+    first_chapter_goal: str
+    generation_notes: list[str] = Field(default_factory=list)
+    safety_notes: list[str] = Field(default_factory=list)
+
+    @field_validator('first_chapter_goal')
+    @classmethod
+    def validate_first_chapter_goal(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError('must not be blank')
+        return stripped
+
+
 class CritiqueIssue(BaseModel):
     category: str
     severity: str
@@ -171,6 +186,14 @@ def parse_chapter_outline(raw_text: str) -> ChapterOutline:
     try:
         payload = _load_json(raw_text)
         return ChapterOutline.model_validate(payload)
+    except ValidationError as exc:
+        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+
+
+def parse_world_creation_draft(raw_text: str) -> WorldCreationDraftPayload:
+    try:
+        payload = _load_json(raw_text)
+        return WorldCreationDraftPayload.model_validate(payload)
     except ValidationError as exc:
         raise ValueError('MODEL_RESPONSE_INVALID') from exc
 

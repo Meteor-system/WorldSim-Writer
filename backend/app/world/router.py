@@ -8,6 +8,8 @@ from app.event.schemas import EventLogListResponse
 from app.world.schemas import (
     StoryArcResponse,
     WorldCreateRequest,
+    WorldCreationDraftRequest,
+    WorldCreationDraftResponse,
     WorldOverviewResponse,
     WorldResponse,
     WorldSearchResponse,
@@ -19,6 +21,7 @@ from app.world.service import (
     create_sample_world,
     create_world_from_seed,
     create_world_from_template,
+    generate_world_creation_draft,
     get_world_overview,
     get_world_seed,
     list_user_worlds,
@@ -45,6 +48,14 @@ def create_world(
 @router.post('/from-template', response_model=WorldResponse)
 def create_from_template(current_user: User = Depends(require_user), db: Session = Depends(get_db)) -> WorldResponse:
     return WorldResponse.model_validate(create_sample_world(db, current_user))
+
+
+@router.post('/draft-from-brief', response_model=WorldCreationDraftResponse)
+def draft_from_brief(
+    data: WorldCreationDraftRequest,
+    current_user: User = Depends(require_user),
+) -> WorldCreationDraftResponse:
+    return WorldCreationDraftResponse.model_validate(generate_world_creation_draft(data.brief))
 
 
 @router.get('/seeds', response_model=WorldSeedListResponse)
