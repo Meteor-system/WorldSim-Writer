@@ -28,6 +28,11 @@ import type {
   ForeshadowLedgerResponse,
   ForeshadowStatus,
   ForeshadowUpdate,
+  ImportBatchListResponse,
+  ImportConfirmRequest,
+  ImportConfirmResponse,
+  ImportPreviewRequest,
+  ImportPreviewResponse,
   NarrativeHealthResponse,
   NextChapterPrepResponse,
   OpenThreadsResponse,
@@ -216,6 +221,24 @@ export function suggestGoal(worldId: number) {
     method: 'POST',
     body: '{}',
   });
+}
+
+export function previewWorldImport(worldId: number, data: ImportPreviewRequest) {
+  return apiRequest<ImportPreviewResponse>(`/worlds/${worldId}/imports/preview`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function confirmWorldImport(worldId: number, data: ImportConfirmRequest) {
+  return apiRequest<ImportConfirmResponse>(`/worlds/${worldId}/imports/confirm`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function listWorldImports(worldId: number) {
+  return apiRequest<ImportBatchListResponse>(`/worlds/${worldId}/imports`);
 }
 
 /* ── Narrative pipeline ── */

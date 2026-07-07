@@ -7,6 +7,7 @@ from app.character.models import Character
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow
 from app.foreshadow.service import build_foreshadow_ledger
+from app.import_node.service import material_references_for_world
 from app.narrative.models import Chapter, ChapterDraft
 from app.snapshot_export.models import WorldSnapshot
 from app.world.models import World
@@ -1079,4 +1080,5 @@ def get_next_chapter_prep(db: Session, user: User, world_id: int) -> dict:
         'progression_hints': (latest_chapter.character_arc_report or {}).get('progression_hints', []) if latest_chapter else [],
         'continuity_warnings': _continuity_warnings(latest_chapter, story_arc_chapter, characters),
         'recent_events': _recent_events(db, world.id),
+        'material_references': material_references_for_world(db, world.id),
     }

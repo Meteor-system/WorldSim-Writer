@@ -78,6 +78,7 @@ const detail: ApprovedChapterHistoryDetailResponse = {
     progression_hints: [],
     continuity_warnings: [{ severity: 'medium', category: 'character_arc', message: '下一章需要补足试探过程。', related_character_ids: [1], related_foreshadow_ids: [] }],
     recent_events: [],
+    material_references: [],
   },
 };
 

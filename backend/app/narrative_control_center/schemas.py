@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from app.import_node.schemas import ImportMaterialReferenceResponse
+
 
 class ApprovedChapterHistoryItem(BaseModel):
     id: int
@@ -102,6 +104,7 @@ class NextChapterPrepResponse(BaseModel):
     progression_hints: list[dict]
     continuity_warnings: list[NextChapterPrepWarning]
     recent_events: list[NextChapterPrepEvent]
+    material_references: list[ImportMaterialReferenceResponse]
 
 
 class NarrativeHealthMetric(BaseModel):

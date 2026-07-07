@@ -16,6 +16,15 @@ const WARNING_CLASS: Record<string, string> = {
   low: 'border-amber-900/10 bg-amber-50/40 text-[#3b2511]',
 };
 
+function materialPoolLabel(pool: string): string {
+  const labels: Record<string, string> = {
+    canon: '正式设定候选',
+    character: '角色候选',
+    inspiration: '灵感候选',
+  };
+  return labels[pool] ?? pool;
+}
+
 function signalLabel(signal: string): string {
   const labels: Record<string, string> = {
     character_arc_progression_hint: '角色弧线提示',
@@ -142,6 +151,23 @@ export function NextChapterPrepPanel({ prep, loading, error, onUseContext, onEnt
               <p key={`${warning.category}-${index}`} className={`rounded-xl border p-3 text-sm font-bold ${WARNING_CLASS[warning.severity] ?? WARNING_CLASS.low}`}>
                 {localizeBackendCopy(warning.message)}
               </p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {prep.material_references.length > 0 && (
+        <div className="rounded-2xl bg-white/35 p-4">
+          <h3 className="font-black text-[#3b2511]">候选素材参考</h3>
+          <p className="manuscript mt-1 text-sm font-bold text-[#5e3b1c]">这些素材只作为下一章写作参考，不会自动改写正式设定。</p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            {prep.material_references.map((material) => (
+              <article key={material.asset_id} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
+                <p className="font-bold text-[#3b2511]">{materialPoolLabel(material.asset_pool)}：{material.title}</p>
+                <p className="manuscript mt-1 text-sm">来源：{material.source_title}</p>
+                <p className="manuscript mt-1 text-sm">摘要：{material.summary}</p>
+                <p className="manuscript mt-2 text-xs font-bold text-[#5e3b1c]">{material.safety_note}</p>
+              </article>
             ))}
           </div>
         </div>

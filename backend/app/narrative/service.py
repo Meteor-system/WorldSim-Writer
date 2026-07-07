@@ -105,6 +105,7 @@ def build_manual_execution_context(db: Session, world: World, chapter_goal: str)
         'progression_hints': [],
         'continuity_warnings': [],
         'recent_events': [],
+        'material_references': [],
     }
 
 
@@ -117,6 +118,7 @@ def normalize_execution_context(db: Session, world: World, chapter_goal: str, ex
     else:
         context = dict(execution_context)
     context['goal'] = chapter_goal
+    context.setdefault('material_references', [])
     if context_provided and context.get('source_world_version') != world.world_version:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
     return context
@@ -147,6 +149,9 @@ def format_execution_context_for_prompt(execution_context: dict | None) -> str:
     recent_events = execution_context.get('recent_events') or []
     if recent_events:
         lines.append('- 近期事件：' + '；'.join(f"{e.get('event_type')} 世界 {e.get('world_version_before')}→{e.get('world_version_after')}" for e in recent_events))
+    material_references = execution_context.get('material_references') or []
+    if material_references:
+        lines.append('- 候选素材参考：' + '；'.join(f"{m.get('title')}（{m.get('asset_pool')}，来源：{m.get('source_title')}，摘要：{m.get('summary')}）" for m in material_references))
     return '\n'.join(lines) + '\n'
 
 

@@ -4,6 +4,7 @@ import {
   assignWorldTag,
   bulkAssignWorldTag,
   compareWorldSnapshots,
+  confirmWorldImport,
   createSampleWorld,
   createWorld,
   createWorldFromSeed,
@@ -22,10 +23,12 @@ import {
   getWorldPulse,
   getWorldSeed,
   getWorldTag,
+  listWorldImports,
   listWorldSeeds,
   listWorldSnapshots,
   listWorldTags,
   mergeWorldTag,
+  previewWorldImport,
   searchWorld,
   unassignWorldTag,
   updateWorldStatus,
@@ -42,6 +45,7 @@ import { NextChapterPrepPanel } from './NextChapterPrepPanel';
 import { OpenThreadsPanel } from './OpenThreadsPanel';
 import { WorldArchivePanel } from './WorldArchivePanel';
 import { WorldCreationForm } from './WorldCreationForm';
+import { WorldImportPanel } from './WorldImportPanel';
 import { WorldPulsePanel } from './WorldPulsePanel';
 import { WorldSearchPanel } from './WorldSearchPanel';
 import { WorldTagsPanel } from './WorldTagsPanel';
@@ -278,6 +282,7 @@ function buildStoryArcExecutionContext(world: WorldOverview, chapter: StoryArcCh
     progression_hints: [],
     continuity_warnings: [],
     recent_events: [],
+    material_references: [],
   };
 }
 
@@ -431,8 +436,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     setAnalysisLoaded(false);
   }
 
-  async function loadWriteData(worldId: number) {
-    if (nextPrepLoaded || nextPrepLoading) return;
+  async function refreshNextPrep(worldId: number) {
     setNextPrepLoading(true);
     setNextPrepError('');
     try {
@@ -444,6 +448,11 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setNextPrepLoading(false);
       setNextPrepLoaded(true);
     }
+  }
+
+  async function loadWriteData(worldId: number) {
+    if (nextPrepLoaded || nextPrepLoading) return;
+    await refreshNextPrep(worldId);
   }
 
   async function loadAnalysisData(worldId: number) {
@@ -917,6 +926,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 executionContext: context,
               })}
             />
+            <WorldImportPanel
+              worldId={world.id}
+              readOnly={isArchivedWorld}
+              onPreview={previewWorldImport}
+              onConfirm={confirmWorldImport}
+              onListBatches={listWorldImports}
+              onConfirmed={() => void refreshNextPrep(world.id)}
+            />
             {selectedExecutionContext && <p className="rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已设为下一章目标：{selectedExecutionContext.goal}</p>}
             <section className="book-card scroll-mt-6 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -959,6 +976,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               prep={nextPrep}
               loading={nextPrepLoading}
               error={nextPrepError}
+            />
+            <WorldImportPanel
+              worldId={world.id}
+              readOnly={isArchivedWorld}
+              onPreview={previewWorldImport}
+              onConfirm={confirmWorldImport}
+              onListBatches={listWorldImports}
+              onConfirmed={() => void refreshNextPrep(world.id)}
             />
           </div>
         )}

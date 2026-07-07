@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+﻿import { describe, expect, it } from 'vitest';
 import type { NextChapterPrepResponse, WorldOverview } from '../api/types';
 import { buildExecutionContextFromPrep, buildManualExecutionContext, withEditedGoal } from './chapterExecutionContext';
 
@@ -34,6 +34,20 @@ const prep: NextChapterPrepResponse = {
   recent_events: [
     { id: 4, event_type: 'chapter_approved', world_version_before: 1, world_version_after: 2, payload: {}, created_at: '2026-05-30T00:00:00Z' },
   ],
+  material_references: [
+    {
+      asset_id: 9,
+      batch_id: 3,
+      asset_pool: 'inspiration',
+      title: '雨夜审讯',
+      summary: '雨夜审讯从一盏坏灯开始。',
+      raw_text: '灵感：雨夜审讯从一盏坏灯开始。',
+      source_title: '旧设定.md',
+      source_type: 'markdown',
+      created_at: '2026-06-03T00:00:00Z',
+      safety_note: '导入素材参考只用于创作提示，不会自动改写正式 canon。',
+    },
+  ],
 };
 
 const world = {
@@ -56,6 +70,7 @@ describe('chapterExecutionContext', () => {
     expect(context.progression_hints[0].title).toBe('试探沈微霜是否可信');
     expect(context.continuity_warnings[0].message).toBe('下一章需要补足试探过程。');
     expect(context.recent_events[0].event_type).toBe('chapter_approved');
+    expect(context.material_references[0].title).toBe('雨夜审讯');
   });
 
   it('builds manual context from world and goal', () => {
@@ -67,6 +82,7 @@ describe('chapterExecutionContext', () => {
     expect(context.goal).toBe('用户手动目标');
     expect(context.source_signals).toEqual(['manual']);
     expect(context.priority_characters).toEqual([]);
+    expect(context.material_references).toEqual([]);
   });
 
   it('applies edited goal to provided or manual context', () => {

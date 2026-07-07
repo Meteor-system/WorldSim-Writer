@@ -369,6 +369,95 @@ export type WorldOverview = WorldSummary & {
   approved_chapter_count: number;
 };
 
+export type ImportSourceType = 'pasted_text' | 'markdown' | 'txt';
+export type ImportAssetPool = 'inspiration' | 'character' | 'canon';
+
+export type ImportConflict = {
+  severity: 'info' | 'warning' | 'blocking';
+  category: string;
+  message: string;
+  matched_text: string | null;
+  details: Record<string, unknown>;
+};
+
+export type ImportCandidateAssetPreview = {
+  asset_pool: ImportAssetPool;
+  title: string;
+  summary: string;
+  raw_text: string;
+  metadata: Record<string, unknown>;
+};
+
+export type ImportPreviewRequest = {
+  source_type: ImportSourceType;
+  source_title: string;
+  content: string;
+};
+
+export type ImportPreviewResponse = {
+  world_id: number;
+  source_type: ImportSourceType;
+  source_title: string;
+  cleaned_excerpt: string;
+  assets: ImportCandidateAssetPreview[];
+  conflicts: ImportConflict[];
+  asset_counts: Record<string, number>;
+};
+
+export type ImportConfirmRequest = ImportPreviewRequest & {
+  assets: ImportCandidateAssetPreview[];
+  conflicts: ImportConflict[];
+};
+
+export type ImportCandidateAssetResponse = ImportCandidateAssetPreview & {
+  id: number;
+  world_id: number;
+  batch_id: number;
+  status: 'candidate';
+  created_at: string;
+};
+
+export type ImportMaterialReferenceResponse = {
+  asset_id: number;
+  batch_id: number;
+  asset_pool: ImportAssetPool;
+  title: string;
+  summary: string;
+  raw_text: string;
+  source_title: string;
+  source_type: ImportSourceType;
+  created_at: string;
+  safety_note: string;
+};
+
+export type ImportBatchResponse = {
+  id: number;
+  world_id: number;
+  source_type: ImportSourceType;
+  source_title: string;
+  original_excerpt: string;
+  cleaned_excerpt: string;
+  status: 'confirmed';
+  asset_counts: Record<string, number>;
+  conflicts: ImportConflict[];
+  created_at: string;
+  confirmed_at: string | null;
+};
+
+export type ImportConfirmResponse = {
+  batch: ImportBatchResponse;
+  assets: ImportCandidateAssetResponse[];
+};
+
+export type ImportBatchWithAssetsResponse = ImportBatchResponse & {
+  assets: ImportCandidateAssetResponse[];
+};
+
+export type ImportBatchListResponse = {
+  world_id: number;
+  batches: ImportBatchWithAssetsResponse[];
+};
+
 export type BeatCard = {
   beat_id: string;
   summary: string;
@@ -390,6 +479,7 @@ export type ChapterExecutionContext = {
   progression_hints: ChapterProgressionHint[];
   continuity_warnings: NextChapterPrepWarning[];
   recent_events: Array<Omit<NextChapterPrepEvent, 'payload'>>;
+  material_references: ImportMaterialReferenceResponse[];
 };
 
 export type StudioLaunchContext = {
@@ -625,6 +715,7 @@ export type NextChapterPrepResponse = {
   progression_hints: ChapterProgressionHint[];
   continuity_warnings: NextChapterPrepWarning[];
   recent_events: NextChapterPrepEvent[];
+  material_references: ImportMaterialReferenceResponse[];
 };
 
 export type NarrativeHealthMetric = {
