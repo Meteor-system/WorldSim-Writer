@@ -1,4 +1,4 @@
-from typing import Any
+﻿from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -144,6 +144,25 @@ class WorldSeedListResponse(BaseModel):
 class StoryArcResponse(BaseModel):
     world_id: int
     story_arc: list[StoryArcChapter]
+
+
+class SerialPlanChapter(BaseModel):
+    chapter_number: int
+    title: str
+    goal: str
+    summary: str
+    core_conflict: str
+    pov_suggestion: str
+    foreshadow_hints: list[str] = Field(default_factory=list)
+    source: str = 'story_arc'
+
+
+class SerialPlanResponse(BaseModel):
+    world_id: int
+    world_version: int
+    approved_chapter_count: int
+    queue: list[SerialPlanChapter]
+    safety_notes: list[str] = Field(default_factory=list)
 
 
 class WorldOverviewResponse(WorldResponse):

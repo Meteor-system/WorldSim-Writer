@@ -1,8 +1,8 @@
-import '@testing-library/jest-dom/vitest';
+﻿import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, confirmWorldImport, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, draftWorldFromBrief, exportWorldArchiveMarkdown, generateStoryArc, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldImports, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, previewWorldImport, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
+import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, confirmWorldImport, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, draftWorldFromBrief, exportWorldArchiveMarkdown, generateStoryArc, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getSerialPlan, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldImports, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, previewWorldImport, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
 import type { WorldCreateRequest, WorldOverview, WorldSearchResponse } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -26,6 +26,7 @@ vi.mock('../api/client', () => ({
   getNextChapterPrep: vi.fn(),
   getNarrativeHealth: vi.fn(),
   getOpenThreads: vi.fn(),
+  getSerialPlan: vi.fn(),
   getWorldEvents: vi.fn(),
   getWorldPulse: vi.fn(),
   getArcPlan: vi.fn(),
@@ -163,6 +164,7 @@ beforeEach(() => {
   vi.mocked(getNextChapterPrep).mockReset();
   vi.mocked(getNarrativeHealth).mockReset();
   vi.mocked(getOpenThreads).mockReset();
+  vi.mocked(getSerialPlan).mockReset();
   vi.mocked(getWorldEvents).mockReset();
   vi.mocked(getWorldPulse).mockReset();
   vi.mocked(getArcPlan).mockReset();
@@ -940,6 +942,59 @@ describe('WorldPage Story Arc Planner', () => {
         source_world_version: 2,
         next_chapter_number: 2,
         goal: '第 2 章标题：第 2 章摘要：林砚推进裂纹玉佩线索。',
+        recommended_pov: { character_id: null, name: '第 2 章 POV 建议' },
+      }),
+    });
+  });
+
+  it('generates a serial plan preview and launches one queued goal into Studio review', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(storyArcWorld);
+    vi.mocked(getSerialPlan).mockResolvedValueOnce({
+      world_id: 7,
+      world_version: 2,
+      approved_chapter_count: 1,
+      queue: [
+        {
+          chapter_number: 2,
+          title: '第 2 章标题',
+          goal: '第 2 章标题：第 2 章摘要：林砚推进裂纹玉佩线索。 核心冲突：第 2 章核心冲突详情 建议 POV：第 2 章 POV 建议',
+          summary: '第 2 章摘要：林砚推进裂纹玉佩线索。',
+          core_conflict: '第 2 章核心冲突详情',
+          pov_suggestion: '第 2 章 POV 建议',
+          foreshadow_hints: ['裂纹玉佩'],
+          source: 'story_arc',
+        },
+      ],
+      safety_notes: [
+        '这是多章目标队列预览，不会一次性生成正文。',
+        '每章仍需单独进入 Studio 创建草稿、审稿并由用户确认。',
+        '世界进度和 EventLog 只会在章节写入正史后更新。',
+      ],
+    });
+
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+    await openWriteTab(user);
+    await user.click(await screen.findByRole('button', { name: '生成连载队列' }));
+
+    expect(getSerialPlan).toHaveBeenCalledWith(7, 3);
+    expect(await screen.findByText('这是多章目标队列预览，不会一次性生成正文。')).toBeInTheDocument();
+    expect(screen.getByText('世界进度和 EventLog 只会在章节写入正史后更新。')).toBeInTheDocument();
+    expect(screen.getByText('第 2 章标题：第 2 章摘要：林砚推进裂纹玉佩线索。 核心冲突：第 2 章核心冲突详情 建议 POV：第 2 章 POV 建议')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '用此目标进入 Studio' }));
+
+    expect(onEnterStudio).toHaveBeenCalledWith(storyArcWorld, {
+      initialChapterGoal: '第 2 章标题：第 2 章摘要：林砚推进裂纹玉佩线索。 核心冲突：第 2 章核心冲突详情 建议 POV：第 2 章 POV 建议',
+      executionContext: expect.objectContaining({
+        source: 'manual',
+        source_world_version: 2,
+        next_chapter_number: 2,
+        source_signals: ['serial_plan_preview', 'story_arc'],
         recommended_pov: { character_id: null, name: '第 2 章 POV 建议' },
       }),
     });

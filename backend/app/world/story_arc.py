@@ -1,4 +1,4 @@
-from fastapi import HTTPException, status
+﻿from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -163,3 +163,53 @@ def generate_story_arc(db: Session, user: User, world_id: int, llm_client: LLMCl
     db.commit()
     db.refresh(world)
     return {'world_id': world.id, 'story_arc': world.story_arc}
+
+
+def _serial_goal_from_arc_chapter(chapter: dict) -> str:
+    title = chapter.get('title') or f"第 {chapter.get('chapter_number', '?')} 章"
+    summary = chapter.get('summary') or ''
+    conflict = chapter.get('core_conflict') or ''
+    pov = chapter.get('pov_suggestion') or '未指定'
+    parts = [f'{title}：{summary}']
+    if conflict:
+        parts.append(f'核心冲突：{conflict}')
+    parts.append(f'建议 POV：{pov}')
+    return ' '.join(parts)
+
+
+def preview_serial_plan(db: Session, user: User, world_id: int, limit: int = 3) -> dict:
+    world = require_owned_world(db, user, world_id)
+    approved_count = count_approved_chapters(db, world.id)
+    next_chapter_number = approved_count + 1
+    queue = []
+    for chapter in world.story_arc or []:
+        if not isinstance(chapter, dict):
+            continue
+        chapter_number = chapter.get('chapter_number')
+        if not isinstance(chapter_number, int) or chapter_number < next_chapter_number:
+            continue
+        queue.append(
+            {
+                'chapter_number': chapter_number,
+                'title': chapter.get('title') or f'第 {chapter_number} 章',
+                'goal': _serial_goal_from_arc_chapter(chapter),
+                'summary': chapter.get('summary') or '',
+                'core_conflict': chapter.get('core_conflict') or '',
+                'pov_suggestion': chapter.get('pov_suggestion') or '',
+                'foreshadow_hints': chapter.get('foreshadow_hints') or [],
+                'source': 'story_arc',
+            }
+        )
+        if len(queue) >= limit:
+            break
+    return {
+        'world_id': world.id,
+        'world_version': world.world_version,
+        'approved_chapter_count': approved_count,
+        'queue': queue,
+        'safety_notes': [
+            '这是多章目标队列预览，不会一次性生成正文。',
+            '每章仍需单独进入 Studio 创建草稿、审稿并由用户确认。',
+            '世界进度和 EventLog 只会在章节写入正史后更新。',
+        ],
+    }

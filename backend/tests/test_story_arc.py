@@ -1,6 +1,7 @@
-import json
+﻿import json
 
 import pytest
+from sqlalchemy import func, select
 
 from app.llm.schemas import StoryArcChapter, parse_story_arc
 
@@ -81,6 +82,7 @@ def test_story_arc_client_call_does_not_force_json_object_response(monkeypatch):
     assert 'response_format' not in captured_payloads[0]
 
 
+from app.event.models import EventLog
 from app.narrative.models import Chapter
 from app.world.models import World
 
@@ -175,6 +177,41 @@ def test_generate_story_arc_overwrites_existing_arc(client, monkeypatch):
     assert first['story_arc'][0]['title'].endswith('旧')
     assert second['story_arc'][0]['title'].endswith('新')
     assert len(second['story_arc']) == 10
+
+
+def test_serial_plan_preview_returns_next_chapter_queue_without_writing_canon_or_events(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(story_arc_service, 'LLMClient', lambda: FakeStoryArcLLMClient())
+    arc = client.post(f'/worlds/{world_id}/story-arc', headers={'Authorization': f'Bearer {token}'}).json()['story_arc']
+    db_session.add(Chapter(world_id=world_id, title='已批准第一章', status='approved', draft_version=1, base_world_version=1))
+    db_session.commit()
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+    before_world_version = db_session.get(World, world_id).world_version
+
+    response = client.get(f'/worlds/{world_id}/serial-plan?limit=3', headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['world_id'] == world_id
+    assert payload['world_version'] == before_world_version
+    assert payload['approved_chapter_count'] == 1
+    assert [item['chapter_number'] for item in payload['queue']] == [2, 3, 4]
+    assert payload['queue'][0]['title'] == arc[1]['title']
+    assert '核心冲突' in payload['queue'][0]['goal']
+    assert '每章仍需单独进入 Studio' in payload['safety_notes'][1]
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+    assert db_session.scalar(select(func.count()).select_from(Chapter)) == 1
+    assert db_session.get(World, world_id).world_version == before_world_version
+
+
+def test_serial_plan_preview_requires_existing_story_arc(client):
+    token, world_id = register_and_create_world(client)
+
+    response = client.get(f'/worlds/{world_id}/serial-plan', headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200
+    assert response.json()['queue'] == []
+    assert '不会一次性生成正文' in response.json()['safety_notes'][0]
 
 
 def test_archived_world_rejects_story_arc_regeneration_without_overwriting_existing_arc(client, db_session, monkeypatch):

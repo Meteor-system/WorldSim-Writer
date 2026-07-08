@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+﻿from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_user
@@ -6,6 +6,7 @@ from app.auth.models import User
 from app.core.database import get_db
 from app.event.schemas import EventLogListResponse
 from app.world.schemas import (
+    SerialPlanResponse,
     StoryArcResponse,
     WorldCreateRequest,
     WorldCreationDraftRequest,
@@ -31,7 +32,7 @@ from app.world.service import (
     search_world,
     update_world_status,
 )
-from app.world.story_arc import generate_story_arc, suggest_chapter_goal
+from app.world.story_arc import generate_story_arc, preview_serial_plan, suggest_chapter_goal
 
 router = APIRouter(prefix='/worlds', tags=['worlds'])
 
@@ -114,6 +115,16 @@ def story_arc(
     db: Session = Depends(get_db),
 ) -> StoryArcResponse:
     return StoryArcResponse.model_validate(generate_story_arc(db, current_user, world_id))
+
+
+@router.get('/{world_id}/serial-plan', response_model=SerialPlanResponse)
+def serial_plan(
+    world_id: int,
+    limit: int = Query(3, ge=1, le=5),
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> SerialPlanResponse:
+    return SerialPlanResponse.model_validate(preview_serial_plan(db, current_user, world_id, limit))
 
 
 @router.post('/{world_id}/suggest-goal')

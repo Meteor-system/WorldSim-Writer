@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   ApprovalConsistencyResponse,
   ApprovalPreviewResponse,
   ApprovalReadinessResponse,
@@ -39,6 +39,7 @@ import type {
   OutlineResponse,
   ParagraphReviseRequest,
   ReviseDraftRequest,
+  SerialPlanResponse,
   StaleForeshadow,
   StoryArcResponse,
   StyleHandbookPreviewRequest,
@@ -229,6 +230,10 @@ export function generateStoryArc(worldId: number) {
     method: 'POST',
     body: '{}',
   });
+}
+
+export function getSerialPlan(worldId: number, limit = 3) {
+  return apiRequest<SerialPlanResponse>(`/worlds/${worldId}/serial-plan?limit=${limit}`);
 }
 
 export function suggestGoal(worldId: number) {

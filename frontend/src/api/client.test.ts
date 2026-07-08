@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkApprovalConsistency,
   compareWorldSnapshots,
@@ -27,6 +27,7 @@ import {
   getForeshadowLedger,
   getNarrativeHealth,
   getOpenThreads,
+  getSerialPlan,
   getWorldPulse,
   getArcPlan,
   exportWorldArchiveMarkdown,
@@ -434,6 +435,41 @@ describe('world pulse API helper', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/worlds/7/pulse', expect.any(Object));
     expect(response.primary_mode).toBe('converge');
+  });
+});
+
+describe('serial plan API helper', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('calls serial plan preview endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      world_id: 7,
+      world_version: 3,
+      approved_chapter_count: 1,
+      queue: [
+        {
+          chapter_number: 2,
+          title: '第2章 暗潮',
+          goal: '第2章 暗潮：推进灵脉危机。',
+          summary: '推进灵脉危机。',
+          core_conflict: '必须抉择。',
+          pov_suggestion: '林砚',
+          foreshadow_hints: ['裂纹玉佩'],
+          source: 'story_arc',
+        },
+      ],
+      safety_notes: ['不会自动写正文、不会写入正史或推进世界进度。'],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getSerialPlan(7, 2);
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:8000/worlds/7/serial-plan?limit=2', expect.any(Object));
+    expect(result.queue[0].chapter_number).toBe(2);
   });
 });
 

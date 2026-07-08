@@ -1,4 +1,4 @@
-export type User = { id: number; email: string };
+﻿export type User = { id: number; email: string };
 export type AuthResponse = { access_token: string; token_type: string; user: User };
 
 export type Character = {
@@ -349,6 +349,25 @@ export type StoryArcChapter = {
 export type StoryArcResponse = {
   world_id: number;
   story_arc: StoryArcChapter[];
+};
+
+export type SerialPlanChapter = {
+  chapter_number: number;
+  title: string;
+  goal: string;
+  summary: string;
+  core_conflict: string;
+  pov_suggestion: string;
+  foreshadow_hints: string[];
+  source: string;
+};
+
+export type SerialPlanResponse = {
+  world_id: number;
+  world_version: number;
+  approved_chapter_count: number;
+  queue: SerialPlanChapter[];
+  safety_notes: string[];
 };
 
 export type WorldSummary = {

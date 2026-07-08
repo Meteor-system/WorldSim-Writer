@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
   assignWorldTag,
@@ -20,6 +20,7 @@ import {
   getNarrativeHealth,
   getNextChapterPrep,
   getOpenThreads,
+  getSerialPlan,
   getWorldEvents,
   getWorldPulse,
   getWorldSeed,
@@ -36,7 +37,7 @@ import {
   updateWorldStatus,
   updateWorldTag,
 } from '../api/client';
-import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, StyleHandbookReference, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
+import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, SerialPlanChapter, SerialPlanResponse, StoryArcChapter, StudioLaunchContext, StyleHandbookReference, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
@@ -306,6 +307,15 @@ function buildWorldCreationDraftExecutionContext(world: WorldOverview, firstChap
   };
 }
 
+function buildSerialPlanExecutionContext(world: WorldOverview, chapter: SerialPlanChapter): ChapterExecutionContext {
+  return {
+    ...buildManualExecutionContext(world, chapter.goal),
+    next_chapter_number: chapter.chapter_number,
+    recommended_pov: { character_id: null, name: chapter.pov_suggestion || null },
+    source_signals: ['serial_plan_preview', chapter.source],
+  };
+}
+
 type FirstChapterLaunchpadProps = {
   world: WorldOverview;
   nextChapter: StoryArcChapter | null;
@@ -346,6 +356,59 @@ function FirstChapterLaunchpad({ world, nextChapter, arcLoading, onGenerateArc, 
         </div>
       )}
     </article>
+  );
+}
+
+type SerialPlanPanelProps = {
+  serialPlan: SerialPlanResponse | null;
+  loading: boolean;
+  error: string;
+  onGenerate: () => void;
+  onLaunchChapter: (chapter: SerialPlanChapter) => void;
+};
+
+function SerialPlanPanel({ serialPlan, loading, error, onGenerate, onLaunchChapter }: SerialPlanPanelProps) {
+  return (
+    <section className="book-card p-5" aria-label="自动连载试验">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="chapter-kicker">自动连载试验</p>
+          <h2 className="mt-2 text-2xl font-black text-[#34210f]">后续章节目标队列</h2>
+          <p className="manuscript mt-2 text-sm text-[#5e3b1c]">生成后续章节目标队列；不会自动写正文、不会写入正史或推进世界进度。每章仍需进入 Studio 审稿。</p>
+        </div>
+        <button className="primary-button" type="button" disabled={loading} onClick={onGenerate}>
+          {loading ? '连载队列生成中…' : '生成连载队列'}
+        </button>
+      </div>
+      {error && <p className="paper-error mt-4" role="alert">{error}</p>}
+      {serialPlan && (
+        <div className="mt-5 space-y-4">
+          <p className="ink-muted text-sm">已批准章节：{serialPlan.approved_chapter_count} · 来源世界版本：第 {serialPlan.world_version} 版</p>
+          <ul className="space-y-1 text-sm font-bold text-[#5e3b1c]">
+            {serialPlan.safety_notes.map((note) => <li key={note}>{note}</li>)}
+          </ul>
+          {serialPlan.queue.length === 0 ? (
+            <p className="manuscript rounded-2xl bg-amber-50/60 p-3 text-sm">没有可用的后续章节目标。先生成故事弧线或批准下一章后再刷新队列。</p>
+          ) : (
+            <div className="grid gap-3 md:grid-cols-2">
+              {serialPlan.queue.map((chapter) => (
+                <article key={`${chapter.source}-${chapter.chapter_number}`} className="rounded-2xl border border-amber-900/15 bg-white/40 p-4">
+                  <p className="text-sm font-black text-[#5e3b1c]">队列第 {chapter.chapter_number} 章</p>
+                  <h3 className="mt-1 text-xl font-black text-[#34210f]">{chapter.title}</h3>
+                  <p className="manuscript mt-2 text-sm">{chapter.goal}</p>
+                  <div className="mt-3 space-y-2 text-sm">
+                    <p><span className="font-bold text-[#5e3b1c]">冲突：</span>{chapter.core_conflict || '未指定'}</p>
+                    <p><span className="font-bold text-[#5e3b1c]">POV：</span>{chapter.pov_suggestion || '未指定'}</p>
+                    <p><span className="font-bold text-[#5e3b1c]">伏笔：</span>{chapter.foreshadow_hints.length ? chapter.foreshadow_hints.join('、') : '无指定伏笔'}</p>
+                  </div>
+                  <button className="secondary-button mt-4" type="button" onClick={() => onLaunchChapter(chapter)}>用此目标进入 Studio</button>
+                </article>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -426,6 +489,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [arcPlan, setArcPlan] = useState<ArcPlanResponse | null>(null);
   const [arcPlanLoading, setArcPlanLoading] = useState(false);
   const [arcPlanError, setArcPlanError] = useState('');
+  const [serialPlan, setSerialPlan] = useState<SerialPlanResponse | null>(null);
+  const [serialPlanLoading, setSerialPlanLoading] = useState(false);
+  const [serialPlanError, setSerialPlanError] = useState('');
   const [analysisLoaded, setAnalysisLoaded] = useState(false);
   const [selectedExecutionContext, setSelectedExecutionContext] = useState<ChapterExecutionContext | null>(null);
   const [selectedStyleHandbook, setSelectedStyleHandbook] = useState<StyleHandbookReference | null>(null);
@@ -455,6 +521,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     setArcPlan(null);
     setArcPlanLoading(false);
     setArcPlanError('');
+    setSerialPlan(null);
+    setSerialPlanLoading(false);
+    setSerialPlanError('');
     setAnalysisLoaded(false);
   }
 
@@ -475,6 +544,18 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   async function loadWriteData(worldId: number) {
     if (nextPrepLoaded || nextPrepLoading) return;
     await refreshNextPrep(worldId);
+  }
+
+  async function loadSerialPlan(worldId: number) {
+    setSerialPlanLoading(true);
+    setSerialPlanError('');
+    try {
+      setSerialPlan(await getSerialPlan(worldId, 3));
+    } catch (err) {
+      setSerialPlanError(err instanceof Error ? err.message : '自动连载试验生成失败');
+    } finally {
+      setSerialPlanLoading(false);
+    }
   }
 
   async function loadAnalysisData(worldId: number) {
@@ -717,6 +798,15 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   function launchStoryArcChapter(chapter: StoryArcChapter) {
     if (!world) return;
     const executionContext = withActiveStyleHandbook(buildStoryArcExecutionContext(world, chapter));
+    onEnterStudio(world, {
+      initialChapterGoal: executionContext.goal,
+      executionContext,
+    });
+  }
+
+  function launchSerialPlanChapter(chapter: SerialPlanChapter) {
+    if (!world) return;
+    const executionContext = withActiveStyleHandbook(buildSerialPlanExecutionContext(world, chapter));
     onEnterStudio(world, {
       initialChapterGoal: executionContext.goal,
       executionContext,
@@ -973,6 +1063,13 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               arcLoading={arcLoading}
               onGenerateArc={runStoryArcPlanner}
               onLaunchChapter={launchStoryArcChapter}
+            />
+            <SerialPlanPanel
+              serialPlan={serialPlan}
+              loading={serialPlanLoading}
+              error={serialPlanError}
+              onGenerate={() => void loadSerialPlan(world.id)}
+              onLaunchChapter={launchSerialPlanChapter}
             />
             <NextChapterPrepPanel
               prep={nextPrep}
