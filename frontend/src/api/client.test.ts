@@ -33,6 +33,7 @@ import {
   getDraftDiff,
   getWorldEvents,
   getDraftVersion,
+  previewStyleHandbook,
   getWorldSeed,
   getWorldTag,
   listWorldSeeds,
@@ -149,6 +150,61 @@ describe('world creation API helpers', () => {
     expect(list.seeds[0].key).toBe('forgotten-sun-city');
     expect(detail.payload.title).toBe('无日城');
     expect(created.id).toBe(9);
+  });
+});
+
+describe('style handbook API helper', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('calls preview-only style handbook endpoint without confirming material', async () => {
+    const payload = {
+      world_id: 7,
+      source_type: 'pasted_text',
+      source_title: '参考片段',
+      source_rights: 'general_reference',
+      cleaned_excerpt: '雨夜里出现旧徽记。',
+      handbook: {
+        narrative_pacing: { label: '叙事节奏', value: '中速推进', evidence: null },
+        language_density: { label: '语言密度', value: '中等', evidence: null },
+        dialogue_ratio: { label: '对白比例', value: '适中', evidence: null },
+        scene_progression: { label: '场景推进', value: '意象推进', evidence: null },
+        suspense_structure: { label: '悬念结构', value: '显性悬念', evidence: null },
+        relationship_tension: { label: '人物关系张力', value: '关系张力明显', evidence: null },
+        foreshadowing_pattern: { label: '伏笔埋设/回收方式', value: '先给异常，再延迟解释', evidence: null },
+        do_guidelines: [],
+        avoid_guidelines: [],
+        originality_guidelines: [],
+      },
+      safety_notes: ['不会写入 canon。'],
+      generation_notes: ['已生成草稿。'],
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse(payload));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await previewStyleHandbook(7, {
+      source_type: 'pasted_text',
+      source_title: '参考片段',
+      source_rights: 'general_reference',
+      content: '雨夜里出现旧徽记。',
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/worlds/7/imports/style-handbook/preview',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          source_type: 'pasted_text',
+          source_title: '参考片段',
+          source_rights: 'general_reference',
+          content: '雨夜里出现旧徽记。',
+        }),
+      }),
+    );
+    expect(result.handbook.narrative_pacing.label).toBe('叙事节奏');
   });
 });
 

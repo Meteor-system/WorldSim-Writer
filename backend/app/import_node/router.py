@@ -4,8 +4,16 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
-from app.import_node.schemas import ImportBatchListResponse, ImportConfirmRequest, ImportConfirmResponse, ImportPreviewRequest, ImportPreviewResponse
-from app.import_node.service import confirm_import, list_import_batches, preview_import
+from app.import_node.schemas import (
+    ImportBatchListResponse,
+    ImportConfirmRequest,
+    ImportConfirmResponse,
+    ImportPreviewRequest,
+    ImportPreviewResponse,
+    StyleHandbookPreviewRequest,
+    StyleHandbookPreviewResponse,
+)
+from app.import_node.service import confirm_import, list_import_batches, preview_import, preview_style_handbook
 
 router = APIRouter(prefix='/worlds/{world_id}/imports', tags=['imports'])
 
@@ -18,6 +26,16 @@ def preview(
     db: Session = Depends(get_db),
 ) -> ImportPreviewResponse:
     return preview_import(db, current_user, world_id, data)
+
+
+@router.post('/style-handbook/preview', response_model=StyleHandbookPreviewResponse)
+def style_handbook_preview(
+    world_id: int,
+    data: StyleHandbookPreviewRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> StyleHandbookPreviewResponse:
+    return preview_style_handbook(db, current_user, world_id, data)
 
 
 @router.post('/confirm', response_model=ImportConfirmResponse)

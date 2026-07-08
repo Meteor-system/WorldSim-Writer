@@ -30,6 +30,7 @@ import {
   listWorldTags,
   mergeWorldTag,
   previewWorldImport,
+  previewStyleHandbook,
   searchWorld,
   unassignWorldTag,
   updateWorldStatus,
@@ -976,6 +977,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               worldId={world.id}
               readOnly={isArchivedWorld}
               onPreview={previewWorldImport}
+              onPreviewStyleHandbook={previewStyleHandbook}
               onConfirm={confirmWorldImport}
               onListBatches={listWorldImports}
               onConfirmed={() => void refreshNextPrep(world.id)}
@@ -1027,6 +1029,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               worldId={world.id}
               readOnly={isArchivedWorld}
               onPreview={previewWorldImport}
+              onPreviewStyleHandbook={previewStyleHandbook}
               onConfirm={confirmWorldImport}
               onListBatches={listWorldImports}
               onConfirmed={() => void refreshNextPrep(world.id)}

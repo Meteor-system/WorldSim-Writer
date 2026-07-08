@@ -4,6 +4,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 SourceType = Literal['pasted_text', 'markdown', 'txt']
+SourceRights = Literal['own_work', 'authorized', 'public_domain', 'general_reference']
 AssetPool = Literal['inspiration', 'character', 'canon']
 ImportStatus = Literal['confirmed']
 CandidateStatus = Literal['candidate']
@@ -56,6 +57,45 @@ class ImportPreviewResponse(BaseModel):
     assets: list[ImportCandidateAssetPreview]
     conflicts: list[ImportConflict]
     asset_counts: dict[str, int]
+
+
+class StyleHandbookDimension(BaseModel):
+    label: str
+    value: str
+    evidence: str | None = None
+
+    @field_validator('label', 'value')
+    @classmethod
+    def validate_required_strings(cls, value: str) -> str:
+        return _strip_required(value)
+
+
+class StyleHandbookDraft(BaseModel):
+    narrative_pacing: StyleHandbookDimension
+    language_density: StyleHandbookDimension
+    dialogue_ratio: StyleHandbookDimension
+    scene_progression: StyleHandbookDimension
+    suspense_structure: StyleHandbookDimension
+    relationship_tension: StyleHandbookDimension
+    foreshadowing_pattern: StyleHandbookDimension
+    do_guidelines: list[str]
+    avoid_guidelines: list[str]
+    originality_guidelines: list[str]
+
+
+class StyleHandbookPreviewRequest(ImportPreviewRequest):
+    source_rights: SourceRights = 'general_reference'
+
+
+class StyleHandbookPreviewResponse(BaseModel):
+    world_id: int
+    source_type: SourceType
+    source_title: str
+    source_rights: SourceRights
+    cleaned_excerpt: str
+    handbook: StyleHandbookDraft
+    safety_notes: list[str]
+    generation_notes: list[str]
 
 
 class ImportConfirmRequest(ImportPreviewRequest):

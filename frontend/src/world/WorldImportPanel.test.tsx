@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ImportBatchListResponse, ImportConfirmResponse, ImportPreviewResponse } from '../api/types';
+import type { ImportBatchListResponse, ImportConfirmResponse, ImportPreviewResponse, StyleHandbookPreviewResponse } from '../api/types';
 import { WorldImportPanel } from './WorldImportPanel';
 
 const previewResponse: ImportPreviewResponse = {
@@ -45,6 +45,28 @@ const previewResponse: ImportPreviewResponse = {
   ],
 };
 
+const styleHandbookResponse: StyleHandbookPreviewResponse = {
+  world_id: 7,
+  source_type: 'pasted_text',
+  source_title: '参考片段',
+  source_rights: 'general_reference',
+  cleaned_excerpt: '雨夜里，旧城门缓慢打开。',
+  handbook: {
+    narrative_pacing: { label: '叙事节奏', value: '中速推进，适合“铺垫-冲突-钩子”的章节结构。', evidence: '雨夜里，旧城门缓慢打开。' },
+    language_density: { label: '语言密度', value: '中等语言密度，叙述与信息交代相对均衡。', evidence: '她问：“你为什么还记得那枚旧徽记？”' },
+    dialogue_ratio: { label: '对白比例', value: '对白与叙述交替，用对话释放人物关系和信息。', evidence: '她问：“你为什么还记得那枚旧徽记？”' },
+    scene_progression: { label: '场景推进', value: '场景意象可见，适合用地点、天气或物件带动段落转场。', evidence: '雨夜里，旧城门缓慢打开。' },
+    suspense_structure: { label: '悬念结构', value: '悬念显性较强，适合每节保留一个待解问题。', evidence: '你为什么还记得那枚旧徽记？' },
+    relationship_tension: { label: '人物关系张力', value: '人物关系张力明显，适合围绕承诺、亏欠、敌友转换推进。', evidence: '她问：“你为什么还记得那枚旧徽记？”' },
+    foreshadowing_pattern: { label: '伏笔埋设/回收方式', value: '已有线索/预兆表达，可抽象为“先给异常，再延迟解释”的伏笔模式。', evidence: '墙缝里第二次出现同样的痕迹。' },
+    do_guidelines: ['保留抽象节奏、信息密度和场景推进方式，用于原创章节生成。'],
+    avoid_guidelines: ['不要复用原文句子、人物名、专有设定或标志性桥段。'],
+    originality_guidelines: ['正式章节仍需经过 Studio 审稿与写入正史确认。'],
+  },
+  safety_notes: ['风格手册草稿只是写作参考，不会写入 canon、不会推进世界进度，也不会写入世界历史记录。', '输出只保留抽象风格和结构参数，不复用原文句子、人物名、专有设定或标志性桥段。'],
+  generation_notes: ['已从参考文本提炼抽象参数。'],
+};
+
 const confirmResponse: ImportConfirmResponse = {
   batch: {
     id: 12,
@@ -78,7 +100,8 @@ describe('WorldImportPanel', () => {
     render(<WorldImportPanel worldId={7} onPreview={vi.fn()} onConfirm={vi.fn()} onListBatches={vi.fn().mockResolvedValue(emptyBatches)} />);
 
     expect(await screen.findByText('还没有导入素材参考。导入后会先作为候选素材出现在下一章准备区，不会自动改写正式设定。')).toBeInTheDocument();
-    expect(screen.getByText('当前一次只处理一份素材来源，粘贴正文后会先生成候选预览。')).toBeInTheDocument();
+    expect(screen.getByText('候选素材需确认后才保存；风格手册草稿只供审阅，不写入正式设定或世界历史记录。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '提炼风格手册草稿' })).toBeInTheDocument();
     expect(document.body).not.toHaveTextContent('当前只处理单份 Markdown/txt 或粘贴文本。');
     expect(document.body).not.toHaveTextContent('还没有导入批次。');
   });
@@ -140,6 +163,42 @@ describe('WorldImportPanel', () => {
     expect(document.body).not.toHaveTextContent('canon 1');
     expect(document.body).not.toHaveTextContent('canon_overlap');
     expect(document.body).not.toHaveTextContent('导入内容提到已有 canon 关键词');
+  });
+
+  it('previews reference text as an abstract style handbook draft without confirming assets', async () => {
+    const user = userEvent.setup();
+    const onPreview = vi.fn().mockResolvedValue(previewResponse);
+    const onPreviewStyleHandbook = vi.fn().mockResolvedValue(styleHandbookResponse);
+    render(<WorldImportPanel worldId={7} onPreview={onPreview} onPreviewStyleHandbook={onPreviewStyleHandbook} onConfirm={vi.fn()} onListBatches={vi.fn().mockResolvedValue(emptyBatches)} />);
+
+    await user.selectOptions(screen.getByLabelText('来源权限'), 'general_reference');
+    await user.clear(screen.getByLabelText('来源标题'));
+    await user.type(screen.getByLabelText('来源标题'), '参考片段');
+    await user.type(screen.getByLabelText('素材正文'), '雨夜里，旧城门缓慢打开。她问：“你为什么还记得那枚旧徽记？”墙缝里第二次出现同样的痕迹。');
+    await user.click(screen.getByRole('button', { name: '提炼风格手册草稿' }));
+
+    await waitFor(() => expect(onPreviewStyleHandbook).toHaveBeenCalledWith(7, {
+      source_type: 'pasted_text',
+      source_title: '参考片段',
+      source_rights: 'general_reference',
+      content: '雨夜里，旧城门缓慢打开。她问：“你为什么还记得那枚旧徽记？”墙缝里第二次出现同样的痕迹。',
+    }));
+    expect(onPreview).not.toHaveBeenCalled();
+
+    expect(await screen.findByTestId('style-handbook-preview')).toBeInTheDocument();
+    expect(screen.getByText('参考文本抽象风格手册')).toBeInTheDocument();
+    expect(screen.getByText('来源：参考片段 · 一般阅读参考。确认前不会保存为正式参考，也不会写入正史/canon。')).toBeInTheDocument();
+    expect(screen.getByText('叙事节奏')).toBeInTheDocument();
+    expect(screen.getByText('语言密度')).toBeInTheDocument();
+    expect(screen.getByText('对白比例')).toBeInTheDocument();
+    expect(screen.getByText('场景推进')).toBeInTheDocument();
+    expect(screen.getByText('悬念结构')).toBeInTheDocument();
+    expect(screen.getByText('人物关系张力')).toBeInTheDocument();
+    expect(screen.getByText('伏笔埋设/回收方式')).toBeInTheDocument();
+    expect(screen.getByText('不要复用原文句子、人物名、专有设定或标志性桥段。')).toBeInTheDocument();
+    expect(screen.getByText('风格手册草稿只是写作参考，不会写入 canon、不会推进世界进度，也不会写入世界历史记录。')).toBeInTheDocument();
+    expect(screen.queryByText('候选素材预览')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '确认写入候选素材' })).not.toBeInTheDocument();
   });
 
   it('shows candidate-material fallback copy when preview generation fails', async () => {

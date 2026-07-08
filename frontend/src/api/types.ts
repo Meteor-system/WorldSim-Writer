@@ -378,6 +378,7 @@ export type WorldOverview = WorldSummary & {
 };
 
 export type ImportSourceType = 'pasted_text' | 'markdown' | 'txt';
+export type ImportSourceRights = 'own_work' | 'authorized' | 'public_domain' | 'general_reference';
 export type ImportAssetPool = 'inspiration' | 'character' | 'canon';
 
 export type ImportConflict = {
@@ -410,6 +411,40 @@ export type ImportPreviewResponse = {
   assets: ImportCandidateAssetPreview[];
   conflicts: ImportConflict[];
   asset_counts: Record<string, number>;
+};
+
+export type StyleHandbookDimension = {
+  label: string;
+  value: string;
+  evidence: string | null;
+};
+
+export type StyleHandbookDraft = {
+  narrative_pacing: StyleHandbookDimension;
+  language_density: StyleHandbookDimension;
+  dialogue_ratio: StyleHandbookDimension;
+  scene_progression: StyleHandbookDimension;
+  suspense_structure: StyleHandbookDimension;
+  relationship_tension: StyleHandbookDimension;
+  foreshadowing_pattern: StyleHandbookDimension;
+  do_guidelines: string[];
+  avoid_guidelines: string[];
+  originality_guidelines: string[];
+};
+
+export type StyleHandbookPreviewRequest = ImportPreviewRequest & {
+  source_rights: ImportSourceRights;
+};
+
+export type StyleHandbookPreviewResponse = {
+  world_id: number;
+  source_type: ImportSourceType;
+  source_title: string;
+  source_rights: ImportSourceRights;
+  cleaned_excerpt: string;
+  handbook: StyleHandbookDraft;
+  safety_notes: string[];
+  generation_notes: string[];
 };
 
 export type ImportConfirmRequest = ImportPreviewRequest & {

@@ -42,6 +42,64 @@ def test_import_preview_classifies_material_and_reports_conflicts(client):
     assert any(conflict['category'] in {'canon_overlap', 'character_duplicate'} for conflict in payload['conflicts'])
 
 
+def test_style_handbook_preview_extracts_abstract_draft_without_persistence_or_canon_mutation(client, db_session):
+    token = register(client, 'style-handbook@example.com')
+    world_payload = create_sample_world(client, token)
+    original_world = db_session.get(World, world_payload['id'])
+    original_canon = original_world.truth_canon
+    original_version = original_world.world_version
+
+    response = client.post(
+        f"/worlds/{world_payload['id']}/imports/style-handbook/preview",
+        headers=auth_headers(token),
+        json={
+            'source_type': 'pasted_text',
+            'source_title': '参考片段',
+            'source_rights': 'general_reference',
+            'content': '雨夜里，旧城门缓慢打开。她问：“你为什么还记得那枚旧徽记？”他没有回答，只看见墙缝里第二次出现同样的痕迹。',
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['world_id'] == world_payload['id']
+    assert payload['source_rights'] == 'general_reference'
+    assert payload['handbook']['narrative_pacing']['label'] == '叙事节奏'
+    assert payload['handbook']['language_density']['label'] == '语言密度'
+    assert payload['handbook']['dialogue_ratio']['label'] == '对白比例'
+    assert payload['handbook']['scene_progression']['label'] == '场景推进'
+    assert payload['handbook']['suspense_structure']['label'] == '悬念结构'
+    assert payload['handbook']['relationship_tension']['label'] == '人物关系张力'
+    assert payload['handbook']['foreshadowing_pattern']['label'] == '伏笔埋设/回收方式'
+    assert any('不复用原文句子' in note for note in payload['safety_notes'])
+    assert any('不会写入 canon' in note for note in payload['safety_notes'])
+    assert any('一般阅读参考' in note for note in payload['safety_notes'])
+
+    db_session.expire_all()
+    world = db_session.get(World, world_payload['id'])
+    assert world.truth_canon == original_canon
+    assert world.world_version == original_version
+    assert db_session.scalar(select(ImportBatch).where(ImportBatch.world_id == world.id)) is None
+    assert db_session.scalar(select(EventLog).where(EventLog.world_id == world.id).where(EventLog.event_type == 'material_import_confirmed')) is None
+    assert db_session.scalar(select(EventLog).where(EventLog.world_id == world.id).where(EventLog.event_type == 'style_handbook_previewed')) is None
+
+
+
+def test_non_owner_cannot_preview_style_handbook(client):
+    owner_token = register(client, 'style-owner@example.com')
+    other_token = register(client, 'style-other@example.com')
+    world = create_sample_world(client, owner_token)
+
+    response = client.post(
+        f"/worlds/{world['id']}/imports/style-handbook/preview",
+        headers=auth_headers(other_token),
+        json={'source_type': 'txt', 'source_title': 'x.txt', 'source_rights': 'own_work', 'content': '雨夜里出现一枚旧徽记。'},
+    )
+
+    assert response.status_code == 403
+
+
+
 def test_import_confirm_writes_candidates_and_audit_without_mutating_canon_or_world_version(client, db_session):
     token = register(client, 'import-confirm@example.com')
     world_payload = create_sample_world(client, token)

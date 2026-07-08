@@ -7,13 +7,18 @@ import type {
   ImportConfirmResponse,
   ImportPreviewRequest,
   ImportPreviewResponse,
+  ImportSourceRights,
   ImportSourceType,
+  StyleHandbookDimension,
+  StyleHandbookPreviewRequest,
+  StyleHandbookPreviewResponse,
 } from '../api/types';
 
 type Props = {
   worldId: number;
   readOnly?: boolean;
   onPreview: (worldId: number, data: ImportPreviewRequest) => Promise<ImportPreviewResponse>;
+  onPreviewStyleHandbook?: (worldId: number, data: StyleHandbookPreviewRequest) => Promise<StyleHandbookPreviewResponse>;
   onConfirm: (worldId: number, data: ImportConfirmRequest) => Promise<ImportConfirmResponse>;
   onListBatches: (worldId: number) => Promise<ImportBatchListResponse>;
   onConfirmed?: (response: ImportConfirmResponse) => void;
@@ -23,6 +28,13 @@ const SOURCE_LABELS: Record<ImportSourceType, string> = {
   pasted_text: '粘贴文本',
   markdown: 'Markdown 文档',
   txt: '纯文本文件',
+};
+
+const SOURCE_RIGHT_LABELS: Record<ImportSourceRights, string> = {
+  own_work: '自有作品',
+  authorized: '授权文本',
+  public_domain: '公版/公共领域',
+  general_reference: '一般阅读参考',
 };
 
 const POOL_LABELS: Record<ImportCandidateAssetPreview['asset_pool'], string> = {
@@ -54,13 +66,28 @@ function groupAssets(assets: ImportCandidateAssetPreview[]) {
   };
 }
 
-export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfirm, onListBatches, onConfirmed }: Props) {
+function handbookDimensions(handbook: StyleHandbookPreviewResponse['handbook']): StyleHandbookDimension[] {
+  return [
+    handbook.narrative_pacing,
+    handbook.language_density,
+    handbook.dialogue_ratio,
+    handbook.scene_progression,
+    handbook.suspense_structure,
+    handbook.relationship_tension,
+    handbook.foreshadowing_pattern,
+  ];
+}
+
+export function WorldImportPanel({ worldId, readOnly = false, onPreview, onPreviewStyleHandbook, onConfirm, onListBatches, onConfirmed }: Props) {
   const [sourceType, setSourceType] = useState<ImportSourceType>('pasted_text');
+  const [sourceRights, setSourceRights] = useState<ImportSourceRights>('general_reference');
   const [sourceTitle, setSourceTitle] = useState('粘贴素材');
   const [content, setContent] = useState('');
   const [preview, setPreview] = useState<ImportPreviewResponse | null>(null);
+  const [styleHandbook, setStyleHandbook] = useState<StyleHandbookPreviewResponse | null>(null);
   const [batches, setBatches] = useState<ImportBatchWithAssetsResponse[]>([]);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadingStyleHandbook, setLoadingStyleHandbook] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [loadingBatches, setLoadingBatches] = useState(false);
   const [error, setError] = useState('');
@@ -95,6 +122,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
     }
     setError('');
     setConfirmed(null);
+    setStyleHandbook(null);
     setLoadingPreview(true);
     const request = { source_type: sourceType, source_title: sourceTitle.trim() || SOURCE_LABELS[sourceType], content: content.trim() };
     try {
@@ -103,6 +131,35 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
       setError(err instanceof Error ? err.message : '候选素材预览生成失败');
     } finally {
       setLoadingPreview(false);
+    }
+  }
+
+  async function previewStyleHandbookDraft() {
+    if (readOnly) return;
+    if (!onPreviewStyleHandbook) {
+      setError('风格手册草稿入口暂不可用');
+      return;
+    }
+    if (!content.trim()) {
+      setError('请先粘贴一段参考文本。');
+      return;
+    }
+    setError('');
+    setPreview(null);
+    setConfirmed(null);
+    setLoadingStyleHandbook(true);
+    const request: StyleHandbookPreviewRequest = {
+      source_type: sourceType,
+      source_title: sourceTitle.trim() || SOURCE_LABELS[sourceType],
+      source_rights: sourceRights,
+      content: content.trim(),
+    };
+    try {
+      setStyleHandbook(await onPreviewStyleHandbook(worldId, request));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '风格手册草稿生成失败');
+    } finally {
+      setLoadingStyleHandbook(false);
     }
   }
 
@@ -140,7 +197,7 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
 
       {readOnly && <p className="rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已归档小说为只读模式，不能导入新素材。</p>}
 
-      <form className="surface-layer grid gap-4 rounded-2xl p-4 md:grid-cols-[12rem_minmax(0,1fr)]" onSubmit={submitPreview}>
+      <form className="surface-layer grid gap-4 rounded-2xl p-4 md:grid-cols-[12rem_12rem_minmax(0,1fr)]" onSubmit={submitPreview}>
         <label className="grid gap-1 text-sm font-bold text-[#4a321e]">
           素材类型
           <select className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" value={sourceType} onChange={(event) => setSourceType(event.target.value as ImportSourceType)} disabled={readOnly}>
@@ -148,20 +205,72 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onConfi
           </select>
         </label>
         <label className="grid gap-1 text-sm font-bold text-[#4a321e]">
+          来源权限
+          <select className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" value={sourceRights} onChange={(event) => setSourceRights(event.target.value as ImportSourceRights)} disabled={readOnly}>
+            {Object.entries(SOURCE_RIGHT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+        </label>
+        <label className="grid gap-1 text-sm font-bold text-[#4a321e]">
           来源标题
           <input className="rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2" value={sourceTitle} onChange={(event) => setSourceTitle(event.target.value)} disabled={readOnly} />
         </label>
-        <label className="grid gap-1 text-sm font-bold text-[#4a321e] md:col-span-2">
+        <label className="grid gap-1 text-sm font-bold text-[#4a321e] md:col-span-3">
           素材正文
           <textarea className="min-h-36 rounded-2xl border border-amber-900/20 bg-white/70 px-3 py-2 leading-7" value={content} onChange={(event) => setContent(event.target.value)} disabled={readOnly} placeholder="粘贴设定文档、旧章节、大纲、角色小传或灵感片段" />
         </label>
-        <div className="md:col-span-2 flex flex-wrap gap-3">
+        <div className="md:col-span-3 flex flex-wrap gap-3">
           <button type="submit" className="primary-button motion-soft-lift" disabled={readOnly || loadingPreview}>{loadingPreview ? '解析中…' : '生成候选素材预览'}</button>
-          <span className="self-center text-xs ink-muted">当前一次只处理一份素材来源，粘贴正文后会先生成候选预览。</span>
+          <button type="button" className="secondary-button motion-soft-lift" onClick={previewStyleHandbookDraft} disabled={readOnly || loadingStyleHandbook}>{loadingStyleHandbook ? '提炼中…' : '提炼风格手册草稿'}</button>
+          <span className="self-center text-xs ink-muted">候选素材需确认后才保存；风格手册草稿只供审阅，不写入正式设定或世界历史记录。</span>
         </div>
       </form>
 
       {error && <p role="alert" className="rounded-2xl bg-red-100/80 p-3 text-sm font-bold text-red-900">{error}</p>}
+
+      {styleHandbook && (
+        <div className="space-y-4 rounded-3xl border border-amber-900/15 bg-white/55 p-5" data-testid="style-handbook-preview">
+          <div>
+            <p className="chapter-kicker">风格手册草稿</p>
+            <h3 className="text-xl font-black text-[#34210f]">参考文本抽象风格手册</h3>
+            <p className="manuscript mt-2 text-sm text-[#5e3b1c]">来源：{styleHandbook.source_title} · {SOURCE_RIGHT_LABELS[styleHandbook.source_rights]}。确认前不会保存为正式参考，也不会写入正史/canon。</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {handbookDimensions(styleHandbook.handbook).map((dimension) => (
+              <article key={dimension.label} className="surface-layer rounded-2xl p-4">
+                <h4 className="font-black text-[#34210f]">{dimension.label}</h4>
+                <p className="manuscript mt-2 text-sm text-[#5e3b1c]">{dimension.value}</p>
+                {dimension.evidence && <p className="mt-2 text-xs ink-muted">参考证据：{dimension.evidence}</p>}
+              </article>
+            ))}
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <section className="rounded-2xl bg-amber-50/70 p-4">
+              <h4 className="font-black text-[#34210f]">可借鉴的抽象参数</h4>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#5e3b1c]">
+                {styleHandbook.handbook.do_guidelines.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </section>
+            <section className="rounded-2xl bg-red-50/70 p-4">
+              <h4 className="font-black text-[#34210f]">明确不要做</h4>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#5e3b1c]">
+                {styleHandbook.handbook.avoid_guidelines.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </section>
+            <section className="rounded-2xl bg-emerald-50/70 p-4">
+              <h4 className="font-black text-[#34210f]">原创使用边界</h4>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#5e3b1c]">
+                {styleHandbook.handbook.originality_guidelines.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            </section>
+          </div>
+          <div className="rounded-2xl border border-amber-900/15 bg-amber-100/70 p-4">
+            <h4 className="font-black text-[#34210f]">安全说明</h4>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm font-bold text-[#5e3b1c]">
+              {styleHandbook.safety_notes.map((note) => <li key={note}>{note}</li>)}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {preview && (
         <div className="space-y-4" data-testid="import-preview">

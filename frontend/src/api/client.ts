@@ -41,6 +41,8 @@ import type {
   ReviseDraftRequest,
   StaleForeshadow,
   StoryArcResponse,
+  StyleHandbookPreviewRequest,
+  StyleHandbookPreviewResponse,
   ObjectTagBulkAssignResponse,
   ObjectTagResponse,
   TagDetailResponse,
@@ -233,6 +235,13 @@ export function suggestGoal(worldId: number) {
 
 export function previewWorldImport(worldId: number, data: ImportPreviewRequest) {
   return apiRequest<ImportPreviewResponse>(`/worlds/${worldId}/imports/preview`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function previewStyleHandbook(worldId: number, data: StyleHandbookPreviewRequest) {
+  return apiRequest<StyleHandbookPreviewResponse>(`/worlds/${worldId}/imports/style-handbook/preview`, {
     method: 'POST',
     body: JSON.stringify(data),
   });
