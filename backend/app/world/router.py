@@ -55,7 +55,12 @@ def draft_from_brief(
     data: WorldCreationDraftRequest,
     current_user: User = Depends(require_user),
 ) -> WorldCreationDraftResponse:
-    return WorldCreationDraftResponse.model_validate(generate_world_creation_draft(data.brief))
+    style_handbook_reference = (
+        data.style_handbook_reference.model_dump() if data.style_handbook_reference else None
+    )
+    return WorldCreationDraftResponse.model_validate(
+        generate_world_creation_draft(data.brief, style_handbook_reference=style_handbook_reference)
+    )
 
 
 @router.get('/seeds', response_model=WorldSeedListResponse)

@@ -203,6 +203,7 @@ export type WorldCreationDraftResponse = {
   first_chapter_goal: string;
   generation_notes: string[];
   safety_notes: string[];
+  style_handbook_reference?: StyleHandbookReference | null;
 };
 
 export type WorldSeedSummary = {

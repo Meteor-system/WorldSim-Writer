@@ -833,6 +833,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
           onCreate={submitWorld}
           onCreateSample={submitSampleWorld}
           onDraftFromBrief={draftWorldFromBrief}
+          activeStyleHandbook={selectedStyleHandbook}
           seeds={seedLibrary}
           seedLoading={seedLibraryLoading}
           seedError={seedLibraryError}

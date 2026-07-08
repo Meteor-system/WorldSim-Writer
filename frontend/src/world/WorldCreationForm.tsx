@@ -4,6 +4,7 @@ import type {
   StarterCharacterCreate,
   StarterForeshadowCreate,
   StarterRelationCreate,
+  StyleHandbookReference,
   WorldCreateRequest,
   WorldCreationDraftResponse,
   WorldSeedDetail,
@@ -16,7 +17,8 @@ type Props = {
   creating: boolean;
   onCreate: (payload: WorldCreateRequest, context?: { firstChapterGoal?: string }) => Promise<void>;
   onCreateSample: () => Promise<void>;
-  onDraftFromBrief?: (brief: string) => Promise<WorldCreationDraftResponse>;
+  onDraftFromBrief?: (brief: string, styleHandbookReference?: StyleHandbookReference | null) => Promise<WorldCreationDraftResponse>;
+  activeStyleHandbook?: StyleHandbookReference | null;
   seeds?: WorldSeedSummary[];
   selectedSeedKey?: string | null;
   seedLoading?: boolean;
@@ -62,6 +64,7 @@ export function WorldCreationForm({
   onCreate,
   onCreateSample,
   onDraftFromBrief,
+  activeStyleHandbook = null,
   seeds = [],
   selectedSeedKey = null,
   seedLoading = false,
@@ -270,7 +273,9 @@ export function WorldCreationForm({
     setDrafting(true);
     setDraftError('');
     try {
-      const response = await onDraftFromBrief(normalizedBrief);
+      const response = activeStyleHandbook
+        ? await onDraftFromBrief(normalizedBrief, activeStyleHandbook)
+        : await onDraftFromBrief(normalizedBrief);
       setSelectedPresetKey('');
       setActiveSeedKey(null);
       setForm(JSON.parse(JSON.stringify(response.draft)) as WorldCreateRequest);
@@ -316,6 +321,14 @@ export function WorldCreationForm({
           <p className="manuscript mt-3 text-sm text-[#5e3b1c]">
             这里不会直接创建世界，也不会写入正史；系统只会把你的脑洞转成下方可修改的创建表单，确认后才会创建世界。
           </p>
+          {activeStyleHandbook && (
+            <p
+              className="mt-3 rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]"
+              data-testid="brief-style-handbook"
+            >
+              将参考写作风格手册：{activeStyleHandbook.source_title}（仅抽象风格维度，不会写入正史或改变世界事实）
+            </p>
+          )}
           <label className="mt-4 block">
             <span className="text-sm font-semibold text-[#4a321e]">一句话故事想法</span>
             <textarea

@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { WorldCreateRequest, WorldSeedSummary } from '../api/types';
+import type { StyleHandbookReference, WorldCreateRequest, WorldSeedSummary } from '../api/types';
 import { WorldCreationForm } from './WorldCreationForm';
 
 afterEach(() => cleanup());
@@ -112,6 +112,51 @@ describe('WorldCreationForm', () => {
       expect.objectContaining({ title: '死因王国', genre_template: 'fantasy' }),
       { firstChapterGoal: '让伊莱发现自己的死因记录被烧穿。' },
     );
+  });
+
+  it('passes the active style handbook when generating a world draft from a brief', async () => {
+    const user = userEvent.setup();
+    const styleHandbookReference: StyleHandbookReference = {
+      source_title: '公版海洋小说片段',
+      source_rights: 'public_domain',
+      handbook: {
+        narrative_pacing: { label: '叙事节奏', value: '慢热铺陈', evidence: null },
+        language_density: { label: '语言密度', value: '高密度意象', evidence: null },
+        dialogue_ratio: { label: '对白比例', value: '对白较少', evidence: null },
+        scene_progression: { label: '场景推进', value: '物件带动转场', evidence: null },
+        suspense_structure: { label: '悬念结构', value: '延迟解释', evidence: null },
+        relationship_tension: { label: '人物关系张力', value: '承诺与亏欠', evidence: null },
+        foreshadowing_pattern: { label: '伏笔埋设/回收方式', value: '先给异常', evidence: null },
+        do_guidelines: [],
+        avoid_guidelines: ['不要复用原文句子。'],
+        originality_guidelines: ['用原创角色承载抽象风格参数。'],
+      },
+      safety_notes: ['风格手册只是写作参考，不会写入 canon。'],
+    };
+    const onDraftFromBrief = vi.fn().mockResolvedValue({
+      source_brief: '一个边境殖民地依赖濒临失控的跃迁灯塔',
+      draft: draftPayload,
+      first_chapter_goal: '让伊莱发现自己的死因记录被烧穿。',
+      generation_notes: [],
+      safety_notes: ['确认前不会创建世界、写入正史或推进世界进度。'],
+      style_handbook_reference: styleHandbookReference,
+    });
+    render(
+      <WorldCreationForm
+        creating={false}
+        onCreate={vi.fn()}
+        onCreateSample={vi.fn()}
+        onDraftFromBrief={onDraftFromBrief}
+        activeStyleHandbook={styleHandbookReference}
+      />,
+    );
+
+    expect(screen.getByTestId('brief-style-handbook')).toHaveTextContent('公版海洋小说片段');
+    expect(screen.getByTestId('brief-style-handbook')).toHaveTextContent('不会写入正史');
+    await user.type(screen.getByLabelText('一句话故事想法'), '一个边境殖民地依赖濒临失控的跃迁灯塔');
+    await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
+
+    expect(onDraftFromBrief).toHaveBeenCalledWith('一个边境殖民地依赖濒临失控的跃迁灯塔', styleHandbookReference);
   });
 
   it('applies seed payloads to the editable form', async () => {

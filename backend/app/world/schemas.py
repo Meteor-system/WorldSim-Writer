@@ -6,6 +6,7 @@ from app.character.schemas import CharacterRelationResponse, CharacterResponse
 from app.event.schemas import EventLogListResponse, EventLogResponse
 from app.foreshadow.schemas import ForeshadowResponse
 from app.llm.schemas import StoryArcChapter
+from app.narrative.schemas import ExecutionContextStyleHandbookReference
 
 
 def _strip_required(value: str) -> str:
@@ -79,6 +80,7 @@ class WorldCreateRequest(BaseModel):
 
 class WorldCreationDraftRequest(BaseModel):
     brief: str = Field(min_length=3, max_length=800)
+    style_handbook_reference: ExecutionContextStyleHandbookReference | None = None
 
     @field_validator('brief')
     @classmethod
@@ -92,6 +94,7 @@ class WorldCreationDraftResponse(BaseModel):
     first_chapter_goal: str
     generation_notes: list[str] = Field(default_factory=list)
     safety_notes: list[str] = Field(default_factory=list)
+    style_handbook_reference: ExecutionContextStyleHandbookReference | None = None
 
 
 class WorldStatusUpdateRequest(BaseModel):

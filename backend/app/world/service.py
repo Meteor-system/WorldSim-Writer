@@ -40,7 +40,49 @@ def _map_model_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_REQUEST_FAILED')
 
 
-def build_world_creation_draft_messages(brief: str) -> list[dict[str, str]]:
+def _style_handbook_prompt_block(style_handbook_reference: dict | None) -> str:
+    if not style_handbook_reference:
+        return ''
+    handbook = style_handbook_reference.get('handbook') or {}
+    dimension_keys = (
+        ('narrative_pacing', '叙事节奏'),
+        ('language_density', '语言密度'),
+        ('dialogue_ratio', '对白比例'),
+        ('scene_progression', '场景推进'),
+        ('suspense_structure', '悬念结构'),
+        ('relationship_tension', '关系张力'),
+        ('foreshadowing_pattern', '伏笔手法'),
+    )
+    dimension_parts = []
+    for key, label in dimension_keys:
+        dimension = handbook.get(key) or {}
+        value = dimension.get('value')
+        if value:
+            dimension_parts.append(f'{label}：{value}')
+    source_title = style_handbook_reference.get('source_title') or '未命名参考'
+    lines = [
+        f'用户提供了写作风格手册参考（来源：{source_title}，仅抽象维度，禁止照抄原文、人物名或专有设定）：'
+        + '；'.join(dimension_parts),
+    ]
+    avoid_guidelines = handbook.get('avoid_guidelines') or []
+    if avoid_guidelines:
+        lines.append('需避免：' + '；'.join(str(g) for g in avoid_guidelines))
+    originality_guidelines = handbook.get('originality_guidelines') or []
+    if originality_guidelines:
+        lines.append('原创性约束：' + '；'.join(str(g) for g in originality_guidelines))
+    lines.append('风格手册只影响 tone_profile 的语言气质倾向，不得改变世界事实、角色身份或专有设定，也不写入 canon。')
+    return '\n'.join(lines)
+
+
+def build_world_creation_draft_messages(brief: str, style_handbook_reference: dict | None = None) -> list[dict[str, str]]:
+    user_content = (
+        f'用户一句话脑洞：{brief}\n'
+        '请生成一个可由用户确认和编辑的世界创建草稿。'
+        'generation_notes 用 1-3 条说明草稿如何理解用户脑洞；safety_notes 用 1-3 条说明确认前不会写入 canon/正史。'
+    )
+    style_block = _style_handbook_prompt_block(style_handbook_reference)
+    if style_block:
+        user_content += '\n' + style_block
     return [
         {
             'role': 'system',
@@ -52,16 +94,13 @@ def build_world_creation_draft_messages(brief: str) -> list[dict[str, str]]:
                 'starter_assets.characters 至少 2 个角色；relations 和 foreshadows 使用 source_index/target_index/related_character_indexes 引用角色数组索引。'
                 'foreshadow status 只能是 planted、advanced、resolved 或 expired；新世界默认优先 planted。'
                 '必须生成原创世界胚胎；如果用户 brief 指向受保护作品、角色名、专有设定或标志性桥段，应抽象为通用题材参数，不复用名称或桥段。'
+                '如果提供了写作风格手册参考，只把它当作抽象语言气质倾向，写入 tone_profile 的风格描述，不得复用原文句子、人物名或专有设定。'
                 '不得声称已经写入正史、创建世界、推进世界进度或生成正式章节。'
             ),
         },
         {
             'role': 'user',
-            'content': (
-                f'用户一句话脑洞：{brief}\n'
-                '请生成一个可由用户确认和编辑的世界创建草稿。'
-                'generation_notes 用 1-3 条说明草稿如何理解用户脑洞；safety_notes 用 1-3 条说明确认前不会写入 canon/正史。'
-            ),
+            'content': user_content,
         },
     ]
 
@@ -148,10 +187,16 @@ def refresh_world_projection(db: Session, world: World) -> None:
     world.current_relations = [relation_projection(relation) for relation in relations]
 
 
-def generate_world_creation_draft(brief: str, llm_client: LLMClient | None = None) -> dict:
+def generate_world_creation_draft(
+    brief: str,
+    llm_client: LLMClient | None = None,
+    style_handbook_reference: dict | None = None,
+) -> dict:
     client = _model_client(llm_client)
     try:
-        generated = client.generate_world_creation_draft(build_world_creation_draft_messages(brief))
+        generated = client.generate_world_creation_draft(
+            build_world_creation_draft_messages(brief, style_handbook_reference)
+        )
         draft = WorldCreateRequest.model_validate(generated.draft)
         _validate_starter_assets(draft)
     except HTTPException as exc:
@@ -164,6 +209,7 @@ def generate_world_creation_draft(brief: str, llm_client: LLMClient | None = Non
         'first_chapter_goal': generated.first_chapter_goal,
         'generation_notes': generated.generation_notes,
         'safety_notes': generated.safety_notes,
+        'style_handbook_reference': style_handbook_reference,
     }
 
 

@@ -8,13 +8,40 @@ from app.world.models import World
 
 
 class DraftWorldLLMClient:
+    def __init__(self):
+        self.captured_messages = None
+
     def generate_world_creation_draft(self, messages):
+        self.captured_messages = messages
         return WorldCreationDraftPayload(
             draft=custom_world_payload(),
             first_chapter_goal='让许砚第一次听见跃迁灯塔低鸣。',
             generation_notes=['已根据一句话脑洞生成可编辑世界草稿。'],
             safety_notes=['确认前不会创建世界、写入正史或推进世界进度。'],
         )
+
+
+def style_handbook_reference_payload():
+    def dimension(label, value):
+        return {'label': label, 'value': value, 'evidence': None}
+
+    return {
+        'source_title': '公版海洋小说片段',
+        'source_rights': 'public_domain',
+        'handbook': {
+            'narrative_pacing': dimension('叙事节奏', '慢热铺陈，先累积氛围再爆发。'),
+            'language_density': dimension('语言密度', '高密度意象描写。'),
+            'dialogue_ratio': dimension('对白比例', '对白占比较低，依赖叙述推进。'),
+            'scene_progression': dimension('场景推进', '用天气和物件带动转场。'),
+            'suspense_structure': dimension('悬念结构', '每节保留一个待解问题。'),
+            'relationship_tension': dimension('关系张力', '围绕承诺与亏欠推进。'),
+            'foreshadowing_pattern': dimension('伏笔埋设/回收方式', '先给异常，再延迟解释。'),
+            'do_guidelines': ['保留抽象节奏用于原创章节。'],
+            'avoid_guidelines': ['不要复用原文句子、人物名或专有设定。'],
+            'originality_guidelines': ['用原创角色承载抽象风格参数。'],
+        },
+        'safety_notes': ['风格手册只是写作参考，不会写入 canon。'],
+    }
 
 
 class CustomWorldLLMClient:
@@ -400,3 +427,31 @@ def test_world_endpoints_require_login(client):
 
     assert response.status_code == 401
     assert response.json()['detail'] == 'UNAUTHORIZED'
+
+
+def test_draft_world_from_brief_applies_style_handbook_as_reference_without_creating_canon(
+    client, db_session, monkeypatch
+):
+    token = register(client, 'brief-style@example.com')
+    llm = DraftWorldLLMClient()
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: llm)
+
+    response = client.post(
+        '/worlds/draft-from-brief',
+        headers=auth(token),
+        json={
+            'brief': '一个边境殖民地依赖濒临失控的跃迁灯塔',
+            'style_handbook_reference': style_handbook_reference_payload(),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['style_handbook_reference']['source_title'] == '公版海洋小说片段'
+    assert payload['style_handbook_reference']['source_rights'] == 'public_domain'
+    prompt = '\n'.join(message['content'] for message in llm.captured_messages)
+    assert '写作风格手册参考' in prompt
+    assert '慢热铺陈，先累积氛围再爆发。' in prompt
+    assert '不要复用原文句子、人物名或专有设定。' in prompt
+    assert db_session.scalar(select(func.count()).select_from(World)) == 0
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == 0

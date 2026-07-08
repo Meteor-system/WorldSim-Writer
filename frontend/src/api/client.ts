@@ -43,6 +43,7 @@ import type {
   StoryArcResponse,
   StyleHandbookPreviewRequest,
   StyleHandbookPreviewResponse,
+  StyleHandbookReference,
   ObjectTagBulkAssignResponse,
   ObjectTagResponse,
   TagDetailResponse,
@@ -115,10 +116,14 @@ export function createWorld(data: WorldCreateRequest) {
   });
 }
 
-export function draftWorldFromBrief(brief: string) {
+export function draftWorldFromBrief(brief: string, styleHandbookReference?: StyleHandbookReference | null) {
   return apiRequest<WorldCreationDraftResponse>('/worlds/draft-from-brief', {
     method: 'POST',
-    body: JSON.stringify({ brief }),
+    body: JSON.stringify(
+      styleHandbookReference
+        ? { brief, style_handbook_reference: styleHandbookReference }
+        : { brief },
+    ),
   });
 }
 
