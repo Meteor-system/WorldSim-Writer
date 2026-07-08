@@ -36,12 +36,13 @@ import {
   updateWorldStatus,
   updateWorldTag,
 } from '../api/client';
-import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
+import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, StoryArcChapter, StudioLaunchContext, StyleHandbookReference, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
 import { ArcPlanPanel } from './ArcPlanPanel';
 import { ChapterHistoryPanel } from './ChapterHistoryPanel';
+import { buildManualExecutionContext, withStyleHandbookReference } from './chapterExecutionContext';
 import { NarrativeHealthPanel } from './NarrativeHealthPanel';
 import { NextChapterPrepPanel } from './NextChapterPrepPanel';
 import { OpenThreadsPanel } from './OpenThreadsPanel';
@@ -427,6 +428,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [arcPlanError, setArcPlanError] = useState('');
   const [analysisLoaded, setAnalysisLoaded] = useState(false);
   const [selectedExecutionContext, setSelectedExecutionContext] = useState<ChapterExecutionContext | null>(null);
+  const [selectedStyleHandbook, setSelectedStyleHandbook] = useState<StyleHandbookReference | null>(null);
   const [worldCreationDraftGoal, setWorldCreationDraftGoal] = useState('');
   const [expandedStoryArcChapters, setExpandedStoryArcChapters] = useState<number[]>([]);
   const [tab, setTab] = useState<Tab>('overview');
@@ -708,9 +710,13 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     }
   }
 
+  function withActiveStyleHandbook(context: ChapterExecutionContext): ChapterExecutionContext {
+    return selectedStyleHandbook ? withStyleHandbookReference(context, selectedStyleHandbook) : context;
+  }
+
   function launchStoryArcChapter(chapter: StoryArcChapter) {
     if (!world) return;
-    const executionContext = buildStoryArcExecutionContext(world, chapter);
+    const executionContext = withActiveStyleHandbook(buildStoryArcExecutionContext(world, chapter));
     onEnterStudio(world, {
       initialChapterGoal: executionContext.goal,
       executionContext,
@@ -719,7 +725,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
 
   function launchWorldCreationDraftChapter() {
     if (!world || !worldCreationDraftGoal) return;
-    const executionContext = buildWorldCreationDraftExecutionContext(world, worldCreationDraftGoal);
+    const executionContext = withActiveStyleHandbook(buildWorldCreationDraftExecutionContext(world, worldCreationDraftGoal));
     onEnterStudio(world, {
       initialChapterGoal: executionContext.goal,
       executionContext,
@@ -898,10 +904,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               <WorldOperationsDashboard
                 world={world}
                 isArchivedWorld={isArchivedWorld}
-                onContinue={() => onEnterStudio(world, {
-                  initialChapterGoal: selectedExecutionContext?.goal,
-                  executionContext: selectedExecutionContext ?? undefined,
-                })}
+                onContinue={() => {
+                  const baseContext = selectedExecutionContext
+                    ?? (selectedStyleHandbook ? buildManualExecutionContext(world, '') : undefined);
+                  onEnterStudio(world, {
+                    initialChapterGoal: selectedExecutionContext?.goal,
+                    executionContext: baseContext ? withActiveStyleHandbook(baseContext) : undefined,
+                  });
+                }}
                 onShowForeshadows={() => setTab('foreshadows')}
                 onShowArchive={() => setTab('archive')}
               />
@@ -970,7 +980,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               onUseContext={setSelectedExecutionContext}
               onEnterStudioWithContext={(context) => onEnterStudio(world, {
                 initialChapterGoal: context.goal,
-                executionContext: context,
+                executionContext: withActiveStyleHandbook(context),
               })}
             />
             <WorldImportPanel
@@ -978,10 +988,17 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               readOnly={isArchivedWorld}
               onPreview={previewWorldImport}
               onPreviewStyleHandbook={previewStyleHandbook}
+              onUseStyleHandbook={setSelectedStyleHandbook}
               onConfirm={confirmWorldImport}
               onListBatches={listWorldImports}
               onConfirmed={() => void refreshNextPrep(world.id)}
             />
+            {selectedStyleHandbook && (
+              <p className="rounded-2xl bg-amber-50/80 p-3 text-sm font-bold text-[#5e3b1c]" data-testid="active-style-handbook">
+                已设为写作风格参考：{selectedStyleHandbook.source_title}（仅抽象维度，不写入正史）
+                <button type="button" className="ml-3 underline" onClick={() => setSelectedStyleHandbook(null)}>取消</button>
+              </p>
+            )}
             {selectedExecutionContext && <p className="rounded-2xl bg-amber-100/70 p-3 text-sm font-bold text-[#5e3b1c]">已设为下一章目标：{selectedExecutionContext.goal}</p>}
             <section className="book-card scroll-mt-6 p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">

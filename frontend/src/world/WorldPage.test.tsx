@@ -36,6 +36,7 @@ vi.mock('../api/client', () => ({
   listWorldTags: vi.fn(),
   mergeWorldTag: vi.fn(),
   previewWorldImport: vi.fn(),
+  previewStyleHandbook: vi.fn(),
   searchWorld: vi.fn(),
   unassignWorldTag: vi.fn(),
   updateWorldStatus: vi.fn(),

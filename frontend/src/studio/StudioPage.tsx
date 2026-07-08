@@ -78,6 +78,9 @@ function ExecutionContextSummary({ context, frozen }: { context?: ChapterExecuti
       <p className="mt-2 ink-muted">优先伏笔：{names(context.priority_foreshadows)}</p>
       <p className="mt-2 ink-muted">推进提示：{context.progression_hints.length} 条</p>
       <p className="mt-2 ink-muted">连续性提醒：{context.continuity_warnings.length} 条</p>
+      {context.style_handbook_reference && (
+        <p className="mt-2 ink-muted">写作风格参考：{context.style_handbook_reference.source_title}（仅抽象风格维度，不写入正史）</p>
+      )}
     </div>
   );
 }
@@ -98,6 +101,12 @@ function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionConte
       {context.continuity_warnings.map((warning, index) => (
         <p key={`${warning.category}-${index}`} className="manuscript text-sm">连续性提醒：{warning.message}</p>
       ))}
+      {context.style_handbook_reference && (
+        <div className="rounded-xl bg-amber-50/60 p-3" data-testid="execution-style-handbook">
+          <p className="manuscript text-sm font-bold">写作风格参考：{context.style_handbook_reference.source_title}</p>
+          <p className="manuscript text-xs ink-muted">仅参考抽象风格维度（节奏/语言密度/对白比例等），不写入正史，禁止照搬原文。</p>
+        </div>
+      )}
     </section>
   );
 }

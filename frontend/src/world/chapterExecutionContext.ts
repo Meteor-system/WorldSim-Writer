@@ -1,4 +1,4 @@
-﻿import type { ChapterExecutionContext, NextChapterPrepResponse, WorldOverview } from '../api/types';
+import type { ChapterExecutionContext, NextChapterPrepResponse, StyleHandbookReference, WorldOverview } from '../api/types';
 
 export function buildExecutionContextFromPrep(prep: NextChapterPrepResponse): ChapterExecutionContext {
   return {
@@ -23,6 +23,7 @@ export function buildExecutionContextFromPrep(prep: NextChapterPrepResponse): Ch
       created_at,
     })),
     material_references: prep.material_references,
+    style_handbook_reference: null,
   };
 }
 
@@ -40,7 +41,15 @@ export function buildManualExecutionContext(world: WorldOverview, goal: string):
     continuity_warnings: [],
     recent_events: [],
     material_references: [],
+    style_handbook_reference: null,
   };
+}
+
+export function withStyleHandbookReference(
+  context: ChapterExecutionContext,
+  styleHandbookReference?: StyleHandbookReference | null,
+): ChapterExecutionContext {
+  return { ...context, style_handbook_reference: styleHandbookReference ?? null };
 }
 
 export function withEditedGoal(

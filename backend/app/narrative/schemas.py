@@ -66,6 +66,32 @@ class ExecutionContextMaterialReference(BaseModel):
     safety_note: str
 
 
+class ExecutionContextStyleHandbookDimension(BaseModel):
+    label: str
+    value: str
+    evidence: str | None = None
+
+
+class ExecutionContextStyleHandbookDraft(BaseModel):
+    narrative_pacing: ExecutionContextStyleHandbookDimension
+    language_density: ExecutionContextStyleHandbookDimension
+    dialogue_ratio: ExecutionContextStyleHandbookDimension
+    scene_progression: ExecutionContextStyleHandbookDimension
+    suspense_structure: ExecutionContextStyleHandbookDimension
+    relationship_tension: ExecutionContextStyleHandbookDimension
+    foreshadowing_pattern: ExecutionContextStyleHandbookDimension
+    do_guidelines: list[str] = Field(default_factory=list)
+    avoid_guidelines: list[str] = Field(default_factory=list)
+    originality_guidelines: list[str] = Field(default_factory=list)
+
+
+class ExecutionContextStyleHandbookReference(BaseModel):
+    source_title: str
+    source_rights: Literal['own_work', 'authorized', 'public_domain', 'general_reference']
+    handbook: ExecutionContextStyleHandbookDraft
+    safety_notes: list[str] = Field(default_factory=list)
+
+
 class ChapterExecutionContext(BaseModel):
     source: Literal['next_chapter_prep', 'manual'] = 'manual'
     source_world_version: int
@@ -79,6 +105,7 @@ class ChapterExecutionContext(BaseModel):
     continuity_warnings: list[ExecutionContextContinuityWarning] = Field(default_factory=list)
     recent_events: list[ExecutionContextRecentEvent] = Field(default_factory=list)
     material_references: list[ExecutionContextMaterialReference] = Field(default_factory=list)
+    style_handbook_reference: ExecutionContextStyleHandbookReference | None = None
 
 
 class DraftRequest(BaseModel):

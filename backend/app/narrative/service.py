@@ -106,6 +106,7 @@ def build_manual_execution_context(db: Session, world: World, chapter_goal: str)
         'continuity_warnings': [],
         'recent_events': [],
         'material_references': [],
+        'style_handbook_reference': None,
     }
 
 
@@ -119,6 +120,7 @@ def normalize_execution_context(db: Session, world: World, chapter_goal: str, ex
         context = dict(execution_context)
     context['goal'] = chapter_goal
     context.setdefault('material_references', [])
+    context.setdefault('style_handbook_reference', None)
     if context_provided and context.get('source_world_version') != world.world_version:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
     return context
@@ -152,6 +154,35 @@ def format_execution_context_for_prompt(execution_context: dict | None) -> str:
     material_references = execution_context.get('material_references') or []
     if material_references:
         lines.append('- 候选素材参考：' + '；'.join(f"{m.get('title')}（{m.get('asset_pool')}，来源：{m.get('source_title')}，摘要：{m.get('summary')}）" for m in material_references))
+    style_reference = execution_context.get('style_handbook_reference')
+    if style_reference:
+        handbook = style_reference.get('handbook') or {}
+        dimension_keys = (
+            ('narrative_pacing', '叙事节奏'),
+            ('language_density', '语言密度'),
+            ('dialogue_ratio', '对白比例'),
+            ('scene_progression', '场景推进'),
+            ('suspense_structure', '悬念结构'),
+            ('relationship_tension', '关系张力'),
+            ('foreshadowing_pattern', '伏笔手法'),
+        )
+        dimension_parts = []
+        for key, label in dimension_keys:
+            dimension = handbook.get(key) or {}
+            value = dimension.get('value')
+            if value:
+                dimension_parts.append(f"{label}：{value}")
+        source_title = style_reference.get('source_title') or '未命名参考'
+        lines.append(f'- 写作风格参考（来源：{source_title}，仅抽象维度，禁止照抄原文）：' + '；'.join(dimension_parts))
+        do_guidelines = handbook.get('do_guidelines') or []
+        if do_guidelines:
+            lines.append('  - 建议做法：' + '；'.join(str(g) for g in do_guidelines))
+        avoid_guidelines = handbook.get('avoid_guidelines') or []
+        if avoid_guidelines:
+            lines.append('  - 需避免：' + '；'.join(str(g) for g in avoid_guidelines))
+        originality_guidelines = handbook.get('originality_guidelines') or []
+        if originality_guidelines:
+            lines.append('  - 原创性约束：' + '；'.join(str(g) for g in originality_guidelines))
     return '\n'.join(lines) + '\n'
 
 

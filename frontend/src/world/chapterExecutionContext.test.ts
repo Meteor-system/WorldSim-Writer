@@ -1,6 +1,6 @@
 ﻿import { describe, expect, it } from 'vitest';
 import type { NextChapterPrepResponse, WorldOverview } from '../api/types';
-import { buildExecutionContextFromPrep, buildManualExecutionContext, withEditedGoal } from './chapterExecutionContext';
+import { buildExecutionContextFromPrep, buildManualExecutionContext, withEditedGoal, withStyleHandbookReference } from './chapterExecutionContext';
 
 const prep: NextChapterPrepResponse = {
   world_id: 7,
@@ -90,5 +90,35 @@ describe('chapterExecutionContext', () => {
 
     expect(withEditedGoal(context, world, '用户修改后的目标').goal).toBe('用户修改后的目标');
     expect(withEditedGoal(undefined, world, '无 NCC 的目标').source).toBe('manual');
+  });
+
+  it('attaches an abstract style handbook reference without touching other context', () => {
+    const context = buildExecutionContextFromPrep(prep);
+    const reference = {
+      source_title: '参考片段',
+      source_rights: 'general_reference' as const,
+      handbook: {
+        narrative_pacing: { label: '叙事节奏', value: '中速推进。', evidence: null },
+        language_density: { label: '语言密度', value: '中等语言密度。', evidence: null },
+        dialogue_ratio: { label: '对白比例', value: '对白与叙述交替。', evidence: null },
+        scene_progression: { label: '场景推进', value: '用意象带动转场。', evidence: null },
+        suspense_structure: { label: '悬念结构', value: '每节保留待解问题。', evidence: null },
+        relationship_tension: { label: '人物关系张力', value: '围绕亏欠推进。', evidence: null },
+        foreshadowing_pattern: { label: '伏笔埋设/回收方式', value: '先给异常，再延迟解释。', evidence: null },
+        do_guidelines: ['保留抽象节奏。'],
+        avoid_guidelines: ['不要复用原文句子、人物名、专有设定或标志性桥段。'],
+        originality_guidelines: ['正式章节仍需 Studio 审稿。'],
+      },
+      safety_notes: ['风格手册只是写作参考，不写入 canon。'],
+    };
+
+    const withReference = withStyleHandbookReference(context, reference);
+    expect(withReference.style_handbook_reference?.source_title).toBe('参考片段');
+    // 其余上下文保持不变
+    expect(withReference.goal).toBe(context.goal);
+    expect(withReference.material_references).toEqual(context.material_references);
+
+    // 传入 null 时清空写作风格参考
+    expect(withStyleHandbookReference(withReference, null).style_handbook_reference).toBeNull();
   });
 });

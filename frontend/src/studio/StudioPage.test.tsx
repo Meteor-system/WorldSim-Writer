@@ -350,6 +350,42 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByText('已冻结本章设定：next_chapter_prep · v2')).toBeInTheDocument();
   });
 
+  it('shows the writing style handbook reference in execution context without writing canon', async () => {
+    render(
+      <StudioPage
+        world={world}
+        launchContext={{
+          initialChapterGoal: executionContext.goal,
+          executionContext: {
+            ...executionContext,
+            style_handbook_reference: {
+              source_title: '参考片段',
+              source_rights: 'general_reference',
+              handbook: {
+                narrative_pacing: { label: '叙事节奏', value: '中速推进。', evidence: null },
+                language_density: { label: '语言密度', value: '中等语言密度。', evidence: null },
+                dialogue_ratio: { label: '对白比例', value: '对白与叙述交替。', evidence: null },
+                scene_progression: { label: '场景推进', value: '用意象带动转场。', evidence: null },
+                suspense_structure: { label: '悬念结构', value: '每节保留待解问题。', evidence: null },
+                relationship_tension: { label: '人物关系张力', value: '围绕亏欠推进。', evidence: null },
+                foreshadowing_pattern: { label: '伏笔埋设/回收方式', value: '先给异常，再延迟解释。', evidence: null },
+                do_guidelines: ['保留抽象节奏。'],
+                avoid_guidelines: ['不要复用原文句子、人物名、专有设定或标志性桥段。'],
+                originality_guidelines: ['正式章节仍需 Studio 审稿。'],
+              },
+              safety_notes: ['风格手册只是写作参考，不写入 canon。'],
+            },
+          },
+        }}
+        onBack={vi.fn()}
+        onApproved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('写作风格参考：参考片段（仅抽象风格维度，不写入正史）')).toBeInTheDocument();
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
   it('auto-generates a first chapter draft from launch context without approving canon', async () => {
     render(
       <StudioPage

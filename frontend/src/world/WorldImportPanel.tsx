@@ -10,8 +10,10 @@ import type {
   ImportSourceRights,
   ImportSourceType,
   StyleHandbookDimension,
+  StyleHandbookDraft,
   StyleHandbookPreviewRequest,
   StyleHandbookPreviewResponse,
+  StyleHandbookReference,
 } from '../api/types';
 
 type Props = {
@@ -19,6 +21,7 @@ type Props = {
   readOnly?: boolean;
   onPreview: (worldId: number, data: ImportPreviewRequest) => Promise<ImportPreviewResponse>;
   onPreviewStyleHandbook?: (worldId: number, data: StyleHandbookPreviewRequest) => Promise<StyleHandbookPreviewResponse>;
+  onUseStyleHandbook?: (reference: StyleHandbookReference) => void;
   onConfirm: (worldId: number, data: ImportConfirmRequest) => Promise<ImportConfirmResponse>;
   onListBatches: (worldId: number) => Promise<ImportBatchListResponse>;
   onConfirmed?: (response: ImportConfirmResponse) => void;
@@ -78,7 +81,32 @@ function handbookDimensions(handbook: StyleHandbookPreviewResponse['handbook']):
   ];
 }
 
-export function WorldImportPanel({ worldId, readOnly = false, onPreview, onPreviewStyleHandbook, onConfirm, onListBatches, onConfirmed }: Props) {
+function stripEvidence(dimension: StyleHandbookDimension): StyleHandbookDimension {
+  return { label: dimension.label, value: dimension.value, evidence: null };
+}
+
+function toStyleHandbookReference(response: StyleHandbookPreviewResponse): StyleHandbookReference {
+  const handbook: StyleHandbookDraft = {
+    narrative_pacing: stripEvidence(response.handbook.narrative_pacing),
+    language_density: stripEvidence(response.handbook.language_density),
+    dialogue_ratio: stripEvidence(response.handbook.dialogue_ratio),
+    scene_progression: stripEvidence(response.handbook.scene_progression),
+    suspense_structure: stripEvidence(response.handbook.suspense_structure),
+    relationship_tension: stripEvidence(response.handbook.relationship_tension),
+    foreshadowing_pattern: stripEvidence(response.handbook.foreshadowing_pattern),
+    do_guidelines: [...response.handbook.do_guidelines],
+    avoid_guidelines: [...response.handbook.avoid_guidelines],
+    originality_guidelines: [...response.handbook.originality_guidelines],
+  };
+  return {
+    source_title: response.source_title,
+    source_rights: response.source_rights,
+    handbook,
+    safety_notes: [...response.safety_notes],
+  };
+}
+
+export function WorldImportPanel({ worldId, readOnly = false, onPreview, onPreviewStyleHandbook, onUseStyleHandbook, onConfirm, onListBatches, onConfirmed }: Props) {
   const [sourceType, setSourceType] = useState<ImportSourceType>('pasted_text');
   const [sourceRights, setSourceRights] = useState<ImportSourceRights>('general_reference');
   const [sourceTitle, setSourceTitle] = useState('粘贴素材');
@@ -233,6 +261,17 @@ export function WorldImportPanel({ worldId, readOnly = false, onPreview, onPrevi
             <p className="chapter-kicker">风格手册草稿</p>
             <h3 className="text-xl font-black text-[#34210f]">参考文本抽象风格手册</h3>
             <p className="manuscript mt-2 text-sm text-[#5e3b1c]">来源：{styleHandbook.source_title} · {SOURCE_RIGHT_LABELS[styleHandbook.source_rights]}。确认前不会保存为正式参考，也不会写入正史/canon。</p>
+            {onUseStyleHandbook && (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  className="secondary-button motion-soft-lift"
+                  onClick={() => onUseStyleHandbook(toStyleHandbookReference(styleHandbook))}
+                  disabled={readOnly}
+                >设为本次写作风格参考</button>
+                <span className="text-xs ink-muted">只会把抽象风格维度带入下一章创作，不会写入正史，也不会照抄原文。</span>
+              </div>
+            )}
           </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {handbookDimensions(styleHandbook.handbook).map((dimension) => (

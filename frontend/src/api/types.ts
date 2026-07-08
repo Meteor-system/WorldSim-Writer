@@ -510,6 +510,13 @@ export type BeatCard = {
   key_dialogue_hints: string[];
 };
 
+export type StyleHandbookReference = {
+  source_title: string;
+  source_rights: ImportSourceRights;
+  handbook: StyleHandbookDraft;
+  safety_notes: string[];
+};
+
 export type ChapterExecutionContext = {
   source: 'next_chapter_prep' | 'manual';
   source_world_version: number;
@@ -523,6 +530,7 @@ export type ChapterExecutionContext = {
   continuity_warnings: NextChapterPrepWarning[];
   recent_events: Array<Omit<NextChapterPrepEvent, 'payload'>>;
   material_references: ImportMaterialReferenceResponse[];
+  style_handbook_reference?: StyleHandbookReference | null;
 };
 
 export type StudioLaunchContext = {

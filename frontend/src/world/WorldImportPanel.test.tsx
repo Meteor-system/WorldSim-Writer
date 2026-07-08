@@ -201,6 +201,42 @@ describe('WorldImportPanel', () => {
     expect(screen.queryByRole('button', { name: '确认写入候选素材' })).not.toBeInTheDocument();
   });
 
+  it('offers to use the style handbook as writing reference with only abstract dimensions', async () => {
+    const user = userEvent.setup();
+    const onPreviewStyleHandbook = vi.fn().mockResolvedValue(styleHandbookResponse);
+    const onUseStyleHandbook = vi.fn();
+    render(
+      <WorldImportPanel
+        worldId={7}
+        onPreview={vi.fn()}
+        onPreviewStyleHandbook={onPreviewStyleHandbook}
+        onUseStyleHandbook={onUseStyleHandbook}
+        onConfirm={vi.fn()}
+        onListBatches={vi.fn().mockResolvedValue(emptyBatches)}
+      />,
+    );
+
+    await user.selectOptions(screen.getByLabelText('来源权限'), 'general_reference');
+    await user.clear(screen.getByLabelText('来源标题'));
+    await user.type(screen.getByLabelText('来源标题'), '参考片段');
+    await user.type(screen.getByLabelText('素材正文'), '雨夜里，旧城门缓慢打开。');
+    await user.click(screen.getByRole('button', { name: '提炼风格手册草稿' }));
+
+    await screen.findByTestId('style-handbook-preview');
+    await user.click(screen.getByRole('button', { name: '设为本次写作风格参考' }));
+
+    expect(onUseStyleHandbook).toHaveBeenCalledTimes(1);
+    const reference = onUseStyleHandbook.mock.calls[0][0];
+    expect(reference.source_title).toBe('参考片段');
+    expect(reference.source_rights).toBe('general_reference');
+    // 只带入抽象维度，剥离原文证据，避免照抄原文
+    expect(reference.handbook.narrative_pacing.value).toBe('中速推进，适合“铺垫-冲突-钩子”的章节结构。');
+    expect(reference.handbook.narrative_pacing.evidence).toBeNull();
+    expect(reference.handbook.language_density.evidence).toBeNull();
+    expect(reference.handbook.foreshadowing_pattern.evidence).toBeNull();
+    expect(reference.handbook.avoid_guidelines).toContain('不要复用原文句子、人物名、专有设定或标志性桥段。');
+  });
+
   it('shows candidate-material fallback copy when preview generation fails', async () => {
     const user = userEvent.setup();
     render(<WorldImportPanel worldId={7} onPreview={vi.fn().mockRejectedValue('preview down')} onConfirm={vi.fn()} onListBatches={vi.fn().mockResolvedValue(emptyBatches)} />);
