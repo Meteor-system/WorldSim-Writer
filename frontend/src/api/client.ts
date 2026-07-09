@@ -180,6 +180,66 @@ function cleanStyleHandbookReference(reference: StyleHandbookReference): StyleHa
   };
 }
 
+function cleanChapterExecutionContext(context: ChapterExecutionContext): ChapterExecutionContext {
+  return {
+    source: context.source,
+    source_world_version: context.source_world_version,
+    next_chapter_number: context.next_chapter_number,
+    goal: context.goal,
+    recommended_pov: {
+      character_id: context.recommended_pov.character_id,
+      name: context.recommended_pov.name,
+    },
+    source_signals: [...(context.source_signals ?? [])],
+    priority_characters: (context.priority_characters ?? []).map((character) => ({
+      character_id: character.character_id,
+      name: character.name,
+      role_type: character.role_type,
+      status: character.status,
+      reason: character.reason,
+    })),
+    priority_foreshadows: (context.priority_foreshadows ?? []).map((foreshadow) => ({
+      foreshadow_id: foreshadow.foreshadow_id,
+      title: foreshadow.title,
+      status: foreshadow.status,
+      urgency_level: foreshadow.urgency_level,
+      reason: foreshadow.reason,
+    })),
+    progression_hints: (context.progression_hints ?? []).map((hint) => ({
+      hint_type: hint.hint_type,
+      priority: hint.priority,
+      title: hint.title,
+      rationale: hint.rationale,
+      suggested_next_beat: hint.suggested_next_beat,
+      related_character_ids: [...(hint.related_character_ids ?? [])],
+      related_foreshadow_ids: [...(hint.related_foreshadow_ids ?? [])],
+      can_seed_next_chapter_goal: hint.can_seed_next_chapter_goal,
+    })),
+    continuity_warnings: (context.continuity_warnings ?? []).map((warning) => ({
+      severity: warning.severity,
+      category: warning.category,
+      message: warning.message,
+      related_character_ids: [...(warning.related_character_ids ?? [])],
+      related_foreshadow_ids: [...(warning.related_foreshadow_ids ?? [])],
+    })),
+    recent_events: (context.recent_events ?? []).map((event) => ({
+      id: event.id,
+      event_type: event.event_type,
+      world_version_before: event.world_version_before,
+      world_version_after: event.world_version_after,
+      created_at: event.created_at,
+    })),
+    material_references: (context.material_references ?? []).map(cleanChapterMaterialReference),
+    ...(context.style_handbook_reference !== undefined
+      ? {
+          style_handbook_reference: context.style_handbook_reference
+            ? cleanStyleHandbookReference(context.style_handbook_reference)
+            : null,
+        }
+      : {}),
+  };
+}
+
 export function draftWorldFromBrief(
   brief: string,
   styleHandbookReference?: StyleHandbookReference | null,
@@ -342,19 +402,12 @@ export function listWorldImports(worldId: number) {
 /* ── Narrative pipeline ── */
 
 export function createChapter(worldId: number, data: { chapter_goal: string; title?: string; execution_context?: ChapterExecutionContext }) {
-  const executionContext = data.execution_context
-    ? {
-        ...data.execution_context,
-        material_references: (data.execution_context.material_references ?? []).map(cleanChapterMaterialReference),
-        ...(data.execution_context.style_handbook_reference
-          ? { style_handbook_reference: cleanStyleHandbookReference(data.execution_context.style_handbook_reference) }
-          : {}),
-      }
-    : data.execution_context;
+  const executionContext = data.execution_context ? cleanChapterExecutionContext(data.execution_context) : undefined;
   return apiRequest<ChapterPipelineResponse>(`/worlds/${worldId}/chapters`, {
     method: 'POST',
     body: JSON.stringify({
-      ...data,
+      chapter_goal: data.chapter_goal,
+      ...(data.title !== undefined ? { title: data.title } : {}),
       ...(executionContext ? { execution_context: executionContext } : {}),
     }),
   });

@@ -6,11 +6,15 @@ from app.llm.schemas import BeatCard
 
 
 class ExecutionContextPov(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     character_id: int | None = None
     name: str | None = None
 
 
 class ExecutionContextPriorityCharacter(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     character_id: int
     name: str
     role_type: str
@@ -19,6 +23,8 @@ class ExecutionContextPriorityCharacter(BaseModel):
 
 
 class ExecutionContextPriorityForeshadow(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     foreshadow_id: int
     title: str
     status: str
@@ -27,6 +33,8 @@ class ExecutionContextPriorityForeshadow(BaseModel):
 
 
 class ExecutionContextProgressionHint(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     hint_type: str
     priority: str
     title: str
@@ -38,6 +46,8 @@ class ExecutionContextProgressionHint(BaseModel):
 
 
 class ExecutionContextContinuityWarning(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     severity: str
     category: str
     message: str
@@ -46,6 +56,8 @@ class ExecutionContextContinuityWarning(BaseModel):
 
 
 class ExecutionContextRecentEvent(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     id: int
     event_type: str
     world_version_before: int
@@ -100,6 +112,8 @@ class ExecutionContextStyleHandbookReference(BaseModel):
 
 
 class ChapterExecutionContext(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     source: Literal['next_chapter_prep', 'manual'] = 'manual'
     source_world_version: int
     next_chapter_number: int | None = None

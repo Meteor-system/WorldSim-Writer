@@ -824,6 +824,161 @@ describe('draft versioning API helpers', () => {
     );
   });
 
+  it('sends only allowed execution context root and nested fields in chapter creation requests', async () => {
+    const expectedMaterialReferences: ChapterExecutionContext['material_references'] = [
+      {
+        asset_id: 42,
+        batch_id: 7,
+        asset_pool: 'inspiration',
+        title: '雾港钟楼候选素材',
+        summary: '钟楼倒敲十三次后，城内记忆出现错位。',
+        source_title: '导入片段',
+        source_type: 'pasted_text',
+        created_at: '2026-05-30T00:00:00Z',
+        safety_note: '导入素材参考只用于创作提示，不会自动改写正式 canon。',
+      },
+    ];
+    const executionContext = {
+      source: 'next_chapter_prep',
+      source_world_version: 3,
+      next_chapter_number: 4,
+      goal: '让许砚第一次听见跃迁灯塔低鸣。',
+      recommended_pov: { character_id: 9, name: '许砚', raw_text: 'POV 原文不应发送。' },
+      source_signals: ['首章目标'],
+      priority_characters: [
+        {
+          character_id: 9,
+          name: '许砚',
+          role_type: 'protagonist',
+          status: '接近灯塔',
+          reason: '主线推进。',
+          internal_score: 0.94,
+        },
+      ],
+      priority_foreshadows: [
+        {
+          foreshadow_id: 5,
+          title: '灯塔低鸣',
+          status: 'advanced',
+          urgency_level: 4,
+          reason: '需要推进。',
+          raw_text: '伏笔原文不应发送。',
+        },
+      ],
+      progression_hints: [
+        {
+          hint_type: 'foreshadow',
+          priority: 'high',
+          title: '推进灯塔低鸣',
+          rationale: '上一章已经铺垫。',
+          suggested_next_beat: '许砚靠近灯塔。',
+          related_character_ids: [9],
+          related_foreshadow_ids: [5],
+          can_seed_next_chapter_goal: true,
+          internal_score: 0.88,
+        },
+      ],
+      continuity_warnings: [
+        {
+          severity: 'medium',
+          category: 'foreshadow',
+          message: '不能提前解释灯塔真相。',
+          related_character_ids: [9],
+          related_foreshadow_ids: [5],
+          raw_text: '警告原文不应发送。',
+        },
+      ],
+      recent_events: [
+        {
+          id: 12,
+          event_type: 'chapter_approved',
+          world_version_before: 2,
+          world_version_after: 3,
+          payload: { raw_text: '事件 payload 不应发送。' },
+          created_at: '2026-05-30T00:00:00Z',
+        },
+      ],
+      material_references: [
+        {
+          ...expectedMaterialReferences[0],
+          raw_text: '素材原文不应发送。',
+          internal_score: 0.9,
+        },
+      ],
+      style_handbook_reference: null,
+      raw_text: '根对象原文不应发送。',
+      internal_score: 0.99,
+    } as unknown as ChapterExecutionContext;
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ id: 11, execution_context: null }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createChapter(7, { chapter_goal: '生成第一章草稿', title: '第一章 灯塔低鸣', execution_context: executionContext });
+
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string) as { execution_context: ChapterExecutionContext };
+    expect(requestBody).toEqual({
+      chapter_goal: '生成第一章草稿',
+      title: '第一章 灯塔低鸣',
+      execution_context: {
+        source: 'next_chapter_prep',
+        source_world_version: 3,
+        next_chapter_number: 4,
+        goal: '让许砚第一次听见跃迁灯塔低鸣。',
+        recommended_pov: { character_id: 9, name: '许砚' },
+        source_signals: ['首章目标'],
+        priority_characters: [
+          {
+            character_id: 9,
+            name: '许砚',
+            role_type: 'protagonist',
+            status: '接近灯塔',
+            reason: '主线推进。',
+          },
+        ],
+        priority_foreshadows: [
+          {
+            foreshadow_id: 5,
+            title: '灯塔低鸣',
+            status: 'advanced',
+            urgency_level: 4,
+            reason: '需要推进。',
+          },
+        ],
+        progression_hints: [
+          {
+            hint_type: 'foreshadow',
+            priority: 'high',
+            title: '推进灯塔低鸣',
+            rationale: '上一章已经铺垫。',
+            suggested_next_beat: '许砚靠近灯塔。',
+            related_character_ids: [9],
+            related_foreshadow_ids: [5],
+            can_seed_next_chapter_goal: true,
+          },
+        ],
+        continuity_warnings: [
+          {
+            severity: 'medium',
+            category: 'foreshadow',
+            message: '不能提前解释灯塔真相。',
+            related_character_ids: [9],
+            related_foreshadow_ids: [5],
+          },
+        ],
+        recent_events: [
+          {
+            id: 12,
+            event_type: 'chapter_approved',
+            world_version_before: 2,
+            world_version_after: 3,
+            created_at: '2026-05-30T00:00:00Z',
+          },
+        ],
+        material_references: expectedMaterialReferences,
+        style_handbook_reference: null,
+      },
+    });
+  });
+
   it('calls draft stash, paragraph revision, full revision, exact version, diff, approval preview, and approval consistency endpoints', async () => {
     const fetchMock = vi
       .fn()

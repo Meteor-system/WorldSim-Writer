@@ -282,6 +282,58 @@ def test_direct_draft_rejects_stale_execution_context_before_model_call(client, 
     assert llm.messages == []
 
 
+def test_direct_draft_rejects_extra_execution_context_field_before_model_call(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client, 'extra-root-direct-context@example.com')
+    context = sample_execution_context()
+    context['raw_text'] = '根对象额外字段不应进入章节执行上下文。'
+    llm = CapturingLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+    before_chapters = db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+
+    response = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': context['goal'], 'execution_context': context},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden'
+        and error['loc'] == ['body', 'execution_context', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert llm.messages == []
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
+def test_direct_draft_rejects_extra_nested_execution_context_field_before_model_call(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client, 'extra-nested-direct-context@example.com')
+    context = sample_execution_context()
+    context['priority_characters'][0]['internal_score'] = 0.9
+    llm = CapturingLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+    before_chapters = db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+
+    response = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': context['goal'], 'execution_context': context},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden'
+        and error['loc'] == ['body', 'execution_context', 'priority_characters', 0, 'internal_score']
+        for error in response.json()['detail']
+    )
+    assert llm.messages == []
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
 def test_direct_draft_rejects_raw_text_material_reference_before_model_call(client, db_session, monkeypatch):
     token, world_id = register_and_create_world(client, 'raw-material-direct-context@example.com')
     context = sample_execution_context()
