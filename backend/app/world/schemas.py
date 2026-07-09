@@ -95,6 +95,8 @@ class WorldCreationMaterialReference(BaseModel):
 
 
 class WorldCreationDraftRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     brief: str = Field(min_length=3, max_length=800)
     style_handbook_reference: ExecutionContextStyleHandbookReference | None = None
     variant_count: int = Field(default=1, ge=1, le=3)

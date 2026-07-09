@@ -200,6 +200,11 @@ describe('world creation API helpers', () => {
         }),
       }),
     );
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(Object.keys(requestBody).sort()).toEqual(['brief', 'material_references', 'variant_count']);
+    expect(requestBody).not.toHaveProperty('raw_text');
+    expect(requestBody).not.toHaveProperty('internal_score');
+    expect(requestBody.material_references[0]).not.toHaveProperty('raw_text');
     expect(result.material_references).toEqual(expectedMaterialReferences);
   });
 

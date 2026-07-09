@@ -435,6 +435,39 @@ def test_draft_world_from_brief_returns_editable_variants_without_creating_world
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == 0
 
 
+def test_draft_world_from_brief_rejects_extra_root_field_without_side_effects(client, db_session, monkeypatch):
+    token = register(client, 'brief-root-extra@example.com')
+    llm = DraftWorldLLMClient()
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: llm)
+    before_worlds = db_session.scalar(select(func.count()).select_from(World))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+
+    response = client.post(
+        '/worlds/draft-from-brief',
+        headers=auth(token),
+        json={
+            'brief': '一个所有人出生时都会被分配死因的王国',
+            'raw_text': '不应进入一句话开书草稿请求。',
+            'internal_score': 0.98,
+        },
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden'
+        and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert any(
+        error['type'] == 'extra_forbidden'
+        and error['loc'] == ['body', 'internal_score']
+        for error in response.json()['detail']
+    )
+    assert llm.calls == 0
+    assert db_session.scalar(select(func.count()).select_from(World)) == before_worlds
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
 def test_draft_world_from_brief_requires_login(client):
     response = client.post('/worlds/draft-from-brief', json={'brief': '一个所有人出生时都会被分配死因的王国'})
 
