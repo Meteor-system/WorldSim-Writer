@@ -129,6 +129,10 @@ class ChapterExecutionContext(BaseModel):
     style_handbook_reference: ExecutionContextStyleHandbookReference | None = None
 
 
+class EmptyNarrativeMutationRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+
 class DraftRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 

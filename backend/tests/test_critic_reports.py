@@ -19,6 +19,9 @@ CRITIC_DIMENSIONS = [
 
 
 class CriticReportLLMClient:
+    def __init__(self):
+        self.critic_report_calls = 0
+
     def generate_chapter(self, messages):
         return ChapterGeneration(
             title='第一章 雨巷密谈',
@@ -34,6 +37,7 @@ class CriticReportLLMClient:
         )
 
     def generate_critic_report(self, messages):
+        self.critic_report_calls += 1
         return {
             'overall_score': 78,
             'summary': '章节冲突清晰，但第二段信息揭示偏快，对白可更有潜台词。',
@@ -110,8 +114,8 @@ def register_and_create_world(client):
     return token, world['id']
 
 
-def create_reviewing_draft(client, token, world_id, monkeypatch):
-    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: CriticReportLLMClient())
+def create_reviewing_draft(client, token, world_id, monkeypatch, llm_client=None):
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm_client or CriticReportLLMClient())
     response = client.post(
         f'/worlds/{world_id}/chapters/draft',
         json={'chapter_goal': '推进雨巷密谈'},
@@ -151,6 +155,29 @@ def test_post_critic_report_generates_structured_report_without_mutating_world(c
     assert world.world_version == 1
     assert chapter.critique_report['draft_version'] == 1
     assert chapter.critique_report['overall_score'] == 78
+    assert event_types == ['WORLD_CREATED']
+
+
+def test_critic_report_rejects_extra_body_fields_without_side_effects(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    llm_client = CriticReportLLMClient()
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch, llm_client)
+    assert llm_client.critic_report_calls == 0
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/critic-report",
+        json={'raw_text': 'critic report endpoint must not accept runtime source text'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert llm_client.critic_report_calls == 0
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    event_types = list(db_session.scalars(select(EventLog.event_type).where(EventLog.world_id == world_id).order_by(EventLog.id)))
+    assert world.world_version == 1
+    assert chapter.critique_report == {}
     assert event_types == ['WORLD_CREATED']
 
 

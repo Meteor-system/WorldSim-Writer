@@ -1,5 +1,6 @@
 from sqlalchemy import func, select
 
+from app.event.models import EventLog
 from app.llm.schemas import (
     BeatCard,
     ChapterGeneration,
@@ -118,6 +119,15 @@ class PipelineLLMClient:
         return fake_critique()
 
 
+class CountingPipelineLLMClient(PipelineLLMClient):
+    def __init__(self):
+        self.critique_calls = 0
+
+    def critique_chapter(self, messages):
+        self.critique_calls += 1
+        return super().critique_chapter(messages)
+
+
 def test_create_chapter_session_requires_login_and_sets_base_world_version(client):
     token, world_id = register_and_create_world(client)
 
@@ -213,6 +223,32 @@ def test_critique_requires_draft_and_persists_report(client, db_session, monkeyp
     assert payload['critique_report']['issues'][0]['category'] == 'character_voice'
     chapter = db_session.get(Chapter, chapter_id)
     assert chapter.critique_report['consistency_check']['world_rule_adherence'] == 'pass'
+
+
+def test_critique_rejects_extra_body_fields_without_side_effects(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    llm_client = CountingPipelineLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm_client)
+    client.post(f'/chapters/{chapter_id}/outline', headers=auth(token), json={})
+    client.post(f'/chapters/{chapter_id}/write', headers=auth(token), json={})
+    assert llm_client.critique_calls == 0
+
+    response = client.post(
+        f'/chapters/{chapter_id}/critique',
+        headers=auth(token),
+        json={'raw_text': 'critique endpoint must not accept runtime source text'},
+    )
+
+    assert response.status_code == 422
+    assert llm_client.critique_calls == 0
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, chapter_id)
+    event_types = list(db_session.scalars(select(EventLog.event_type).where(EventLog.world_id == world_id).order_by(EventLog.id)))
+    assert world.world_version == 1
+    assert chapter.critique_report == {}
+    assert event_types == ['WORLD_CREATED']
 
 
 def test_archived_world_rejects_pipeline_mutations(client, db_session, monkeypatch):

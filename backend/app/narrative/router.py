@@ -17,6 +17,7 @@ from app.narrative.schemas import (
     DraftRequest,
     DraftResponse,
     EditDraftRequest,
+    EmptyNarrativeMutationRequest,
     OutlineRequest,
     OutlineResponse,
     ParagraphDraftRequest,
@@ -100,6 +101,7 @@ def write(
 @router.post('/chapters/{chapter_id}/critique', response_model=CritiqueResponse)
 def critique(
     chapter_id: int,
+    _payload: EmptyNarrativeMutationRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> CritiqueResponse:
@@ -109,6 +111,7 @@ def critique(
 @router.post('/chapters/{chapter_id}/critic-report', response_model=CriticReportResponse)
 def create_critic_report(
     chapter_id: int,
+    _payload: EmptyNarrativeMutationRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> CriticReportResponse:
@@ -127,6 +130,7 @@ def read_critic_report(
 @router.post('/chapters/{chapter_id}/character-arc-report', response_model=CharacterArcReportResponse)
 def create_character_arc_report(
     chapter_id: int,
+    _payload: EmptyNarrativeMutationRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> CharacterArcReportResponse:

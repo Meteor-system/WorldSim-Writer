@@ -8,6 +8,9 @@ from app.world.models import World
 
 
 class CharacterArcReportLLMClient:
+    def __init__(self):
+        self.character_arc_report_calls = 0
+
     def generate_chapter(self, messages):
         return ChapterGeneration(
             title='第一章 雨巷密谈',
@@ -23,6 +26,7 @@ class CharacterArcReportLLMClient:
         )
 
     def generate_character_arc_report(self, messages):
+        self.character_arc_report_calls += 1
         return {
             'summary': '本章推动林砚从被动等待转向主动追查湿信来源。',
             'character_arcs': [
@@ -116,6 +120,29 @@ def test_post_character_arc_report_generates_structured_report_without_mutating_
     assert world.world_version == 1
     assert chapter.character_arc_report['draft_version'] == 1
     assert chapter.character_arc_report['character_arcs'][0]['character_id'] == 1
+    assert event_types == ['WORLD_CREATED']
+
+
+def test_character_arc_report_rejects_extra_body_fields_without_side_effects(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    llm_client = CharacterArcReportLLMClient()
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch, llm_client)
+    assert llm_client.character_arc_report_calls == 0
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/character-arc-report",
+        json={'raw_text': 'character arc report endpoint must not accept runtime source text'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert llm_client.character_arc_report_calls == 0
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    event_types = list(db_session.scalars(select(EventLog.event_type).where(EventLog.world_id == world_id).order_by(EventLog.id)))
+    assert world.world_version == 1
+    assert chapter.character_arc_report == {}
     assert event_types == ['WORLD_CREATED']
 
 

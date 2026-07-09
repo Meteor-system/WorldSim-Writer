@@ -40,6 +40,7 @@ import {
   generateCharacterArcReport,
   generateCriticReport,
   generateStoryArc,
+  critiqueChapter,
   getApprovalPreview,
   getCharacterArcReport,
   getChapterHistory,
@@ -1754,7 +1755,10 @@ describe('draft versioning API helpers', () => {
       .mockResolvedValueOnce(jsonResponse({ overall_score: 78 }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await generateCriticReport(11);
+    await (generateCriticReport as unknown as (chapterId: number, data: unknown) => ReturnType<typeof generateCriticReport>)(
+      11,
+      { raw_text: 'Critic 报告请求不应发送原文。' },
+    );
     await getCriticReport(11);
 
     expect(fetchMock).toHaveBeenNthCalledWith(
@@ -1763,6 +1767,23 @@ describe('draft versioning API helpers', () => {
       expect.objectContaining({ method: 'POST', body: '{}' }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8000/chapters/11/critic-report', expect.any(Object));
+  });
+
+  it('sends only an empty body for legacy critique requests', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ status: 'reviewing' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await (critiqueChapter as unknown as (chapterId: number, data: unknown) => ReturnType<typeof critiqueChapter>)(
+      11,
+      { raw_text: 'Legacy critique 请求不应发送原文。' },
+    );
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:8000/chapters/11/critique',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
+    );
+    expect(JSON.parse(fetchMock.mock.calls[0][1]?.body as string).raw_text).toBeUndefined();
   });
 
   it('falls back to the legacy critique endpoint when critic-report is not available', async () => {
@@ -1789,6 +1810,7 @@ describe('draft versioning API helpers', () => {
       'http://localhost:8000/chapters/11/critique',
       expect.objectContaining({ method: 'POST', body: '{}' }),
     );
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string).raw_text).toBeUndefined();
     expect(report.overall_score).toBe(84);
     expect(report.issues[0]).toMatchObject({ severity: 'medium', dimension: 'character_voice', message: '沈微霜台词可以更克制。' });
   });
@@ -1800,7 +1822,10 @@ describe('draft versioning API helpers', () => {
       .mockResolvedValueOnce(jsonResponse({ summary: '角色弧线推进清晰。' }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await generateCharacterArcReport(11);
+    await (generateCharacterArcReport as unknown as (chapterId: number, data: unknown) => ReturnType<typeof generateCharacterArcReport>)(
+      11,
+      { raw_text: '角色弧线报告请求不应发送原文。' },
+    );
     await getCharacterArcReport(11);
 
     expect(fetchMock).toHaveBeenNthCalledWith(
