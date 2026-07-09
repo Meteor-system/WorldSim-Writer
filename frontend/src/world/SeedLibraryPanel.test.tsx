@@ -1,4 +1,4 @@
-﻿import '@testing-library/jest-dom/vitest';
+import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -18,6 +18,12 @@ const seeds: WorldSeedSummary[] = [
       foreshadow_count: 1,
       character_names: ['沈昼', '陆鸦'],
       foreshadow_titles: ['空白日晷'],
+    },
+    starter_guidance: {
+      first_chapter_goal: '确认空白日晷为何没有影子。',
+      protagonist_relationships: ['沈昼与陆鸦围绕太阳禁忌互相试探。'],
+      foreshadow_pressure: ['空白日晷需要在开篇建立危险感。'],
+      story_health_hints: ['确认前不写入正史，只作为开篇参考。'],
     },
   },
 ];
@@ -46,6 +52,8 @@ describe('SeedLibraryPanel', () => {
     expect(screen.getByText('集体失忆')).toBeInTheDocument();
     expect(screen.getByText('角色 2 · 关系 1 · 伏笔 1')).toBeInTheDocument();
     expect(screen.getByText('角色：沈昼、陆鸦')).toBeInTheDocument();
+    expect(screen.getByText('首章目标：确认空白日晷为何没有影子。')).toBeInTheDocument();
+    expect(screen.getByText(/故事健康：确认前不写入正史，只作为开篇参考。/)).toBeInTheDocument();
     expect(screen.getByText('当前套用中')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '套用到表单' }));

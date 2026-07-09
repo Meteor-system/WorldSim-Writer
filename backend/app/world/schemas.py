@@ -1,4 +1,4 @@
-﻿from typing import Any
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -137,6 +137,13 @@ class WorldResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class WorldSeedStarterGuidance(BaseModel):
+    first_chapter_goal: str
+    protagonist_relationships: list[str] = Field(default_factory=list)
+    foreshadow_pressure: list[str] = Field(default_factory=list)
+    story_health_hints: list[str] = Field(default_factory=list)
+
+
 class WorldSeedSummary(BaseModel):
     key: str
     label: str
@@ -144,6 +151,7 @@ class WorldSeedSummary(BaseModel):
     hook: str
     tension_profile: list[str]
     starter_summary: dict[str, Any]
+    starter_guidance: WorldSeedStarterGuidance
 
 
 class WorldSeedDetail(WorldSeedSummary):

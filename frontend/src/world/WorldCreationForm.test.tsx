@@ -1,4 +1,4 @@
-﻿import '@testing-library/jest-dom/vitest';
+import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -14,6 +14,12 @@ const seedSummary: WorldSeedSummary = {
   hook: '所有人都忘记太阳存在过。',
   tension_profile: ['集体失忆'],
   starter_summary: { character_count: 1, relation_count: 0, foreshadow_count: 1, character_names: ['沈昼'], foreshadow_titles: ['空白日晷'] },
+  starter_guidance: {
+    first_chapter_goal: '让沈昼围绕“空白日晷”展开第一次主动行动。',
+    protagonist_relationships: ['沈昼 ↔ 陆鸦：相互猜疑，张力 4/5。'],
+    foreshadow_pressure: ['空白日晷：紧迫度 4/5，建议在第3-6章前持续制造压力。'],
+    story_health_hints: ['首章优先让世界规则通过沈昼的选择显影。', '这些提示只是创建前参考；确认前不写入正史。'],
+  },
 };
 
 const draftPayload: WorldCreateRequest = {
@@ -49,6 +55,9 @@ describe('WorldCreationForm', () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     const onCreateSample = vi.fn().mockResolvedValue(undefined);
     render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={onCreateSample} />);
+
+    expect(screen.getByLabelText('Fantasy 初始故事提示')).toHaveTextContent('首章目标');
+    expect(screen.getByLabelText('Fantasy 初始故事提示')).toHaveTextContent('伏笔压力');
 
     await user.clear(screen.getByLabelText('世界标题'));
     await user.type(screen.getByLabelText('世界标题'), '自定义群星边境');
@@ -245,6 +254,9 @@ describe('WorldCreationForm', () => {
         onCreateSeed={vi.fn()}
       />,
     );
+
+    expect(screen.getByLabelText('无日城 初始故事提示')).toHaveTextContent('让沈昼围绕“空白日晷”展开第一次主动行动。');
+    expect(screen.getByLabelText('无日城 初始故事提示')).toHaveTextContent('确认前不写入正史');
 
     await user.click(screen.getByRole('button', { name: '套用到表单' }));
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));

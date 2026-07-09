@@ -1,4 +1,4 @@
-import type { WorldCreateRequest } from '../api/types';
+import type { WorldCreateRequest, WorldSeedStarterGuidance } from '../api/types';
 
 export type GenrePreset = WorldCreateRequest & {
   key: string;
@@ -137,6 +137,41 @@ export const GENRE_PRESETS: GenrePreset[] = [
     },
   },
 ];
+
+const RELATION_LABELS: Record<string, string> = {
+  mutual_suspicion: '相互猜疑',
+  public_opponents: '公开对立',
+  enemy: '敌对',
+  rival: '竞争',
+  mentor: '师徒',
+  ally: '盟友',
+  strained_alliance: '貌合神离的同盟',
+};
+
+function characterName(payload: WorldCreateRequest, index: number): string {
+  return payload.starter_assets.characters[index]?.name ?? `角色${index + 1}`;
+}
+
+export function starterGuidanceFromPayload(payload: WorldCreateRequest): WorldSeedStarterGuidance {
+  const protagonist = payload.starter_assets.characters.find((character) => character.role_type === 'protagonist') ?? payload.starter_assets.characters[0];
+  const protagonistName = protagonist?.name ?? '主角';
+  const protagonistGoal = protagonist?.current_goals?.[0] ?? '确认世界核心异常';
+  const primaryForeshadow = payload.starter_assets.foreshadows?.[0];
+  return {
+    first_chapter_goal: `让${protagonistName}围绕“${primaryForeshadow?.title ?? payload.title}”展开第一次主动行动，并推进目标：${protagonistGoal}。`,
+    protagonist_relationships: (payload.starter_assets.relations ?? []).map(
+      (relation) => `${characterName(payload, relation.source_index)} ↔ ${characterName(payload, relation.target_index)}：${RELATION_LABELS[relation.relation_type] ?? relation.relation_type}，张力 ${relation.intensity ?? 1}/5。`,
+    ),
+    foreshadow_pressure: (payload.starter_assets.foreshadows ?? []).map(
+      (foreshadow) => `${foreshadow.title}：紧迫度 ${foreshadow.urgency_level ?? 1}/5，建议在${foreshadow.expected_resolution_window ?? '前几章'}前持续制造压力。`,
+    ),
+    story_health_hints: [
+      `首章优先让世界规则通过${protagonistName}的选择显影，避免只介绍设定。`,
+      `当前模板起步包含 ${payload.starter_assets.characters.length} 个角色、${payload.starter_assets.relations?.length ?? 0} 条关系、${payload.starter_assets.foreshadows?.length ?? 0} 个伏笔，适合先聚焦一个核心冲突。`,
+      '这些提示只是创建前参考；创建世界后章节仍需进入 Studio 审稿，确认前不写入正史。',
+    ],
+  };
+}
 
 export function clonePreset(preset: GenrePreset): WorldCreateRequest {
   return JSON.parse(JSON.stringify({

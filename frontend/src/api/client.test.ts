@@ -1,4 +1,4 @@
-﻿import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   checkApprovalConsistency,
   compareWorldSnapshots,
@@ -207,6 +207,12 @@ describe('world creation API helpers', () => {
         hook: '所有人都忘记太阳存在过。',
         tension_profile: ['集体失忆'],
         starter_summary: { character_count: 2 },
+        starter_guidance: {
+          first_chapter_goal: '让沈昼围绕“空白日晷”展开第一次主动行动。',
+          protagonist_relationships: ['沈昼 ↔ 陆鸦：相互猜疑，张力 4/5。'],
+          foreshadow_pressure: ['空白日晷：紧迫度 4/5，建议在第3-6章前持续制造压力。'],
+          story_health_hints: ['确认前不写入正史。'],
+        },
         payload: {
           title: '无日城',
           genre_template: 'weird_fantasy',
@@ -226,6 +232,7 @@ describe('world creation API helpers', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(3, 'http://localhost:8000/worlds/from-seed/forgotten-sun-city', expect.objectContaining({ method: 'POST', body: '{}' }));
     expect(list.seeds[0].key).toBe('forgotten-sun-city');
     expect(detail.payload.title).toBe('无日城');
+    expect(detail.starter_guidance.first_chapter_goal).toContain('空白日晷');
     expect(created.id).toBe(9);
   });
 });

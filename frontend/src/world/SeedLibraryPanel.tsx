@@ -1,4 +1,4 @@
-﻿import type { WorldSeedSummary } from '../api/types';
+import type { WorldSeedSummary } from '../api/types';
 
 type Props = {
   seeds: WorldSeedSummary[];
@@ -67,6 +67,13 @@ export function SeedLibraryPanel({ seeds, selectedSeedKey, loading, error, onApp
               <p className="mt-3 text-sm font-bold text-[#5e3b1c]">{countText(seed)}</p>
               {characterNames.length > 0 && <p className="manuscript mt-2 text-xs">角色：{characterNames.join('、')}</p>}
               {foreshadowTitles.length > 0 && <p className="manuscript mt-1 text-xs">伏笔：{foreshadowTitles.join('、')}</p>}
+              <div className="mt-3 rounded-2xl bg-amber-50/75 p-3 text-xs text-[#5e3b1c]" aria-label={`${seed.label} 初始故事提示`}>
+                <p className="font-black text-[#3b2511]">首章目标：{seed.starter_guidance.first_chapter_goal}</p>
+                {seed.starter_guidance.protagonist_relationships.length > 0 && <p className="mt-2">主角关系：{seed.starter_guidance.protagonist_relationships[0]}</p>}
+                {seed.starter_guidance.foreshadow_pressure.length > 0 && <p className="mt-1">伏笔压力：{seed.starter_guidance.foreshadow_pressure[0]}</p>}
+                {seed.starter_guidance.story_health_hints.length > 0 && <p className="mt-1 font-bold">故事健康：{seed.starter_guidance.story_health_hints[0]}</p>}
+                <p className="mt-2 font-bold">只读模板提示；创建后章节仍需进入 Studio 审稿，确认前不写入正史。</p>
+              </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {seed.tension_profile.map((tag) => (
                   <span key={tag} className="rounded-full border border-amber-900/15 bg-amber-50/70 px-3 py-1 text-xs font-bold text-[#5e3b1c]">{tag}</span>

@@ -247,6 +247,54 @@ WORLD_SEEDS = [
 ]
 
 
+_RELATION_LABELS = {
+    'mutual_suspicion': '相互猜疑',
+    'public_opponents': '公开对立',
+    'enemy': '敌对',
+    'rival': '竞争',
+    'mentor': '师徒',
+    'ally': '盟友',
+    'strained_alliance': '貌合神离的同盟',
+}
+
+
+def _character_name(characters: list[dict], index: int) -> str:
+    if index < 0 or index >= len(characters):
+        return f'角色{index + 1}'
+    return characters[index].get('name') or f'角色{index + 1}'
+
+
+def _starter_guidance(payload: dict) -> dict:
+    starter_assets = payload['starter_assets']
+    characters = starter_assets.get('characters') or []
+    relations = starter_assets.get('relations') or []
+    foreshadows = starter_assets.get('foreshadows') or []
+    protagonist = next((character for character in characters if character.get('role_type') == 'protagonist'), characters[0] if characters else {})
+    protagonist_name = protagonist.get('name') or '主角'
+    protagonist_goal = (protagonist.get('current_goals') or ['确认世界核心异常'])[0]
+    primary_foreshadow = foreshadows[0] if foreshadows else {'title': payload['title'], 'urgency_level': 3, 'expected_resolution_window': '第2-4章'}
+    first_chapter_goal = f'让{protagonist_name}围绕“{primary_foreshadow.get("title")}”展开第一次主动行动，并推进目标：{protagonist_goal}。'
+    protagonist_relationships = [
+        f'{_character_name(characters, relation.get("source_index", 0))} ↔ {_character_name(characters, relation.get("target_index", 0))}：{_RELATION_LABELS.get(relation.get("relation_type"), relation.get("relation_type", "关系张力"))}，张力 {relation.get("intensity", 1)}/5。'
+        for relation in relations
+    ]
+    foreshadow_pressure = [
+        f'{foreshadow.get("title")}：紧迫度 {foreshadow.get("urgency_level", 1)}/5，建议在{foreshadow.get("expected_resolution_window") or "前几章"}前持续制造压力。'
+        for foreshadow in foreshadows
+    ]
+    story_health_hints = [
+        f'首章优先让世界规则通过{protagonist_name}的选择显影，避免只介绍设定。',
+        f'当前模板起步包含 {len(characters)} 个角色、{len(relations)} 条关系、{len(foreshadows)} 个伏笔，适合先聚焦一个核心冲突。',
+        '这些提示只是创建前参考；创建世界后章节仍需进入 Studio 审稿，确认前不写入正史。',
+    ]
+    return {
+        'first_chapter_goal': first_chapter_goal,
+        'protagonist_relationships': protagonist_relationships,
+        'foreshadow_pressure': foreshadow_pressure,
+        'story_health_hints': story_health_hints,
+    }
+
+
 def seed_summary(seed: dict) -> dict:
     payload = seed['payload']
     starter_assets = payload['starter_assets']
@@ -263,6 +311,7 @@ def seed_summary(seed: dict) -> dict:
             'character_names': [item['name'] for item in starter_assets['characters']],
             'foreshadow_titles': [item['title'] for item in starter_assets.get('foreshadows') or []],
         },
+        'starter_guidance': _starter_guidance(payload),
     }
 
 

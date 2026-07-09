@@ -1,4 +1,4 @@
-﻿import type { FormEvent } from 'react';
+import type { FormEvent } from 'react';
 import { useState } from 'react';
 import type {
   StarterCharacterCreate,
@@ -11,7 +11,7 @@ import type {
   WorldSeedDetail,
   WorldSeedSummary,
 } from '../api/types';
-import { clonePreset, GENRE_PRESETS } from './genrePresets';
+import { clonePreset, GENRE_PRESETS, starterGuidanceFromPayload } from './genrePresets';
 import { SeedLibraryPanel } from './SeedLibraryPanel';
 
 type Props = {
@@ -437,19 +437,28 @@ export function WorldCreationForm({
       ) : null}
 
       <section className="mt-8 grid gap-3 md:grid-cols-3">
-        {GENRE_PRESETS.map((preset) => (
-          <button
-            key={preset.key}
-            type="button"
-            onClick={() => selectPreset(preset.key)}
-            className={`book-card p-4 text-left transition ${
-              selectedPresetKey === preset.key ? 'border-amber-900 bg-amber-100/70' : 'hover:bg-amber-50'
-            }`}
-          >
-            <span className="text-lg font-black text-[#3b2511]">{preset.label}</span>
-            <p className="mt-2 text-sm ink-muted">{preset.description}</p>
-          </button>
-        ))}
+        {GENRE_PRESETS.map((preset) => {
+          const guidance = starterGuidanceFromPayload(preset);
+          return (
+            <button
+              key={preset.key}
+              type="button"
+              onClick={() => selectPreset(preset.key)}
+              className={`book-card p-4 text-left transition ${
+                selectedPresetKey === preset.key ? 'border-amber-900 bg-amber-100/70' : 'hover:bg-amber-50'
+              }`}
+            >
+              <span className="text-lg font-black text-[#3b2511]">{preset.label}</span>
+              <p className="mt-2 text-sm ink-muted">{preset.description}</p>
+              <div className="mt-3 rounded-2xl bg-amber-50/75 p-3 text-xs text-[#5e3b1c]" aria-label={`${preset.label} 初始故事提示`}>
+                <p className="font-black text-[#3b2511]">首章目标：{guidance.first_chapter_goal}</p>
+                {guidance.protagonist_relationships.length > 0 && <p className="mt-2">主角关系：{guidance.protagonist_relationships[0]}</p>}
+                {guidance.foreshadow_pressure.length > 0 && <p className="mt-1">伏笔压力：{guidance.foreshadow_pressure[0]}</p>}
+                <p className="mt-1 font-bold">故事健康：{guidance.story_health_hints[0]}</p>
+              </div>
+            </button>
+          );
+        })}
       </section>
 
       <section className="book-card mt-8 grid gap-4 p-5 md:grid-cols-2">

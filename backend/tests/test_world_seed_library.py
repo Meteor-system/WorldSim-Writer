@@ -1,3 +1,9 @@
+from sqlalchemy import func, select
+
+from app.event.models import EventLog
+from app.world.models import World
+
+
 def register(client, email='seed@example.com'):
     response = client.post('/auth/register', json={'email': email, 'password': 'strongpass123'})
     return response.json()['access_token']
@@ -7,7 +13,7 @@ def auth(token):
     return {'Authorization': f'Bearer {token}'}
 
 
-def test_world_seed_catalog_lists_official_seeds(client):
+def test_world_seed_catalog_lists_official_seeds_without_creating_worlds(client, db_session):
     token = register(client)
 
     response = client.get('/worlds/seeds', headers=auth(token))
@@ -23,6 +29,12 @@ def test_world_seed_catalog_lists_official_seeds(client):
     assert first['hook']
     assert first['tension_profile']
     assert first['starter_summary']['character_count'] >= 1
+    assert first['starter_guidance']['first_chapter_goal']
+    assert first['starter_guidance']['protagonist_relationships']
+    assert first['starter_guidance']['foreshadow_pressure']
+    assert '确认前不写入正史' in first['starter_guidance']['story_health_hints'][-1]
+    assert db_session.scalar(select(func.count()).select_from(World)) == 0
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == 0
 
 
 def test_world_seed_detail_returns_creation_payload(client):
@@ -36,6 +48,8 @@ def test_world_seed_detail_returns_creation_payload(client):
     assert payload['payload']['title'] == '无日城'
     assert payload['payload']['starter_assets']['characters'][0]['name'] == '沈昼'
     assert payload['payload']['starter_assets']['foreshadows'][0]['title'] == '空白日晷'
+    assert '沈昼' in payload['starter_guidance']['first_chapter_goal']
+    assert payload['starter_guidance']['foreshadow_pressure'][0].startswith('空白日晷')
 
 
 def test_create_world_from_seed_uses_formal_world_creation_pipeline(client):

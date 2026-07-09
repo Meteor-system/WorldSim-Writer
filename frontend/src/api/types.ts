@@ -1,4 +1,4 @@
-﻿export type User = { id: number; email: string };
+export type User = { id: number; email: string };
 export type AuthResponse = { access_token: string; token_type: string; user: User };
 
 export type Character = {
@@ -218,6 +218,13 @@ export type WorldCreationDraftResponse = {
   style_handbook_reference?: StyleHandbookReference | null;
 };
 
+export type WorldSeedStarterGuidance = {
+  first_chapter_goal: string;
+  protagonist_relationships: string[];
+  foreshadow_pressure: string[];
+  story_health_hints: string[];
+};
+
 export type WorldSeedSummary = {
   key: string;
   label: string;
@@ -225,6 +232,7 @@ export type WorldSeedSummary = {
   hook: string;
   tension_profile: string[];
   starter_summary: Record<string, unknown>;
+  starter_guidance: WorldSeedStarterGuidance;
 };
 
 export type WorldSeedDetail = WorldSeedSummary & {

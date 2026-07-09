@@ -1,4 +1,4 @@
-﻿import '@testing-library/jest-dom/vitest';
+import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -223,6 +223,12 @@ beforeEach(() => {
         hook: '所有人都忘记太阳存在过。',
         tension_profile: ['集体失忆'],
         starter_summary: { character_count: 1, relation_count: 0, foreshadow_count: 1, character_names: ['沈昼'], foreshadow_titles: ['空白日晷'] },
+        starter_guidance: {
+          first_chapter_goal: '确认空白日晷为何没有影子。',
+          protagonist_relationships: ['沈昼独自追查太阳禁忌。'],
+          foreshadow_pressure: ['空白日晷需要在开篇建立危险感。'],
+          story_health_hints: ['确认前不写入正史，只作为开篇参考。'],
+        },
       },
     ],
   });
@@ -268,6 +274,12 @@ beforeEach(() => {
     hook: '所有人都忘记太阳存在过。',
     tension_profile: ['集体失忆'],
     starter_summary: { character_count: 1, relation_count: 0, foreshadow_count: 1, character_names: ['沈昼'], foreshadow_titles: ['空白日晷'] },
+    starter_guidance: {
+      first_chapter_goal: '确认空白日晷为何没有影子。',
+      protagonist_relationships: ['沈昼独自追查太阳禁忌。'],
+      foreshadow_pressure: ['空白日晷需要在开篇建立危险感。'],
+      story_health_hints: ['确认前不写入正史，只作为开篇参考。'],
+    },
     payload: {
       title: '无日城',
       genre_template: 'weird_fantasy',
