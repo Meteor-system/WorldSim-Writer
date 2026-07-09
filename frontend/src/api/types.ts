@@ -547,6 +547,8 @@ export type ImportMaterialReferenceResponse = {
   safety_note: string;
 };
 
+export type ChapterMaterialReference = Omit<ImportMaterialReferenceResponse, 'raw_text'>;
+
 export type ImportBatchResponse = {
   id: number;
   world_id: number;
@@ -603,7 +605,7 @@ export type ChapterExecutionContext = {
   progression_hints: ChapterProgressionHint[];
   continuity_warnings: NextChapterPrepWarning[];
   recent_events: Array<Omit<NextChapterPrepEvent, 'payload'>>;
-  material_references: ImportMaterialReferenceResponse[];
+  material_references: ChapterMaterialReference[];
   style_handbook_reference?: StyleHandbookReference | null;
 };
 

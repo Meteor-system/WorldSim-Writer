@@ -54,12 +54,13 @@ class ExecutionContextRecentEvent(BaseModel):
 
 
 class ExecutionContextMaterialReference(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     asset_id: int
     batch_id: int
     asset_pool: str
     title: str
     summary: str
-    raw_text: str
     source_title: str
     source_type: str
     created_at: str

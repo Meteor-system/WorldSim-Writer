@@ -282,6 +282,45 @@ def test_direct_draft_rejects_stale_execution_context_before_model_call(client, 
     assert llm.messages == []
 
 
+def test_direct_draft_rejects_raw_text_material_reference_before_model_call(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client, 'raw-material-direct-context@example.com')
+    context = sample_execution_context()
+    context['material_references'] = [
+        {
+            'asset_id': 7,
+            'batch_id': 3,
+            'asset_pool': 'inspiration',
+            'title': '雾港钟楼候选素材',
+            'summary': '钟楼倒敲十三次后，城内记忆出现错位。',
+            'raw_text': '原文不应进入章节执行上下文素材引用。',
+            'source_title': '导入片段',
+            'source_type': 'pasted_text',
+            'created_at': '2026-05-30T00:00:00Z',
+            'safety_note': '导入素材参考只用于创作提示，不会自动改写正式 canon。',
+        }
+    ]
+    llm = CapturingLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+    before_chapters = db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+
+    response = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': context['goal'], 'execution_context': context},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden'
+        and error['loc'] == ['body', 'execution_context', 'material_references', 0, 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert llm.messages == []
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
 def test_direct_draft_rejects_raw_text_style_reference_before_model_call(client, db_session, monkeypatch):
     token, world_id = register_and_create_world(client, 'raw-style-direct-context@example.com')
     context = sample_execution_context()

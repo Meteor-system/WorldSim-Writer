@@ -8,6 +8,7 @@ import type {
   ChapterHistoryDetailResponse,
   ChapterExecutionContext,
   ChapterHistoryResponse,
+  ChapterMaterialReference,
   ChapterPipelineResponse,
   Character,
   CharacterArcReportResponse,
@@ -132,6 +133,20 @@ function cleanWorldCreationMaterialReferences(
       ...(reference.source_rights !== undefined ? { source_rights: reference.source_rights ?? null } : {}),
     }))
     .filter((reference) => reference.title.trim() && reference.summary.trim());
+}
+
+function cleanChapterMaterialReference(reference: ChapterMaterialReference): ChapterMaterialReference {
+  return {
+    asset_id: reference.asset_id,
+    batch_id: reference.batch_id,
+    asset_pool: reference.asset_pool,
+    title: reference.title,
+    summary: reference.summary,
+    source_title: reference.source_title,
+    source_type: reference.source_type,
+    created_at: reference.created_at,
+    safety_note: reference.safety_note,
+  };
 }
 
 function cleanStyleHandbookDimension(
@@ -327,10 +342,13 @@ export function listWorldImports(worldId: number) {
 /* ── Narrative pipeline ── */
 
 export function createChapter(worldId: number, data: { chapter_goal: string; title?: string; execution_context?: ChapterExecutionContext }) {
-  const executionContext = data.execution_context?.style_handbook_reference
+  const executionContext = data.execution_context
     ? {
         ...data.execution_context,
-        style_handbook_reference: cleanStyleHandbookReference(data.execution_context.style_handbook_reference),
+        material_references: (data.execution_context.material_references ?? []).map(cleanChapterMaterialReference),
+        ...(data.execution_context.style_handbook_reference
+          ? { style_handbook_reference: cleanStyleHandbookReference(data.execution_context.style_handbook_reference) }
+          : {}),
       }
     : data.execution_context;
   return apiRequest<ChapterPipelineResponse>(`/worlds/${worldId}/chapters`, {

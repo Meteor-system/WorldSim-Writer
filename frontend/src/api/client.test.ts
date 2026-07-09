@@ -705,6 +705,61 @@ describe('draft versioning API helpers', () => {
     vi.restoreAllMocks();
   });
 
+  it('sends only allowed material reference fields in chapter execution context', async () => {
+    const expectedMaterialReferences: ChapterExecutionContext['material_references'] = [
+      {
+        asset_id: 42,
+        batch_id: 7,
+        asset_pool: 'inspiration',
+        title: '雾港钟楼候选素材',
+        summary: '钟楼倒敲十三次后，城内记忆出现错位。',
+        source_title: '导入片段',
+        source_type: 'pasted_text',
+        created_at: '2026-05-30T00:00:00Z',
+        safety_note: '导入素材参考只用于创作提示，不会自动改写正式 canon。',
+      },
+    ];
+    const executionContext: ChapterExecutionContext = {
+      source: 'manual',
+      source_world_version: 1,
+      next_chapter_number: 1,
+      goal: '让许砚第一次听见跃迁灯塔低鸣。',
+      recommended_pov: { character_id: null, name: '许砚' },
+      source_signals: ['首章目标'],
+      priority_characters: [],
+      priority_foreshadows: [],
+      progression_hints: [],
+      continuity_warnings: [],
+      recent_events: [],
+      material_references: [
+        {
+          ...expectedMaterialReferences[0],
+          raw_text: '原文不应进入章节上下文请求。',
+          internal_score: 0.9,
+        },
+      ] as unknown as ChapterExecutionContext['material_references'],
+      style_handbook_reference: null,
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ id: 11, execution_context: null }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createChapter(7, { chapter_goal: '生成第一章草稿', execution_context: executionContext });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/worlds/7/chapters',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          chapter_goal: '生成第一章草稿',
+          execution_context: {
+            ...executionContext,
+            material_references: expectedMaterialReferences,
+          },
+        }),
+      }),
+    );
+  });
+
   it('sends only allowed style handbook reference fields in chapter execution context', async () => {
     const expectedStyleHandbookReference: StyleHandbookReference = {
       source_title: '公版海洋小说片段',
