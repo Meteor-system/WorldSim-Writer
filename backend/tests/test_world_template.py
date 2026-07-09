@@ -218,6 +218,18 @@ def test_create_custom_world_rejects_extra_fields_without_side_effects(client, d
     response = client.post('/worlds', headers=auth(token), json=payload)
 
     assert response.status_code == 422
+    extra_forbidden_locs = {
+        tuple(error['loc'])
+        for error in response.json()['detail']
+        if error['type'] == 'extra_forbidden'
+    }
+    assert {
+        ('body', 'raw_text'),
+        ('body', 'starter_assets', 'raw_text'),
+        ('body', 'starter_assets', 'characters', 0, 'internal_score'),
+        ('body', 'starter_assets', 'relations', 0, 'raw_text'),
+        ('body', 'starter_assets', 'foreshadows', 0, 'first_chapter_goal'),
+    } <= extra_forbidden_locs
     assert db_session.scalar(select(func.count()).select_from(World)) == before_worlds
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
 
