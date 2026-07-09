@@ -5,6 +5,7 @@ from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
 from app.snapshot_export.schemas import (
+    EmptyMarkdownExportRequest,
     WorldMarkdownExportResponse,
     WorldSnapshotCompareResponse,
     WorldSnapshotCreate,
@@ -61,6 +62,7 @@ def compare_snapshots(
 @router.post('/worlds/{world_id}/export/markdown', response_model=WorldMarkdownExportResponse)
 def export_markdown(
     world_id: int,
+    _payload: EmptyMarkdownExportRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> WorldMarkdownExportResponse:

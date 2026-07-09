@@ -11,6 +11,10 @@ class WorldSnapshotCreate(BaseModel):
     note: str | None = None
 
 
+class EmptyMarkdownExportRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+
 class WorldSnapshotSummary(BaseModel):
     id: int
     world_id: int

@@ -1850,7 +1850,10 @@ describe('draft versioning API helpers', () => {
     await getChapterHistoryDetail(11);
     await getNextChapterPrep(7);
     await getForeshadowLedger(7);
-    await exportWorldArchiveMarkdown(7);
+    await (exportWorldArchiveMarkdown as unknown as (worldId: number, data: unknown) => ReturnType<typeof exportWorldArchiveMarkdown>)(
+      7,
+      { raw_text: 'Markdown 导出请求不应发送原文。' },
+    );
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://localhost:8000/worlds/7/chapters/history', expect.any(Object));
     expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:8000/chapters/11/history', expect.any(Object));

@@ -127,6 +127,36 @@ def test_create_snapshot_rejects_extra_fields_without_side_effects(client, db_se
     assert after_event_ids == before_event_ids
 
 
+def test_markdown_export_rejects_extra_body_fields_without_side_effects(client, db_session):
+    token, world_id = register_and_create_world(client, 'markdown-export-extra@example.com')
+    before_world_version = db_session.get(World, world_id).world_version
+    before_snapshot_count = db_session.scalar(
+        select(func.count()).select_from(WorldSnapshot).where(WorldSnapshot.world_id == world_id)
+    )
+    before_event_ids = list(
+        db_session.scalars(select(EventLog.id).where(EventLog.world_id == world_id).order_by(EventLog.id))
+    )
+
+    response = client.post(
+        f'/worlds/{world_id}/export/markdown',
+        json={'raw_text': 'Markdown 导出请求不应接收运行时原文。'},
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 422
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    db_session.expire_all()
+    after_snapshot_count = db_session.scalar(
+        select(func.count()).select_from(WorldSnapshot).where(WorldSnapshot.world_id == world_id)
+    )
+    after_event_ids = list(
+        db_session.scalars(select(EventLog.id).where(EventLog.world_id == world_id).order_by(EventLog.id))
+    )
+    assert after_snapshot_count == before_snapshot_count
+    assert db_session.get(World, world_id).world_version == before_world_version
+    assert after_event_ids == before_event_ids
+
+
 def test_archived_world_rejects_snapshot_creation_but_allows_archive_reads(client, db_session):
     token, world_id = register_and_create_world(client, 'snapshot-archived@example.com')
     existing_snapshot = client.post(
