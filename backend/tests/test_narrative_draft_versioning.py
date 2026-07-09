@@ -8,6 +8,12 @@ from app.world.models import World
 
 
 class DraftVersioningLLMClient:
+    def __init__(self):
+        self.revision_calls = 0
+        self.paragraph_calls = 0
+        self.revision_messages = []
+        self.paragraph_messages = []
+
     def generate_chapter(self, messages):
         return ChapterGeneration(
             title='第一章 雨巷密谈',
@@ -23,6 +29,8 @@ class DraftVersioningLLMClient:
         )
 
     def revise_paragraph(self, messages):
+        self.paragraph_calls += 1
+        self.paragraph_messages = messages
         return type(
             'ParagraphRevisionResult',
             (),
@@ -33,6 +41,7 @@ class DraftVersioningLLMClient:
         )()
 
     def revise_chapter(self, messages):
+        self.revision_calls += 1
         self.revision_messages = messages
         joined = '\n'.join(message['content'] for message in messages)
         return ChapterGeneration(
@@ -211,6 +220,83 @@ def test_archived_world_rejects_draft_lifecycle_mutations(client, db_session, mo
     assert chapter.draft_version == 1
     assert [item.draft_version for item in drafts] == [1]
     assert drafts[0].content == draft['content']
+
+
+def test_draft_lifecycle_rejects_extra_body_fields_without_side_effects(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    fake_client = DraftVersioningLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: fake_client)
+
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    world = db_session.get(World, world_id)
+    drafts = get_drafts_for_chapter(db_session, draft['chapter_id'])
+    before_chapter_status = chapter.status
+    before_chapter_draft_version = chapter.draft_version
+    before_world_version = world.world_version
+    before_event_count = db_session.query(EventLog).filter_by(world_id=world_id).count()
+    before_draft_versions = [item.draft_version for item in drafts]
+    before_draft_contents = [item.content for item in drafts]
+
+    cases = [
+        (
+            client.post,
+            f"/chapters/{draft['chapter_id']}/reject",
+            {'feedback': '此处反馈应被额外字段拦截。', 'raw_text': 'reject raw payload'},
+        ),
+        (
+            client.put,
+            f"/chapters/{draft['chapter_id']}/draft",
+            {
+                'content': '第一段：这份手动改稿不应被保存，因为请求包含额外字段。',
+                'change_summary': '额外字段拒绝',
+                'raw_text': 'edit raw payload',
+            },
+        ),
+        (
+            client.post,
+            f"/chapters/{draft['chapter_id']}/draft/stash",
+            {'note': '此暂存不应创建版本。', 'raw_text': 'stash raw payload'},
+        ),
+        (
+            client.post,
+            f"/chapters/{draft['chapter_id']}/draft/revise",
+            {'instruction': '这次修订不应调用模型。', 'raw_text': 'revise raw payload'},
+        ),
+        (
+            client.post,
+            f"/chapters/{draft['chapter_id']}/draft/paragraph",
+            {
+                'paragraph_index': 1,
+                'mode': 'rewrite',
+                'instruction': '这次段落改写不应调用模型。',
+                'raw_text': 'paragraph raw payload',
+            },
+        ),
+    ]
+
+    for method, url, payload in cases:
+        response = method(url, json=payload, headers={'Authorization': f'Bearer {token}'})
+
+        assert response.status_code == 422
+        assert any(
+            error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text'
+            for error in response.json()['detail']
+        )
+
+        db_session.expire_all()
+        chapter = db_session.get(Chapter, draft['chapter_id'])
+        world = db_session.get(World, world_id)
+        drafts = get_drafts_for_chapter(db_session, draft['chapter_id'])
+
+        assert chapter.status == before_chapter_status
+        assert chapter.draft_version == before_chapter_draft_version
+        assert world.world_version == before_world_version
+        assert [item.draft_version for item in drafts] == before_draft_versions
+        assert [item.content for item in drafts] == before_draft_contents
+        assert db_session.query(EventLog).filter_by(world_id=world_id).count() == before_event_count
+        assert fake_client.revision_calls == 0
+        assert fake_client.paragraph_calls == 0
 
 
 def test_draft_diff_endpoint_returns_line_changes_between_versions(client, monkeypatch):
