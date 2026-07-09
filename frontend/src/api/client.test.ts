@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { WorldCreationMaterialReference } from './types';
+import type { ChapterExecutionContext, StyleHandbookReference, WorldCreationMaterialReference } from './types';
 import {
   checkApprovalConsistency,
   compareWorldSnapshots,
+  createChapter,
   createRelation,
   createSampleWorld,
   createWorld,
@@ -202,8 +203,8 @@ describe('world creation API helpers', () => {
     expect(result.material_references).toEqual(expectedMaterialReferences);
   });
 
-  it('passes a style handbook reference and variant count to one-sentence world draft generation', async () => {
-    const styleHandbookReference = {
+  it('sends only allowed style handbook reference fields to one-sentence world draft generation', async () => {
+    const expectedStyleHandbookReference: StyleHandbookReference = {
       source_title: '公版海洋小说片段',
       source_rights: 'public_domain' as const,
       handbook: {
@@ -220,6 +221,18 @@ describe('world creation API helpers', () => {
       },
       safety_notes: ['风格手册只是写作参考，不会写入 canon。'],
     };
+    const styleHandbookReference = {
+      ...expectedStyleHandbookReference,
+      raw_text: '原文不应进入一句话开书请求。',
+      handbook: {
+        ...expectedStyleHandbookReference.handbook,
+        narrative_pacing: {
+          ...expectedStyleHandbookReference.handbook.narrative_pacing,
+          raw_text: '维度原文不应进入请求。',
+        },
+        internal_score: 0.93,
+      },
+    } as StyleHandbookReference & { raw_text: string };
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
       source_brief: '一个边境殖民地依赖濒临失控的跃迁灯塔',
       draft: {
@@ -231,7 +244,7 @@ describe('world creation API helpers', () => {
       first_chapter_goal: '让许砚第一次听见跃迁灯塔低鸣。',
       generation_notes: [],
       safety_notes: ['确认前不会创建世界。'],
-      style_handbook_reference: styleHandbookReference,
+      style_handbook_reference: expectedStyleHandbookReference,
       variants: [],
     }));
     vi.stubGlobal('fetch', fetchMock);
@@ -244,7 +257,7 @@ describe('world creation API helpers', () => {
         method: 'POST',
         body: JSON.stringify({
           brief: '一个边境殖民地依赖濒临失控的跃迁灯塔',
-          style_handbook_reference: styleHandbookReference,
+          style_handbook_reference: expectedStyleHandbookReference,
           variant_count: 3,
         }),
       }),
@@ -690,6 +703,70 @@ describe('draft versioning API helpers', () => {
     localStorage.clear();
     localStorage.setItem('worldsim_token', 'test-token');
     vi.restoreAllMocks();
+  });
+
+  it('sends only allowed style handbook reference fields in chapter execution context', async () => {
+    const expectedStyleHandbookReference: StyleHandbookReference = {
+      source_title: '公版海洋小说片段',
+      source_rights: 'public_domain',
+      handbook: {
+        narrative_pacing: { label: '叙事节奏', value: '慢热铺陈', evidence: null },
+        language_density: { label: '语言密度', value: '高密度意象', evidence: null },
+        dialogue_ratio: { label: '对白比例', value: '对白较少', evidence: null },
+        scene_progression: { label: '场景推进', value: '物件带动转场', evidence: null },
+        suspense_structure: { label: '悬念结构', value: '延迟解释', evidence: null },
+        relationship_tension: { label: '人物关系张力', value: '承诺与亏欠', evidence: null },
+        foreshadowing_pattern: { label: '伏笔埋设/回收方式', value: '先给异常', evidence: null },
+        do_guidelines: ['保留海潮般的递进感。'],
+        avoid_guidelines: ['不要复用原文句子。'],
+        originality_guidelines: ['用原创角色承载抽象风格参数。'],
+      },
+      safety_notes: ['风格手册只是写作参考，不会写入 canon。'],
+    };
+    const executionContext: ChapterExecutionContext = {
+      source: 'manual',
+      source_world_version: 1,
+      next_chapter_number: 1,
+      goal: '让许砚第一次听见跃迁灯塔低鸣。',
+      recommended_pov: { character_id: null, name: '许砚' },
+      source_signals: ['首章目标'],
+      priority_characters: [],
+      priority_foreshadows: [],
+      progression_hints: [],
+      continuity_warnings: [],
+      recent_events: [],
+      material_references: [],
+      style_handbook_reference: {
+        ...expectedStyleHandbookReference,
+        raw_text: '原文不应进入章节上下文请求。',
+        handbook: {
+          ...expectedStyleHandbookReference.handbook,
+          narrative_pacing: {
+            ...expectedStyleHandbookReference.handbook.narrative_pacing,
+            raw_text: '维度原文不应进入章节上下文请求。',
+          },
+          internal_score: 0.93,
+        },
+      } as StyleHandbookReference,
+    };
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ id: 11, execution_context: null }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createChapter(7, { chapter_goal: '生成第一章草稿', execution_context: executionContext });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/worlds/7/chapters',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          chapter_goal: '生成第一章草稿',
+          execution_context: {
+            ...executionContext,
+            style_handbook_reference: expectedStyleHandbookReference,
+          },
+        }),
+      }),
+    );
   });
 
   it('calls draft stash, paragraph revision, full revision, exact version, diff, approval preview, and approval consistency endpoints', async () => {

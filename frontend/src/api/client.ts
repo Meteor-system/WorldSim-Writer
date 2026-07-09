@@ -134,6 +134,37 @@ function cleanWorldCreationMaterialReferences(
     .filter((reference) => reference.title.trim() && reference.summary.trim());
 }
 
+function cleanStyleHandbookDimension(
+  dimension: StyleHandbookReference['handbook']['narrative_pacing'],
+): StyleHandbookReference['handbook']['narrative_pacing'] {
+  return {
+    label: dimension.label,
+    value: dimension.value,
+    evidence: dimension.evidence ?? null,
+  };
+}
+
+function cleanStyleHandbookReference(reference: StyleHandbookReference): StyleHandbookReference {
+  const { handbook } = reference;
+  return {
+    source_title: reference.source_title,
+    source_rights: reference.source_rights,
+    handbook: {
+      narrative_pacing: cleanStyleHandbookDimension(handbook.narrative_pacing),
+      language_density: cleanStyleHandbookDimension(handbook.language_density),
+      dialogue_ratio: cleanStyleHandbookDimension(handbook.dialogue_ratio),
+      scene_progression: cleanStyleHandbookDimension(handbook.scene_progression),
+      suspense_structure: cleanStyleHandbookDimension(handbook.suspense_structure),
+      relationship_tension: cleanStyleHandbookDimension(handbook.relationship_tension),
+      foreshadowing_pattern: cleanStyleHandbookDimension(handbook.foreshadowing_pattern),
+      do_guidelines: [...(handbook.do_guidelines ?? [])],
+      avoid_guidelines: [...(handbook.avoid_guidelines ?? [])],
+      originality_guidelines: [...(handbook.originality_guidelines ?? [])],
+    },
+    safety_notes: [...(reference.safety_notes ?? [])],
+  };
+}
+
 export function draftWorldFromBrief(
   brief: string,
   styleHandbookReference?: StyleHandbookReference | null,
@@ -141,11 +172,12 @@ export function draftWorldFromBrief(
   materialReferences?: WorldCreationMaterialReference[],
 ) {
   const cleanedMaterialReferences = cleanWorldCreationMaterialReferences(materialReferences);
+  const cleanedStyleHandbookReference = styleHandbookReference ? cleanStyleHandbookReference(styleHandbookReference) : null;
   return apiRequest<WorldCreationDraftResponse>('/worlds/draft-from-brief', {
     method: 'POST',
     body: JSON.stringify({
       brief,
-      ...(styleHandbookReference ? { style_handbook_reference: styleHandbookReference } : {}),
+      ...(cleanedStyleHandbookReference ? { style_handbook_reference: cleanedStyleHandbookReference } : {}),
       ...(variantCount ? { variant_count: variantCount } : {}),
       ...(cleanedMaterialReferences.length ? { material_references: cleanedMaterialReferences } : {}),
     }),
@@ -295,9 +327,18 @@ export function listWorldImports(worldId: number) {
 /* ── Narrative pipeline ── */
 
 export function createChapter(worldId: number, data: { chapter_goal: string; title?: string; execution_context?: ChapterExecutionContext }) {
+  const executionContext = data.execution_context?.style_handbook_reference
+    ? {
+        ...data.execution_context,
+        style_handbook_reference: cleanStyleHandbookReference(data.execution_context.style_handbook_reference),
+      }
+    : data.execution_context;
   return apiRequest<ChapterPipelineResponse>(`/worlds/${worldId}/chapters`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...data,
+      ...(executionContext ? { execution_context: executionContext } : {}),
+    }),
   });
 }
 
