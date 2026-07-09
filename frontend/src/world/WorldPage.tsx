@@ -307,18 +307,19 @@ function buildWorldCreationDraftExecutionContext(world: WorldOverview, firstChap
   };
 }
 
-function buildSerialPlanExecutionContext(world: WorldOverview, chapter: SerialPlanChapter): ChapterExecutionContext {
+function buildSerialPlanExecutionContext(
+  world: WorldOverview,
+  chapter: SerialPlanChapter,
+  convergenceGuidance: SerialPlanResponse['convergence_guidance'],
+): ChapterExecutionContext {
   const context = buildManualExecutionContext(world, chapter.goal);
-  return {
-    ...context,
-    next_chapter_number: chapter.chapter_number,
-    recommended_pov: { character_id: null, name: chapter.pov_suggestion || null },
-    source_signals: ['serial_plan_preview', chapter.source],
-    progression_hints: chapter.foreshadow_hints.length
+  const priorityForeshadowIds = convergenceGuidance.priority_foreshadows.map((item) => item.foreshadow_id);
+  const progressionHints = [
+    ...(chapter.foreshadow_hints.length
       ? [
           {
-            hint_type: 'foreshadow',
-            priority: 'medium',
+            hint_type: 'foreshadow' as const,
+            priority: 'medium' as const,
             title: '连载队列伏笔提示',
             rationale: `该目标来自故事弧线，提示关联悬念/伏笔：${chapter.foreshadow_hints.join('、')}。`,
             suggested_next_beat: '在 Studio 草稿中推进或回应这些既有悬念/伏笔；是否写入正史仍由用户审核决定。',
@@ -327,7 +328,31 @@ function buildSerialPlanExecutionContext(world: WorldOverview, chapter: SerialPl
             can_seed_next_chapter_goal: false,
           },
         ]
-      : context.progression_hints,
+      : []),
+    {
+      hint_type: 'plot' as const,
+      priority: convergenceGuidance.mode === 'balanced' || convergenceGuidance.mode === 'expand' ? 'medium' as const : 'high' as const,
+      title: '自动连载叙事收束提示',
+      rationale: `${convergenceGuidance.mode_label}：${convergenceGuidance.recommendation}`,
+      suggested_next_beat: '把收束提示作为 Studio 写作参考；是否推进、回收或关闭伏笔仍由用户审稿后决定。',
+      related_character_ids: [],
+      related_foreshadow_ids: priorityForeshadowIds,
+      can_seed_next_chapter_goal: false,
+    },
+  ];
+  return {
+    ...context,
+    next_chapter_number: chapter.chapter_number,
+    recommended_pov: { character_id: null, name: chapter.pov_suggestion || null },
+    source_signals: ['serial_plan_preview', chapter.source, 'serial_plan_convergence_guidance'],
+    priority_foreshadows: convergenceGuidance.priority_foreshadows.map((item) => ({
+      foreshadow_id: item.foreshadow_id,
+      title: item.title,
+      status: item.status,
+      urgency_level: item.urgency_level,
+      reason: item.pressure_reasons.join('、') || item.pressure_level,
+    })),
+    progression_hints: progressionHints,
   };
 }
 
@@ -844,8 +869,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   }
 
   function launchSerialPlanChapter(chapter: SerialPlanChapter) {
-    if (!world) return;
-    const executionContext = withActiveStyleHandbook(buildSerialPlanExecutionContext(world, chapter));
+    if (!world || !serialPlan) return;
+    const executionContext = withActiveStyleHandbook(buildSerialPlanExecutionContext(world, chapter, serialPlan.convergence_guidance));
     onEnterStudio(world, {
       initialChapterGoal: executionContext.goal,
       executionContext,

@@ -1021,13 +1021,28 @@ describe('WorldPage Story Arc Planner', () => {
         source: 'manual',
         source_world_version: 2,
         next_chapter_number: 2,
-        source_signals: ['serial_plan_preview', 'story_arc'],
+        source_signals: ['serial_plan_preview', 'story_arc', 'serial_plan_convergence_guidance'],
         recommended_pov: { character_id: null, name: '第 2 章 POV 建议' },
-        progression_hints: [expect.objectContaining({
-          hint_type: 'foreshadow',
-          title: '连载队列伏笔提示',
-          suggested_next_beat: '在 Studio 草稿中推进或回应这些既有悬念/伏笔；是否写入正史仍由用户审核决定。',
+        priority_foreshadows: [expect.objectContaining({
+          foreshadow_id: 5,
+          title: '血月密约',
+          urgency_level: 5,
+          reason: '高紧迫度：5',
         })],
+        progression_hints: [
+          expect.objectContaining({
+            hint_type: 'foreshadow',
+            title: '连载队列伏笔提示',
+            suggested_next_beat: '在 Studio 草稿中推进或回应这些既有悬念/伏笔；是否写入正史仍由用户审核决定。',
+          }),
+          expect.objectContaining({
+            hint_type: 'plot',
+            priority: 'high',
+            title: '自动连载叙事收束提示',
+            rationale: '继续加压：存在高压或久未推进伏笔；后续章节应至少推进一个既有悬念/伏笔。',
+            related_foreshadow_ids: [5],
+          }),
+        ],
       }),
     });
   });
