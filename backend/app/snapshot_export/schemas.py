@@ -5,6 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class WorldSnapshotCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     label: str | None = Field(default=None, max_length=160)
     note: str | None = None
 

@@ -17,6 +17,7 @@ import {
   checkApprovalConsistency,
   compareWorldSnapshots,
   createChapter,
+  createWorldSnapshot,
   createCharacter,
   createForeshadow,
   createRelation,
@@ -696,6 +697,32 @@ describe('world snapshot compare API helper', () => {
     localStorage.clear();
     localStorage.setItem('worldsim_token', 'test-token');
     vi.restoreAllMocks();
+  });
+
+  it('sends only allowed fields in create payloads', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      id: 14,
+      world_id: 7,
+      world_version: 3,
+      label: '写入正史前快照',
+      note: '保存当前世界版本。',
+      created_at: '2026-05-31T00:00:00Z',
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createWorldSnapshot(7, {
+      label: '写入正史前快照',
+      note: '保存当前世界版本。',
+      raw_text: '运行时原文不应进入快照创建请求。',
+    } as unknown as Parameters<typeof createWorldSnapshot>[1]);
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/worlds/7/snapshots',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(body).toEqual({ label: '写入正史前快照', note: '保存当前世界版本。' });
+    expect(body.raw_text).toBeUndefined();
   });
 
   it('calls snapshot compare endpoint', async () => {

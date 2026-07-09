@@ -700,7 +700,10 @@ export function getArcPlan(worldId: number) {
 export function createWorldSnapshot(worldId: number, data: { label?: string; note?: string } = {}) {
   return apiRequest<WorldSnapshotSummary>(`/worlds/${worldId}/snapshots`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...(data.label !== undefined ? { label: data.label } : {}),
+      ...(data.note !== undefined ? { note: data.note } : {}),
+    }),
   });
 }
 
