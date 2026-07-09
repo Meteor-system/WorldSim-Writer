@@ -308,11 +308,26 @@ function buildWorldCreationDraftExecutionContext(world: WorldOverview, firstChap
 }
 
 function buildSerialPlanExecutionContext(world: WorldOverview, chapter: SerialPlanChapter): ChapterExecutionContext {
+  const context = buildManualExecutionContext(world, chapter.goal);
   return {
-    ...buildManualExecutionContext(world, chapter.goal),
+    ...context,
     next_chapter_number: chapter.chapter_number,
     recommended_pov: { character_id: null, name: chapter.pov_suggestion || null },
     source_signals: ['serial_plan_preview', chapter.source],
+    progression_hints: chapter.foreshadow_hints.length
+      ? [
+          {
+            hint_type: 'foreshadow',
+            priority: 'medium',
+            title: '连载队列伏笔提示',
+            rationale: `该目标来自故事弧线，提示关联悬念/伏笔：${chapter.foreshadow_hints.join('、')}。`,
+            suggested_next_beat: '在 Studio 草稿中推进或回应这些既有悬念/伏笔；是否写入正史仍由用户审核决定。',
+            related_character_ids: [],
+            related_foreshadow_ids: [],
+            can_seed_next_chapter_goal: false,
+          },
+        ]
+      : context.progression_hints,
   };
 }
 
@@ -387,6 +402,30 @@ function SerialPlanPanel({ serialPlan, loading, error, onGenerate, onLaunchChapt
           <ul className="space-y-1 text-sm font-bold text-[#5e3b1c]">
             {serialPlan.safety_notes.map((note) => <li key={note}>{note}</li>)}
           </ul>
+          <article className="rounded-2xl bg-amber-50/70 p-4" aria-label="叙事收束提示">
+            <p className="chapter-kicker">叙事收束提示</p>
+            <h3 className="mt-2 text-lg font-black text-[#34210f]">{serialPlan.convergence_guidance.mode_label}</h3>
+            <p className="manuscript mt-2 text-sm">{serialPlan.convergence_guidance.recommendation}</p>
+            <div className="mt-3 grid gap-2 text-sm md:grid-cols-4">
+              <p className="rounded-xl bg-white/50 p-3 font-bold text-[#5e3b1c]">开放伏笔：{serialPlan.convergence_guidance.open_foreshadow_count}</p>
+              <p className="rounded-xl bg-white/50 p-3 font-bold text-[#5e3b1c]">高压伏笔：{serialPlan.convergence_guidance.high_pressure_count}</p>
+              <p className="rounded-xl bg-white/50 p-3 font-bold text-[#5e3b1c]">久未推进：{serialPlan.convergence_guidance.stale_count}</p>
+              <p className="rounded-xl bg-white/50 p-3 font-bold text-[#5e3b1c]">逾期伏笔：{serialPlan.convergence_guidance.overdue_count}</p>
+            </div>
+            {serialPlan.convergence_guidance.priority_foreshadows.length > 0 && (
+              <div className="mt-3 space-y-2 text-sm">
+                <p className="font-black text-[#5e3b1c]">优先处理</p>
+                {serialPlan.convergence_guidance.priority_foreshadows.map((item) => (
+                  <p key={item.foreshadow_id} className="manuscript rounded-xl bg-white/45 p-3">
+                    {item.title} · 紧迫度 {item.urgency_level} · {item.pressure_reasons.join('、') || item.pressure_level}
+                  </p>
+                ))}
+              </div>
+            )}
+            <ul className="mt-3 space-y-1 text-xs font-bold text-[#5e3b1c]">
+              {serialPlan.convergence_guidance.guidance_notes.map((note) => <li key={note}>{note}</li>)}
+            </ul>
+          </article>
           {serialPlan.queue.length === 0 ? (
             <p className="manuscript rounded-2xl bg-amber-50/60 p-3 text-sm">没有可用的后续章节目标。先生成故事弧线或批准下一章后再刷新队列。</p>
           ) : (

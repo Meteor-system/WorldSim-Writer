@@ -6,6 +6,7 @@ from app.auth.models import User
 from app.character.models import Character
 from app.core.config import get_settings
 from app.foreshadow.models import Foreshadow
+from app.foreshadow.service import build_foreshadow_ledger
 from app.llm.client import LLMClient
 from app.llm.schemas import StoryArcChapter
 from app.world.governance import require_owned_world_for_update
@@ -177,6 +178,53 @@ def _serial_goal_from_arc_chapter(chapter: dict) -> str:
     return ' '.join(parts)
 
 
+def _serial_convergence_guidance(db: Session, world: World) -> dict:
+    ledger = build_foreshadow_ledger(db, world)
+    summary = ledger['summary']
+    high_pressure_entries = ledger['high_pressure']
+    priority_foreshadows = [
+        {
+            'foreshadow_id': entry['foreshadow'].id,
+            'title': entry['foreshadow'].title,
+            'status': entry['foreshadow'].status,
+            'urgency_level': entry['foreshadow'].urgency_level,
+            'pressure_level': entry['pressure_level'],
+            'pressure_reasons': entry['pressure_reasons'],
+        }
+        for entry in high_pressure_entries[:3]
+    ]
+    if summary['overdue_count']:
+        mode = 'converge'
+        mode_label = '叙事收束'
+        recommendation = '存在逾期伏笔；后续队列应优先回收旧承诺，暂停扩张新线索。'
+    elif summary['high_urgency_count'] or summary['stale_count']:
+        mode = 'pressure'
+        mode_label = '继续加压'
+        recommendation = '存在高压或久未推进伏笔；后续章节应至少推进一个既有悬念/伏笔。'
+    elif summary['open_count']:
+        mode = 'balanced'
+        mode_label = '平衡推进'
+        recommendation = '已有开放悬念/伏笔；连载队列可以推进主线，但避免只铺设新线索。'
+    else:
+        mode = 'expand'
+        mode_label = '可适度扩张'
+        recommendation = '当前没有开放悬念/伏笔；可以为下一轮故事埋设少量可追踪线索。'
+    return {
+        'mode': mode,
+        'mode_label': mode_label,
+        'open_foreshadow_count': summary['open_count'],
+        'high_pressure_count': len(high_pressure_entries),
+        'stale_count': summary['stale_count'],
+        'overdue_count': summary['overdue_count'],
+        'priority_foreshadows': priority_foreshadows,
+        'recommendation': recommendation,
+        'guidance_notes': [
+            '收束提示来自现有悬念/伏笔账本，只用于规划目标队列。',
+            '这些提示不会写入正史、不会关闭伏笔，也不会推进世界进度。',
+        ],
+    }
+
+
 def preview_serial_plan(db: Session, user: User, world_id: int, limit: int = 3) -> dict:
     world = require_owned_world(db, user, world_id)
     approved_count = count_approved_chapters(db, world.id)
@@ -212,4 +260,5 @@ def preview_serial_plan(db: Session, user: User, world_id: int, limit: int = 3) 
             '每章仍需单独进入 Studio 创建草稿、审稿并由用户确认。',
             '世界进度和 EventLog 只会在章节写入正史后更新。',
         ],
+        'convergence_guidance': _serial_convergence_guidance(db, world),
     }

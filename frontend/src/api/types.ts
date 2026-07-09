@@ -362,12 +362,34 @@ export type SerialPlanChapter = {
   source: string;
 };
 
+export type SerialPlanForeshadowPressure = {
+  foreshadow_id: number;
+  title: string;
+  status: string;
+  urgency_level: number;
+  pressure_level: string;
+  pressure_reasons: string[];
+};
+
+export type SerialPlanConvergenceGuidance = {
+  mode: string;
+  mode_label: string;
+  open_foreshadow_count: number;
+  high_pressure_count: number;
+  stale_count: number;
+  overdue_count: number;
+  priority_foreshadows: SerialPlanForeshadowPressure[];
+  recommendation: string;
+  guidance_notes: string[];
+};
+
 export type SerialPlanResponse = {
   world_id: number;
   world_version: number;
   approved_chapter_count: number;
   queue: SerialPlanChapter[];
   safety_notes: string[];
+  convergence_guidance: SerialPlanConvergenceGuidance;
 };
 
 export type WorldSummary = {

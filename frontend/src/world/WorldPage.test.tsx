@@ -975,6 +975,29 @@ describe('WorldPage Story Arc Planner', () => {
         '每章仍需单独进入 Studio 创建草稿、审稿并由用户确认。',
         '世界进度和 EventLog 只会在章节写入正史后更新。',
       ],
+      convergence_guidance: {
+        mode: 'pressure',
+        mode_label: '继续加压',
+        open_foreshadow_count: 2,
+        high_pressure_count: 1,
+        stale_count: 0,
+        overdue_count: 0,
+        priority_foreshadows: [
+          {
+            foreshadow_id: 5,
+            title: '血月密约',
+            status: 'advanced',
+            urgency_level: 5,
+            pressure_level: 'high',
+            pressure_reasons: ['高紧迫度：5'],
+          },
+        ],
+        recommendation: '存在高压或久未推进伏笔；后续章节应至少推进一个既有悬念/伏笔。',
+        guidance_notes: [
+          '收束提示来自现有悬念/伏笔账本，只用于规划目标队列。',
+          '这些提示不会写入正史、不会关闭伏笔，也不会推进世界进度。',
+        ],
+      },
     });
 
     render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
@@ -984,6 +1007,10 @@ describe('WorldPage Story Arc Planner', () => {
     expect(getSerialPlan).toHaveBeenCalledWith(7, 3);
     expect(await screen.findByText('这是多章目标队列预览，不会一次性生成正文。')).toBeInTheDocument();
     expect(screen.getByText('世界进度和 EventLog 只会在章节写入正史后更新。')).toBeInTheDocument();
+    expect(screen.getByText('继续加压')).toBeInTheDocument();
+    expect(screen.getByText('存在高压或久未推进伏笔；后续章节应至少推进一个既有悬念/伏笔。')).toBeInTheDocument();
+    expect(screen.getByText('血月密约 · 紧迫度 5 · 高紧迫度：5')).toBeInTheDocument();
+    expect(screen.getByText('这些提示不会写入正史、不会关闭伏笔，也不会推进世界进度。')).toBeInTheDocument();
     expect(screen.getByText('第 2 章标题：第 2 章摘要：林砚推进裂纹玉佩线索。 核心冲突：第 2 章核心冲突详情 建议 POV：第 2 章 POV 建议')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '用此目标进入 Studio' }));
@@ -996,6 +1023,11 @@ describe('WorldPage Story Arc Planner', () => {
         next_chapter_number: 2,
         source_signals: ['serial_plan_preview', 'story_arc'],
         recommended_pov: { character_id: null, name: '第 2 章 POV 建议' },
+        progression_hints: [expect.objectContaining({
+          hint_type: 'foreshadow',
+          title: '连载队列伏笔提示',
+          suggested_next_beat: '在 Studio 草稿中推进或回应这些既有悬念/伏笔；是否写入正史仍由用户审核决定。',
+        })],
       }),
     });
   });

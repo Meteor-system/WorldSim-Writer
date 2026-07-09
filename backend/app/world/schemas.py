@@ -157,12 +157,34 @@ class SerialPlanChapter(BaseModel):
     source: str = 'story_arc'
 
 
+class SerialPlanForeshadowPressure(BaseModel):
+    foreshadow_id: int
+    title: str
+    status: str
+    urgency_level: int
+    pressure_level: str
+    pressure_reasons: list[str] = Field(default_factory=list)
+
+
+class SerialPlanConvergenceGuidance(BaseModel):
+    mode: str
+    mode_label: str
+    open_foreshadow_count: int
+    high_pressure_count: int
+    stale_count: int
+    overdue_count: int
+    priority_foreshadows: list[SerialPlanForeshadowPressure] = Field(default_factory=list)
+    recommendation: str
+    guidance_notes: list[str] = Field(default_factory=list)
+
+
 class SerialPlanResponse(BaseModel):
     world_id: int
     world_version: int
     approved_chapter_count: int
     queue: list[SerialPlanChapter]
     safety_notes: list[str] = Field(default_factory=list)
+    convergence_guidance: SerialPlanConvergenceGuidance
 
 
 class WorldOverviewResponse(WorldResponse):

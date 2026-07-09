@@ -83,6 +83,7 @@ def test_story_arc_client_call_does_not_force_json_object_response(monkeypatch):
 
 
 from app.event.models import EventLog
+from app.foreshadow.models import Foreshadow
 from app.narrative.models import Chapter
 from app.world.models import World
 
@@ -199,6 +200,10 @@ def test_serial_plan_preview_returns_next_chapter_queue_without_writing_canon_or
     assert payload['queue'][0]['title'] == arc[1]['title']
     assert '核心冲突' in payload['queue'][0]['goal']
     assert '每章仍需单独进入 Studio' in payload['safety_notes'][1]
+    assert payload['convergence_guidance']['mode'] == 'balanced'
+    assert payload['convergence_guidance']['open_foreshadow_count'] == 1
+    assert payload['convergence_guidance']['priority_foreshadows'] == []
+    assert '不会写入正史' in payload['convergence_guidance']['guidance_notes'][1]
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
     assert db_session.scalar(select(func.count()).select_from(Chapter)) == 1
     assert db_session.get(World, world_id).world_version == before_world_version
@@ -212,6 +217,41 @@ def test_serial_plan_preview_requires_existing_story_arc(client):
     assert response.status_code == 200
     assert response.json()['queue'] == []
     assert '不会一次性生成正文' in response.json()['safety_notes'][0]
+
+
+def test_serial_plan_preview_surfaces_read_only_convergence_pressure(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(story_arc_service, 'LLMClient', lambda: FakeStoryArcLLMClient())
+    client.post(f'/worlds/{world_id}/story-arc', headers={'Authorization': f'Bearer {token}'})
+    db_session.add(
+        Foreshadow(
+            world_id=world_id,
+            title='血月密约',
+            description='血月升起时旧盟约会吞掉一个证人。',
+            foreshadow_type='deadline_secret',
+            status='advanced',
+            urgency_level=5,
+            related_character_ids=[],
+            expected_resolution_window='第2章',
+        )
+    )
+    db_session.commit()
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+    before_world_version = db_session.get(World, world_id).world_version
+
+    response = client.get(f'/worlds/{world_id}/serial-plan?limit=1', headers={'Authorization': f'Bearer {token}'})
+
+    assert response.status_code == 200
+    guidance = response.json()['convergence_guidance']
+    assert guidance['mode'] == 'pressure'
+    assert guidance['mode_label'] == '继续加压'
+    assert guidance['open_foreshadow_count'] == 2
+    assert guidance['high_pressure_count'] == 1
+    assert guidance['priority_foreshadows'][0]['title'] == '血月密约'
+    assert guidance['priority_foreshadows'][0]['pressure_reasons'] == ['高紧迫度：5', '预期收束窗口：第2章']
+    assert '不会写入正史' in guidance['guidance_notes'][1]
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+    assert db_session.get(World, world_id).world_version == before_world_version
 
 
 def test_archived_world_rejects_story_arc_regeneration_without_overwriting_existing_arc(client, db_session, monkeypatch):
