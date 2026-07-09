@@ -58,6 +58,12 @@ import { labelGenre, labelStatus, labelWorldVersion } from './displayLabels';
 
 type Props = { onEnterStudio: (world: WorldOverview, context?: StudioLaunchContext) => void; autoFocusTitle?: boolean };
 
+const SERIAL_PLAN_REVIEW_GUARDRAILS = [
+  '连载队列只是只读计划，不会批量创建章节或正文。',
+  '点击单章目标只会进入 Studio 草稿流程；写入正史前必须由用户审稿确认。',
+  '未写入正史的队列目标不会更新 canon、EventLog、伏笔状态或世界进度。',
+];
+
 type Tab = 'overview' | 'write' | 'characters' | 'relations' | 'foreshadows' | 'analysis' | 'archive';
 
 const TABS: { key: Tab; label: string }[] = [
@@ -314,6 +320,13 @@ function buildSerialPlanExecutionContext(
 ): ChapterExecutionContext {
   const context = buildManualExecutionContext(world, chapter.goal);
   const priorityForeshadowIds = convergenceGuidance.priority_foreshadows.map((item) => item.foreshadow_id);
+  const reviewGuardrailWarnings = SERIAL_PLAN_REVIEW_GUARDRAILS.map((message) => ({
+    severity: 'info',
+    category: 'serial_plan_review_boundary',
+    message,
+    related_character_ids: [],
+    related_foreshadow_ids: [],
+  }));
   const progressionHints = [
     ...(chapter.foreshadow_hints.length
       ? [
@@ -353,6 +366,7 @@ function buildSerialPlanExecutionContext(
       reason: item.pressure_reasons.join('、') || item.pressure_level,
     })),
     progression_hints: progressionHints,
+    continuity_warnings: reviewGuardrailWarnings,
   };
 }
 
@@ -427,6 +441,12 @@ function SerialPlanPanel({ serialPlan, loading, error, onGenerate, onLaunchChapt
           <ul className="space-y-1 text-sm font-bold text-[#5e3b1c]">
             {serialPlan.safety_notes.map((note) => <li key={note}>{note}</li>)}
           </ul>
+          <aside className="rounded-2xl border border-amber-900/15 bg-white/50 p-4" aria-label="连载队列审稿边界">
+            <p className="text-sm font-black text-[#5e3b1c]">逐章审稿边界</p>
+            <ul className="mt-2 space-y-1 text-sm font-bold text-[#5e3b1c]">
+              {SERIAL_PLAN_REVIEW_GUARDRAILS.map((note) => <li key={note}>{note}</li>)}
+            </ul>
+          </aside>
           <article className="rounded-2xl bg-amber-50/70 p-4" aria-label="叙事收束提示">
             <p className="chapter-kicker">叙事收束提示</p>
             <h3 className="mt-2 text-lg font-black text-[#34210f]">{serialPlan.convergence_guidance.mode_label}</h3>

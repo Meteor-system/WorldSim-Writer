@@ -1007,6 +1007,9 @@ describe('WorldPage Story Arc Planner', () => {
     expect(getSerialPlan).toHaveBeenCalledWith(7, 3);
     expect(await screen.findByText('这是多章目标队列预览，不会一次性生成正文。')).toBeInTheDocument();
     expect(screen.getByText('世界进度和 EventLog 只会在章节写入正史后更新。')).toBeInTheDocument();
+    expect(screen.getByText('连载队列只是只读计划，不会批量创建章节或正文。')).toBeInTheDocument();
+    expect(screen.getByText('点击单章目标只会进入 Studio 草稿流程；写入正史前必须由用户审稿确认。')).toBeInTheDocument();
+    expect(screen.getByText('未写入正史的队列目标不会更新 canon、EventLog、伏笔状态或世界进度。')).toBeInTheDocument();
     expect(screen.getByText('继续加压')).toBeInTheDocument();
     expect(screen.getByText('存在高压或久未推进伏笔；后续章节应至少推进一个既有悬念/伏笔。')).toBeInTheDocument();
     expect(screen.getByText('血月密约 · 紧迫度 5 · 高紧迫度：5')).toBeInTheDocument();
@@ -1041,6 +1044,23 @@ describe('WorldPage Story Arc Planner', () => {
             title: '自动连载叙事收束提示',
             rationale: '继续加压：存在高压或久未推进伏笔；后续章节应至少推进一个既有悬念/伏笔。',
             related_foreshadow_ids: [5],
+          }),
+        ],
+        continuity_warnings: [
+          expect.objectContaining({
+            severity: 'info',
+            category: 'serial_plan_review_boundary',
+            message: '连载队列只是只读计划，不会批量创建章节或正文。',
+          }),
+          expect.objectContaining({
+            severity: 'info',
+            category: 'serial_plan_review_boundary',
+            message: '点击单章目标只会进入 Studio 草稿流程；写入正史前必须由用户审稿确认。',
+          }),
+          expect.objectContaining({
+            severity: 'info',
+            category: 'serial_plan_review_boundary',
+            message: '未写入正史的队列目标不会更新 canon、EventLog、伏笔状态或世界进度。',
           }),
         ],
       }),
