@@ -485,14 +485,18 @@ export function stashDraft(chapterId: number, data: { note?: string } = {}) {
 export function reviseParagraph(chapterId: number, data: ParagraphReviseRequest) {
   return apiRequest<DraftResponse>(`/chapters/${chapterId}/draft/paragraph`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      paragraph_index: data.paragraph_index,
+      mode: data.mode,
+      ...(data.instruction !== undefined ? { instruction: data.instruction } : {}),
+    }),
   });
 }
 
 export function reviseDraft(chapterId: number, data: ReviseDraftRequest) {
   return apiRequest<DraftResponse>(`/chapters/${chapterId}/draft/revise`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ instruction: data.instruction }),
   });
 }
 

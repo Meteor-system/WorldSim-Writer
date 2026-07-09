@@ -222,12 +222,16 @@ class StashDraftRequest(BaseModel):
 
 
 class ParagraphDraftRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     paragraph_index: int = Field(ge=0)
     mode: Literal['rewrite', 'polish']
     instruction: str | None = None
 
 
 class ReviseDraftRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     instruction: str = Field(min_length=3)
 
 

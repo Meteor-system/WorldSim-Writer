@@ -1083,8 +1083,18 @@ describe('draft versioning API helpers', () => {
     };
 
     await stashDraft(11, { note: '暂存当前草稿' });
-    await reviseParagraph(11, { paragraph_index: 1, mode: 'rewrite', instruction: '增强悬念' });
-    await reviseDraft(11, { instruction: '补足试探过程' });
+    await reviseParagraph(11, {
+      paragraph_index: 1,
+      mode: 'rewrite',
+      instruction: '增强悬念',
+      raw_text: '段落修订请求不应发送草稿原文',
+      internal_score: 0.88,
+    } as unknown as Parameters<typeof reviseParagraph>[1]);
+    await reviseDraft(11, {
+      instruction: '补足试探过程',
+      raw_text: '整章修订请求不应发送草稿原文',
+      internal_score: 0.93,
+    } as unknown as Parameters<typeof reviseDraft>[1]);
     await getDraftVersion(11, 1);
     await getDraftDiff(11, 1, 3);
     await getApprovalPreview(11);
