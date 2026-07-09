@@ -114,6 +114,62 @@ def register_and_create_world(client, email='execution-context@example.com'):
     return token, world['id']
 
 
+def test_draft_request_rejects_root_extra_fields_without_side_effects(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client, 'draft-root-extra@example.com')
+    context = sample_execution_context()
+    llm = CapturingLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+    before_chapters = db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+
+    response = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={
+            'chapter_goal': context['goal'],
+            'execution_context': context,
+            'raw_text': 'root raw text must be rejected',
+            'internal_score': 0.9,
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert llm.messages == []
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
+def test_create_chapter_request_rejects_root_extra_fields_without_side_effects(client, db_session):
+    token, world_id = register_and_create_world(client, 'chapter-root-extra@example.com')
+    context = sample_execution_context()
+    before_chapters = db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+
+    response = client.post(
+        f'/worlds/{world_id}/chapters',
+        json={
+            'chapter_goal': context['goal'],
+            'title': '第二章 城主府外墙',
+            'execution_context': context,
+            'raw_text': 'root raw text must be rejected',
+            'internal_score': 0.9,
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
 def test_create_chapter_freezes_execution_context_without_mutating_world(client, db_session):
     token, world_id = register_and_create_world(client)
     context = sample_execution_context()

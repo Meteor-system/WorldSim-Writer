@@ -975,9 +975,21 @@ describe('draft versioning API helpers', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ id: 11, execution_context: null }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await createChapter(7, { chapter_goal: '生成第一章草稿', title: '第一章 灯塔低鸣', execution_context: executionContext });
+    await createChapter(7, {
+      chapter_goal: '生成第一章草稿',
+      title: '第一章 灯塔低鸣',
+      execution_context: executionContext,
+      raw_text: '根请求原文不应发送。',
+      internal_score: 0.9,
+      first_chapter_goal: '运行时首章目标不应发送。',
+    } as unknown as Parameters<typeof createChapter>[1]);
 
-    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string) as { execution_context: ChapterExecutionContext };
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      raw_text?: string;
+      internal_score?: number;
+      first_chapter_goal?: string;
+      execution_context: ChapterExecutionContext;
+    };
     expect(requestBody).toEqual({
       chapter_goal: '生成第一章草稿',
       title: '第一章 灯塔低鸣',
@@ -1040,6 +1052,9 @@ describe('draft versioning API helpers', () => {
         style_handbook_reference: null,
       },
     });
+    expect(requestBody.raw_text).toBeUndefined();
+    expect(requestBody.internal_score).toBeUndefined();
+    expect(requestBody.first_chapter_goal).toBeUndefined();
   });
 
   it('calls draft stash, paragraph revision, full revision, exact version, diff, approval preview, approval consistency, and approve endpoints', async () => {

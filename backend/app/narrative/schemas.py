@@ -130,11 +130,15 @@ class ChapterExecutionContext(BaseModel):
 
 
 class DraftRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     chapter_goal: str = Field(min_length=3)
     execution_context: ChapterExecutionContext | None = None
 
 
 class CreateChapterRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     chapter_goal: str = Field(min_length=3)
     title: str | None = None
     execution_context: ChapterExecutionContext | None = None
