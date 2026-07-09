@@ -52,6 +52,8 @@ import {
   unassignWorldTag,
   generateOutline,
   getRelations,
+  editDraft,
+  rejectDraft,
   reviseDraft,
   reviseParagraph,
   stashDraft,
@@ -1105,6 +1107,56 @@ describe('draft versioning API helpers', () => {
     expect(writeBody.raw_text).toBeUndefined();
     expect(writeBody.internal_score).toBeUndefined();
     expect(writeBody.first_chapter_goal).toBeUndefined();
+  });
+
+  it('cleans studio draft operation request bodies', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ status: 'rejected' }))
+      .mockResolvedValueOnce(jsonResponse({ draft_version: 2 }))
+      .mockResolvedValueOnce(jsonResponse({ draft_version: 3 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await rejectDraft(11, {
+      feedback: '需要补足动机',
+      raw_text: '驳回请求不应发送草稿原文',
+      internal_score: 0.87,
+    } as unknown as Parameters<typeof rejectDraft>[1]);
+    await editDraft(11, {
+      content: '林砚在灵井旁听见了第二个人的脚步声。',
+      change_summary: '补足动机',
+      raw_text: '编辑请求不应发送草稿原文',
+      internal_score: 0.9,
+    } as unknown as Parameters<typeof editDraft>[1]);
+    await stashDraft(11, {
+      note: '暂存当前草稿',
+      raw_text: '暂存请求不应发送草稿原文',
+      internal_score: 0.91,
+    } as unknown as Parameters<typeof stashDraft>[1]);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:8000/chapters/11/reject',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ feedback: '需要补足动机' }) }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:8000/chapters/11/draft',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ content: '林砚在灵井旁听见了第二个人的脚步声。', change_summary: '补足动机' }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:8000/chapters/11/draft/stash',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ note: '暂存当前草稿' }) }),
+    );
+    for (const call of fetchMock.mock.calls) {
+      const body = JSON.parse(call[1]?.body as string);
+      expect(body.raw_text).toBeUndefined();
+      expect(body.internal_score).toBeUndefined();
+    }
   });
 
   it('calls draft stash, paragraph revision, full revision, exact version, diff, approval preview, approval consistency, and approve endpoints', async () => {

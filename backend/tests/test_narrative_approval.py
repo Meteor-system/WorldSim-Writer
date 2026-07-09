@@ -153,7 +153,6 @@ def test_generation_prompt_includes_expired_foreshadow_status(client, db_session
     assert 'advanced|resolved|expired' in messages[0]['content']
 
 
-
 def test_create_draft_with_fake_llm(client, monkeypatch):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
@@ -333,6 +332,141 @@ def test_revise_paragraph_rejects_extra_fields_without_side_effects(client, monk
     db_session.expire_all()
     chapter = db_session.get(Chapter, draft['chapter_id'])
     assert chapter.draft_version == draft['draft_version']
+    assert db_session.scalar(select(func.count()).select_from(ChapterDraft).where(ChapterDraft.chapter_id == draft['chapter_id'])) == before_drafts
+    assert len(event_logs(db_session, world_id)) == before_events
+
+
+def test_reject_request_rejects_extra_fields_without_side_effects(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    llm = FakeLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+    before_events = len(event_logs(db_session, world_id))
+    before_generation_count = len(llm.generation_messages)
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    latest_draft = db_session.get(ChapterDraft, draft['draft_id'])
+    before_status = chapter.status
+    before_feedback = latest_draft.rejection_feedback
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/reject",
+        json={
+            'feedback': '需要补足动机',
+            'raw_text': '驳回请求不能夹带草稿原文',
+            'internal_score': 0.9,
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert len(llm.generation_messages) == before_generation_count
+    assert llm.revision_messages == []
+    assert llm.paragraph_messages == []
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    latest_draft = db_session.get(ChapterDraft, draft['draft_id'])
+    assert chapter.status == before_status
+    assert latest_draft.rejection_feedback == before_feedback
+    assert len(event_logs(db_session, world_id)) == before_events
+
+
+def test_edit_draft_request_rejects_extra_fields_without_side_effects(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    llm = FakeLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    latest_draft = db_session.get(ChapterDraft, draft['draft_id'])
+    before_drafts = db_session.scalar(select(func.count()).select_from(ChapterDraft).where(ChapterDraft.chapter_id == draft['chapter_id']))
+    before_events = len(event_logs(db_session, world_id))
+    before_generation_count = len(llm.generation_messages)
+    before_draft_version = chapter.draft_version
+    before_content = latest_draft.content
+    before_change_summary = latest_draft.change_summary
+
+    response = client.put(
+        f"/chapters/{draft['chapter_id']}/draft",
+        json={
+            'content': '林砚在灵井旁听见了第二个人的脚步声。',
+            'change_summary': '补足动机',
+            'raw_text': '编辑请求不能夹带草稿原文',
+            'internal_score': 0.9,
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert len(llm.generation_messages) == before_generation_count
+    assert llm.revision_messages == []
+    assert llm.paragraph_messages == []
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    latest_draft = db_session.get(ChapterDraft, draft['draft_id'])
+    assert chapter.draft_version == before_draft_version
+    assert latest_draft.content == before_content
+    assert latest_draft.change_summary == before_change_summary
+    assert db_session.scalar(select(func.count()).select_from(ChapterDraft).where(ChapterDraft.chapter_id == draft['chapter_id'])) == before_drafts
+    assert len(event_logs(db_session, world_id)) == before_events
+
+
+def test_stash_draft_request_rejects_extra_fields_without_side_effects(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    llm = FakeLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    latest_draft = db_session.get(ChapterDraft, draft['draft_id'])
+    before_drafts = db_session.scalar(select(func.count()).select_from(ChapterDraft).where(ChapterDraft.chapter_id == draft['chapter_id']))
+    before_events = len(event_logs(db_session, world_id))
+    before_generation_count = len(llm.generation_messages)
+    before_draft_version = chapter.draft_version
+    before_change_type = latest_draft.change_type
+    before_change_summary = latest_draft.change_summary
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/draft/stash",
+        json={
+            'note': '暂存当前草稿',
+            'raw_text': '暂存请求不能夹带草稿原文',
+            'internal_score': 0.9,
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert len(llm.generation_messages) == before_generation_count
+    assert llm.revision_messages == []
+    assert llm.paragraph_messages == []
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    latest_draft = db_session.get(ChapterDraft, draft['draft_id'])
+    assert chapter.draft_version == before_draft_version
+    assert latest_draft.change_type == before_change_type
+    assert latest_draft.change_summary == before_change_summary
     assert db_session.scalar(select(func.count()).select_from(ChapterDraft).where(ChapterDraft.chapter_id == draft['chapter_id'])) == before_drafts
     assert len(event_logs(db_session, world_id)) == before_events
 

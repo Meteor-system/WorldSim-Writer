@@ -4,6 +4,7 @@ import {
   approveChapter,
   checkApprovalConsistency,
   createChapter as createChapterRequest,
+  editDraft as editDraftRequest,
   generateCharacterArcReport,
   generateCriticReport,
   generateOutline,
@@ -12,6 +13,7 @@ import {
   getDraftDiff,
   getDraftVersion,
   exportWorldArchiveMarkdown,
+  rejectDraft as rejectDraftRequest,
   reviseDraft,
   reviseParagraph,
   stashDraft,
@@ -580,10 +582,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setWorking(true);
     setError('');
     try {
-      const updated = await apiRequest<DraftResponse>(`/chapters/${draft.chapter_id}/reject`, {
-        method: 'POST',
-        body: JSON.stringify({ feedback }),
-      });
+      const updated = await rejectDraftRequest(draft.chapter_id, { feedback });
       setDraft(updated);
       if (chapter) setChapter({ ...chapter, status: updated.status ?? 'rejected' });
     } catch (err) {
@@ -612,10 +611,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setWorking(true);
     setError('');
     try {
-      const updated = normalizeDraft(await apiRequest<DraftResponse>(`/chapters/${draft.chapter_id}/draft`, {
-        method: 'PUT',
-        body: JSON.stringify({ content: editContent }),
-      }));
+      const updated = normalizeDraft(await editDraftRequest(draft.chapter_id, { content: editContent }));
       setDraft(updated);
       await refreshReviewStudioPanels(updated);
       setEditMode(false);

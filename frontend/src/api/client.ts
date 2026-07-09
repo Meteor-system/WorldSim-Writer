@@ -479,10 +479,29 @@ export function writeChapter(chapterId: number, data: { outline_beats?: BeatCard
   });
 }
 
+export function rejectDraft(chapterId: number, data: { feedback: string }) {
+  return apiRequest<DraftResponse>(`/chapters/${chapterId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ feedback: data.feedback }),
+  });
+}
+
+export function editDraft(chapterId: number, data: { content: string; change_summary?: string }) {
+  return apiRequest<DraftResponse>(`/chapters/${chapterId}/draft`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      content: data.content,
+      ...(data.change_summary !== undefined ? { change_summary: data.change_summary } : {}),
+    }),
+  });
+}
+
 export function stashDraft(chapterId: number, data: { note?: string } = {}) {
   return apiRequest<DraftResponse>(`/chapters/${chapterId}/draft/stash`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...(data.note !== undefined ? { note: data.note } : {}),
+    }),
   });
 }
 

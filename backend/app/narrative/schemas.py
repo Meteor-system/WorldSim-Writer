@@ -213,15 +213,21 @@ class ApprovalConsistencyResponse(BaseModel):
 
 
 class RejectRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     feedback: str = Field(min_length=1)
 
 
 class EditDraftRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     content: str = Field(min_length=10)
     change_summary: str | None = None
 
 
 class StashDraftRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     note: str | None = None
 
 
