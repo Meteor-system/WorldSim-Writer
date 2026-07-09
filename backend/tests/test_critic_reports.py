@@ -1,7 +1,7 @@
 from sqlalchemy import func, select
 
 from app.event.models import EventLog
-from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
+from app.llm.schemas import ChapterGeneration, CritiqueReport, ProposedCharacterChange, ProposedForeshadowChange
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter
 from app.world.models import World
@@ -20,6 +20,7 @@ CRITIC_DIMENSIONS = [
 
 class CriticReportLLMClient:
     def __init__(self):
+        self.critique_calls = 0
         self.critic_report_calls = 0
 
     def generate_chapter(self, messages):
@@ -34,6 +35,20 @@ class CriticReportLLMClient:
             proposed_foreshadow_changes=[
                 ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='湿信推进玉佩线索')
             ],
+        )
+
+    def critique_chapter(self, messages):
+        self.critique_calls += 1
+        return CritiqueReport(
+            score=81,
+            issues=[{'category': 'pacing', 'severity': 'medium', 'message': '第二段揭示过快。'}],
+            suggestions=['放慢湿信信息揭示。'],
+            consistency_check={
+                'character_voice': 'pass',
+                'foreshadow_usage': 'advanced',
+                'world_rule_adherence': 'pass',
+                'pacing': 'needs_revision',
+            },
         )
 
     def generate_critic_report(self, messages):
@@ -125,6 +140,35 @@ def create_reviewing_draft(client, token, world_id, monkeypatch, llm_client=None
     return response.json()
 
 
+def test_critique_rejects_extra_body_fields_without_side_effects(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    llm_client = CriticReportLLMClient()
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch, llm_client)
+    assert llm_client.critique_calls == 0
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+    before_world_version = db_session.get(World, world_id).world_version
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/critique",
+        json={'raw_text': 'critique endpoint must not accept runtime source text'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert llm_client.critique_calls == 0
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    assert world.world_version == before_world_version
+    assert chapter.status == 'reviewing'
+    assert chapter.critique_report == {}
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
 def test_post_critic_report_generates_structured_report_without_mutating_world(client, db_session, monkeypatch):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)
@@ -163,6 +207,8 @@ def test_critic_report_rejects_extra_body_fields_without_side_effects(client, db
     llm_client = CriticReportLLMClient()
     draft = create_reviewing_draft(client, token, world_id, monkeypatch, llm_client)
     assert llm_client.critic_report_calls == 0
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+    before_world_version = db_session.get(World, world_id).world_version
 
     response = client.post(
         f"/chapters/{draft['chapter_id']}/critic-report",
@@ -171,14 +217,18 @@ def test_critic_report_rejects_extra_body_fields_without_side_effects(client, db
     )
 
     assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
     assert llm_client.critic_report_calls == 0
     db_session.expire_all()
     world = db_session.get(World, world_id)
     chapter = db_session.get(Chapter, draft['chapter_id'])
-    event_types = list(db_session.scalars(select(EventLog.event_type).where(EventLog.world_id == world_id).order_by(EventLog.id)))
-    assert world.world_version == 1
+    assert world.world_version == before_world_version
+    assert chapter.status == 'reviewing'
     assert chapter.critique_report == {}
-    assert event_types == ['WORLD_CREATED']
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
 
 
 def test_archived_world_rejects_critic_report_generation(client, db_session, monkeypatch):
