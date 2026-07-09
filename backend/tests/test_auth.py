@@ -39,7 +39,7 @@ def test_register_rejects_extra_fields_without_creating_user(client, db_session)
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     assert db_session.scalar(select(User).where(User.email == email)) is None
 
 
@@ -56,7 +56,7 @@ def test_login_rejects_extra_fields(client):
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
 
 
 def test_login_rejects_invalid_credentials(client):
@@ -85,7 +85,7 @@ def test_logout_rejects_extra_fields_without_user_side_effects(client, db_sessio
     response = client.post('/auth/logout', json={'raw_text': '登出请求不应接收运行时原文。'})
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     assert list(db_session.scalars(select(User.id).order_by(User.id))) == before_user_ids
 
 
