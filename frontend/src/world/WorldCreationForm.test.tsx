@@ -88,6 +88,7 @@ describe('WorldCreationForm', () => {
       first_chapter_goal: '让伊莱发现自己的死因记录被烧穿。',
       generation_notes: ['已生成可编辑草稿。'],
       safety_notes: ['确认前不会创建世界、写入正史或推进世界进度。'],
+      followup_questions: ['主角要先挑战死因制度，还是先救一个被错误判死的人？'],
     });
     render(
       <WorldCreationForm
@@ -105,6 +106,8 @@ describe('WorldCreationForm', () => {
     expect(onCreate).not.toHaveBeenCalled();
     expect(await screen.findByText('世界创建草稿已填入下方表单')).toBeInTheDocument();
     expect(screen.getByText('确认前不会创建世界、写入正史或推进世界进度。')).toBeInTheDocument();
+    expect(screen.getByLabelText('一句话草稿追问问题')).toHaveTextContent('主角要先挑战死因制度，还是先救一个被错误判死的人？');
+    expect(screen.getByText('这些问题只辅助你修改脑洞或表单；不会自动创建世界、写入正史或生成章节。')).toBeInTheDocument();
     expect(screen.getByLabelText('世界标题')).toHaveValue('死因王国');
 
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
@@ -142,6 +145,7 @@ describe('WorldCreationForm', () => {
           first_chapter_goal: '让伊莱发现自己的死因记录被烧穿。',
           generation_notes: ['高张力开局。'],
           safety_notes: ['确认创建前不会写入正史。'],
+          followup_questions: ['开场要从公开审判进入，还是从档案室潜入进入？'],
         },
         {
           variant_id: 'variant-2',
@@ -150,6 +154,7 @@ describe('WorldCreationForm', () => {
           first_chapter_goal: '让伊莱和维拉在死因档案前被迫结盟。',
           generation_notes: ['强调角色互相试探。'],
           safety_notes: ['确认创建前不会写入正史。'],
+          followup_questions: ['两人结盟是源于共同敌人，还是彼此掌握对方把柄？'],
         },
       ],
     });
@@ -171,10 +176,12 @@ describe('WorldCreationForm', () => {
     expect(within(variants).getByRole('button', { name: /角色关系驱动版/ })).toHaveTextContent('确认创建前不会写入正史');
     expect(screen.getByLabelText('世界标题')).toHaveValue('死因王国');
     expect(screen.getAllByText('第一章目标：让伊莱发现自己的死因记录被烧穿。').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText('一句话草稿追问问题')).toHaveTextContent('开场要从公开审判进入，还是从档案室潜入进入？');
 
     await user.click(within(variants).getByRole('button', { name: /角色关系驱动版/ }));
 
     expect(screen.getByLabelText('世界标题')).toHaveValue('命运同盟王国');
+    expect(screen.getByLabelText('一句话草稿追问问题')).toHaveTextContent('两人结盟是源于共同敌人，还是彼此掌握对方把柄？');
     expect(screen.getAllByText('第一章目标：让伊莱和维拉在死因档案前被迫结盟。').length).toBeGreaterThanOrEqual(1);
     expect(onCreate).not.toHaveBeenCalled();
   });

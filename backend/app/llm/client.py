@@ -85,6 +85,7 @@ MOCK_WORLD_CREATION_DRAFT = {
     "first_chapter_goal": "让伊莱在替人誊写死因档案时发现自己的记录被银火烧穿，并在维拉赶到封锁档案室前偷看到王室封蜡。",
     "generation_notes": ["已把一句话脑洞扩展为可审阅的世界创建表单草稿。"],
     "safety_notes": ["草稿尚未创建世界；确认前不会写入正史或推进世界进度。"],
+    "followup_questions": ["主角更想推翻死因秩序，还是先救一个被错误判死的人？"],
 }
 
 MOCK_OUTLINE = {

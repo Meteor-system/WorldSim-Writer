@@ -51,6 +51,7 @@ class WorldCreationDraftPayload(BaseModel):
     first_chapter_goal: str
     generation_notes: list[str] = Field(default_factory=list)
     safety_notes: list[str] = Field(default_factory=list)
+    followup_questions: list[str] = Field(default_factory=list)
 
     @field_validator('first_chapter_goal')
     @classmethod
@@ -59,6 +60,11 @@ class WorldCreationDraftPayload(BaseModel):
         if not stripped:
             raise ValueError('must not be blank')
         return stripped
+
+    @field_validator('followup_questions')
+    @classmethod
+    def validate_followup_questions(cls, value: list[str]) -> list[str]:
+        return [question.strip() for question in value if question.strip()][:3]
 
 
 class CritiqueIssue(BaseModel):

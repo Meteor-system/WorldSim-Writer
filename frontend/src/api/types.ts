@@ -204,6 +204,7 @@ export type WorldCreationDraftVariant = {
   first_chapter_goal: string;
   generation_notes: string[];
   safety_notes: string[];
+  followup_questions?: string[];
 };
 
 export type WorldCreationDraftResponse = {
@@ -212,6 +213,7 @@ export type WorldCreationDraftResponse = {
   first_chapter_goal: string;
   generation_notes: string[];
   safety_notes: string[];
+  followup_questions?: string[];
   variants?: WorldCreationDraftVariant[];
   style_handbook_reference?: StyleHandbookReference | null;
 };

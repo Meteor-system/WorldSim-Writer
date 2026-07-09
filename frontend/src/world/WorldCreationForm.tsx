@@ -79,7 +79,7 @@ export function WorldCreationForm({
   const [brief, setBrief] = useState('');
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState('');
-  const [draftMeta, setDraftMeta] = useState<Pick<WorldCreationDraftResponse, 'first_chapter_goal' | 'generation_notes' | 'safety_notes'> | null>(null);
+  const [draftMeta, setDraftMeta] = useState<Pick<WorldCreationDraftResponse, 'first_chapter_goal' | 'generation_notes' | 'safety_notes' | 'followup_questions'> | null>(null);
   const [draftVariants, setDraftVariants] = useState<WorldCreationDraftVariant[]>([]);
   const [selectedDraftVariantId, setSelectedDraftVariantId] = useState<string | null>(null);
 
@@ -92,6 +92,7 @@ export function WorldCreationForm({
       first_chapter_goal: variant.first_chapter_goal,
       generation_notes: variant.generation_notes,
       safety_notes: variant.safety_notes,
+      followup_questions: variant.followup_questions ?? [],
     });
   }
 
@@ -304,6 +305,7 @@ export function WorldCreationForm({
             first_chapter_goal: response.first_chapter_goal,
             generation_notes: response.generation_notes,
             safety_notes: response.safety_notes,
+            followup_questions: response.followup_questions ?? [],
           }];
       setDraftVariants(variants);
       applyDraftVariant(variants[0]);
@@ -395,6 +397,15 @@ export function WorldCreationForm({
                 <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#5e3b1c]">
                   {[...draftMeta.generation_notes, ...draftMeta.safety_notes].map((note) => <li key={note}>{note}</li>)}
                 </ul>
+              )}
+              {(draftMeta.followup_questions ?? []).length > 0 && (
+                <div className="mt-4 rounded-2xl bg-amber-50/80 p-3" aria-label="一句话草稿追问问题">
+                  <p className="text-sm font-black text-[#3b2511]">继续细化前可参考的追问</p>
+                  <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-[#5e3b1c]">
+                    {draftMeta.followup_questions?.map((question) => <li key={question}>{question}</li>)}
+                  </ol>
+                  <p className="mt-2 text-xs font-bold text-[#5e3b1c]">这些问题只辅助你修改脑洞或表单；不会自动创建世界、写入正史或生成章节。</p>
+                </div>
               )}
             </div>
           )}

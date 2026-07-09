@@ -22,6 +22,7 @@ class DraftWorldLLMClient:
             first_chapter_goal='让许砚第一次听见跃迁灯塔低鸣。',
             generation_notes=['已根据一句话脑洞生成可编辑世界草稿。'],
             safety_notes=['确认前不会创建世界、写入正史或推进世界进度。'],
+            followup_questions=['第一章更偏向灯塔事故现场，还是企业封锁冲突？'],
         )
 
 
@@ -416,17 +417,20 @@ def test_draft_world_from_brief_returns_editable_variants_without_creating_world
     assert payload['draft']['title'] == '群星边境'
     assert payload['first_chapter_goal'] == '让许砚第一次听见跃迁灯塔低鸣。'
     assert payload['safety_notes'] == ['确认前不会创建世界、写入正史或推进世界进度。']
+    assert payload['followup_questions'] == ['第一章更偏向灯塔事故现场，还是企业封锁冲突？']
     assert len(payload['variants']) == 3
     assert payload['variants'][0]['variant_id'] == 'variant-1'
     assert payload['variants'][0]['label'] == '主线高张力版'
     assert payload['variants'][0]['draft'] == payload['draft']
     assert payload['variants'][0]['first_chapter_goal'] == payload['first_chapter_goal']
+    assert payload['variants'][0]['followup_questions'] == payload['followup_questions']
     assert [variant['label'] for variant in payload['variants']] == ['主线高张力版', '角色关系驱动版', '世界规则悬疑版']
     assert llm.calls == 3
     prompts = ['\n'.join(message['content'] for message in batch) for batch in llm.captured_message_batches]
     assert '本次请生成“主线高张力版”方向的候选草稿。' in prompts[0]
     assert '本次请生成“角色关系驱动版”方向的候选草稿。' in prompts[1]
     assert '本次请生成“世界规则悬疑版”方向的候选草稿。' in prompts[2]
+    assert 'followup_questions 用 1-3 个简短问题' in prompts[0]
     assert db_session.scalar(select(func.count()).select_from(World)) == 0
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == 0
 

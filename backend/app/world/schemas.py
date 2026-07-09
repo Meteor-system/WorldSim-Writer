@@ -96,6 +96,7 @@ class WorldCreationDraftVariant(BaseModel):
     first_chapter_goal: str
     generation_notes: list[str] = Field(default_factory=list)
     safety_notes: list[str] = Field(default_factory=list)
+    followup_questions: list[str] = Field(default_factory=list)
 
 
 class WorldCreationDraftResponse(BaseModel):
@@ -104,6 +105,7 @@ class WorldCreationDraftResponse(BaseModel):
     first_chapter_goal: str
     generation_notes: list[str] = Field(default_factory=list)
     safety_notes: list[str] = Field(default_factory=list)
+    followup_questions: list[str] = Field(default_factory=list)
     variants: list[WorldCreationDraftVariant] = Field(default_factory=list)
     style_handbook_reference: ExecutionContextStyleHandbookReference | None = None
 

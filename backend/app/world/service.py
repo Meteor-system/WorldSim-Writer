@@ -85,6 +85,7 @@ def build_world_creation_draft_messages(
         '请生成一个可由用户确认和编辑的世界创建草稿。'
         f'{variant_instruction}'
         'generation_notes 用 1-3 条说明草稿如何理解用户脑洞；safety_notes 用 1-3 条说明确认前不会写入 canon/正史。'
+        'followup_questions 用 1-3 个简短问题帮助用户继续细化前提、语气、主角冲突或第一章切入点。'
     )
     style_block = _style_handbook_prompt_block(style_handbook_reference)
     if style_block:
@@ -95,7 +96,7 @@ def build_world_creation_draft_messages(
             'content': (
                 '你是 WorldSim-Writer 的 World Genesis 草稿生成器。必须只返回严格 JSON 对象，不要返回 Markdown、解释或代码块。'
                 '任务：把用户一句话故事脑洞扩展成可审阅的世界创建表单草稿，而不是直接创建世界。'
-                '返回对象只能包含字段：draft, first_chapter_goal, generation_notes, safety_notes。'
+                '返回对象只能包含字段：draft, first_chapter_goal, generation_notes, safety_notes, followup_questions。'
                 'draft 必须完全符合 WorldCreateRequest：title, genre_template, truth_canon, tone_profile, starter_assets。'
                 'starter_assets.characters 至少 2 个角色；relations 和 foreshadows 使用 source_index/target_index/related_character_indexes 引用角色数组索引。'
                 'foreshadow status 只能是 planted、advanced、resolved 或 expired；新世界默认优先 planted。'
@@ -217,6 +218,7 @@ def generate_world_creation_draft(
                 'first_chapter_goal': generated.first_chapter_goal,
                 'generation_notes': generated.generation_notes,
                 'safety_notes': generated.safety_notes,
+                'followup_questions': generated.followup_questions,
             })
     except HTTPException as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID') from exc
@@ -229,6 +231,7 @@ def generate_world_creation_draft(
         'first_chapter_goal': primary['first_chapter_goal'],
         'generation_notes': primary['generation_notes'],
         'safety_notes': primary['safety_notes'],
+        'followup_questions': primary['followup_questions'],
         'variants': variants,
         'style_handbook_reference': style_handbook_reference,
     }
