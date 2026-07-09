@@ -280,7 +280,7 @@ def test_draft_lifecycle_rejects_extra_body_fields_without_side_effects(client, 
 
         assert response.status_code == 422
         assert any(
-            error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text'
+            error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
             for error in response.json()['detail']
         )
 
