@@ -17,6 +17,8 @@ import {
   checkApprovalConsistency,
   compareWorldSnapshots,
   createChapter,
+  login,
+  register,
   createWorldSnapshot,
   createCharacter,
   createForeshadow,
@@ -82,6 +84,58 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
     ...init,
   });
 }
+
+describe('auth API helpers', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('sends only allowed fields for register and login payloads', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({
+        access_token: 'register-token',
+        token_type: 'bearer',
+        user: { id: 1, email: 'writer@example.com' },
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        access_token: 'login-token',
+        token_type: 'bearer',
+        user: { id: 1, email: 'writer@example.com' },
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await register({
+      email: 'writer@example.com',
+      password: 'strongpass123',
+      raw_text: '认证运行时备注不应进入注册请求。',
+    } as unknown as Parameters<typeof register>[0]);
+    await login({
+      email: 'writer@example.com',
+      password: 'strongpass123',
+      raw_text: '认证运行时备注不应进入登录请求。',
+    } as unknown as Parameters<typeof login>[0]);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:8000/auth/register',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:8000/auth/login',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    const bodies = fetchMock.mock.calls.map((call) => JSON.parse(call[1]?.body as string));
+    expect(bodies).toEqual([
+      { email: 'writer@example.com', password: 'strongpass123' },
+      { email: 'writer@example.com', password: 'strongpass123' },
+    ]);
+    expect(bodies[0].raw_text).toBeUndefined();
+    expect(bodies[1].raw_text).toBeUndefined();
+  });
+});
 
 describe('world creation API helpers', () => {
   beforeEach(() => {

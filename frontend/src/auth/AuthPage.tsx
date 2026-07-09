@@ -1,6 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { apiRequest } from '../api/client';
-import type { AuthResponse } from '../api/types';
+import { login, register } from '../api/client';
 
 type Props = { onAuth: (userEmail: string) => void };
 
@@ -13,10 +12,9 @@ export function AuthPage({ onAuth }: Props) {
     event.preventDefault();
     setError('');
     try {
-      const response = await apiRequest<AuthResponse>(`/auth/${mode}`, {
-        method: 'POST',
-        body: JSON.stringify({ email, password }),
-      });
+      const response = mode === 'login'
+        ? await login({ email, password })
+        : await register({ email, password });
       localStorage.setItem('worldsim_token', response.access_token);
       onAuth(response.user.email);
     } catch (err) {

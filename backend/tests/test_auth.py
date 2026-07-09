@@ -1,3 +1,6 @@
+from sqlalchemy import select
+
+from app.auth.models import User
 from app.core.security import create_access_token
 
 
@@ -24,6 +27,36 @@ def test_register_rejects_duplicate_email(client):
 
     assert response.status_code == 409
     assert response.json()['detail'] == 'EMAIL_ALREADY_REGISTERED'
+
+
+def test_register_rejects_extra_fields_without_creating_user(client, db_session):
+    email = 'auth-extra-register@example.com'
+    assert db_session.scalar(select(User).where(User.email == email)) is None
+
+    response = client.post(
+        '/auth/register',
+        json={'email': email, 'password': 'strongpass123', 'raw_text': '认证请求不应接收运行时原文。'},
+    )
+
+    assert response.status_code == 422
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert db_session.scalar(select(User).where(User.email == email)) is None
+
+
+def test_login_rejects_extra_fields(client):
+    client.post('/auth/register', json={'email': 'login-extra@example.com', 'password': 'strongpass123'})
+
+    response = client.post(
+        '/auth/login',
+        json={
+            'email': 'login-extra@example.com',
+            'password': 'strongpass123',
+            'raw_text': '认证请求不应接收运行时原文。',
+        },
+    )
+
+    assert response.status_code == 422
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
 
 
 def test_login_rejects_invalid_credentials(client):
