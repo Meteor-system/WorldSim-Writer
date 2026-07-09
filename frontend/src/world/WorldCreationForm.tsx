@@ -398,7 +398,7 @@ export function WorldCreationForm({
           {materialReferences.length > 0 && (
             <div className="mt-4 rounded-2xl border border-amber-900/15 bg-white/65 p-4" aria-label="Import Node 候选素材参考">
               <p className="text-sm font-black text-[#3b2511]">Import Node 候选素材参考（只读）</p>
-              <p className="manuscript mt-1 text-xs text-[#5e3b1c]">最多选择 3 条作为写作参考；它们不会创建世界、不会写入 canon/正史，也不会写入 EventLog。</p>
+              <p className="manuscript mt-1 text-xs text-[#5e3b1c]">最多选择 3 条作为写作参考；只会发送标题、摘要、素材池和来源权利，不发送原文；它们不会创建世界、不会写入 canon/正史，也不会写入 EventLog。</p>
               <div className="mt-3 grid gap-2 md:grid-cols-2">
                 {materialReferences.map((reference, index) => {
                   const key = materialReferenceKey(reference, index);
@@ -471,7 +471,7 @@ export function WorldCreationForm({
                   <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#5e3b1c]">
                     {draftMeta.material_references?.map((reference) => <li key={`${reference.asset_id ?? reference.title}`}>{reference.title}：{reference.summary}</li>)}
                   </ul>
-                  <p className="mt-2 text-xs font-bold text-[#5e3b1c]">这些候选素材只作为写作参考；确认前不会创建世界、写入 canon/正史或写入 EventLog。</p>
+                  <p className="mt-2 text-xs font-bold text-[#5e3b1c]">这些候选素材只作为写作参考；只使用标题、摘要、素材池和来源权利，不使用原文；确认前不会创建世界、写入 canon/正史或写入 EventLog。</p>
                 </div>
               )}
               {(draftMeta.followup_questions ?? []).length > 0 && (

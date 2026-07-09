@@ -1227,7 +1227,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
             />
             <div className="rounded-2xl bg-amber-50/80 p-4">
               <p className="text-sm font-black text-[#3b2511]">用 Import Node 候选素材开新书</p>
-              <p className="manuscript mt-1 text-sm text-[#5e3b1c]">只把候选素材标题和摘要带入一句话开书作为只读写作参考；不会创建世界、不会写入 canon/正史或 EventLog。</p>
+              <p className="manuscript mt-1 text-sm text-[#5e3b1c]">只把候选素材标题、摘要、素材池和来源权利带入一句话开书作为只读写作参考；不带入原文，不会创建世界、不会写入 canon/正史或 EventLog。</p>
               <button className="secondary-button mt-3" type="button" disabled={creationMaterialLoading} onClick={() => void startNewWorldWithImportMaterials()}>
                 {creationMaterialLoading ? '读取候选素材中...' : '用候选素材开新书草稿'}
               </button>

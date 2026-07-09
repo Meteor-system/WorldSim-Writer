@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { WorldCreationMaterialReference } from './types';
 import {
   checkApprovalConsistency,
   compareWorldSnapshots,
@@ -148,7 +149,18 @@ describe('world creation API helpers', () => {
   });
 
   it('passes import node material references to one-sentence world draft generation', async () => {
-    const materialReferences = [
+    const materialReferences: Array<WorldCreationMaterialReference & { raw_text: string }> = [
+      {
+        source: 'import_node' as const,
+        asset_id: 42,
+        title: '雾港钟楼候选素材',
+        summary: '一座每天倒敲十三次的钟楼引发城内记忆错位。',
+        asset_pool: 'inspiration' as const,
+        source_rights: 'general_reference' as const,
+        raw_text: '原文不应进入一句话开书请求。',
+      },
+    ];
+    const expectedMaterialReferences = [
       {
         source: 'import_node' as const,
         asset_id: 42,
@@ -169,7 +181,7 @@ describe('world creation API helpers', () => {
       first_chapter_goal: '让许砚第一次听见跃迁灯塔低鸣。',
       generation_notes: [],
       safety_notes: ['确认前不会创建世界。'],
-      material_references: materialReferences,
+      material_references: expectedMaterialReferences,
       variants: [],
     }));
     vi.stubGlobal('fetch', fetchMock);
@@ -183,11 +195,11 @@ describe('world creation API helpers', () => {
         body: JSON.stringify({
           brief: '一个边境殖民地依赖濒临失控的跃迁灯塔',
           variant_count: 3,
-          material_references: materialReferences,
+          material_references: expectedMaterialReferences,
         }),
       }),
     );
-    expect(result.material_references).toEqual(materialReferences);
+    expect(result.material_references).toEqual(expectedMaterialReferences);
   });
 
   it('passes a style handbook reference and variant count to one-sentence world draft generation', async () => {

@@ -644,11 +644,14 @@ describe('WorldPage world creation', () => {
     render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
 
     await user.click(await screen.findByRole('button', { name: '继续创作' }));
+    expect(await screen.findByText(/不带入原文，不会创建世界/)).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: '用候选素材开新书草稿' }));
 
     expect(await screen.findByText('Import Node 候选素材参考（只读）')).toBeInTheDocument();
     expect(screen.getByLabelText('Import Node 候选素材参考')).toHaveTextContent('雾港钟楼候选素材');
+    expect(screen.getByLabelText('Import Node 候选素材参考')).toHaveTextContent('只会发送标题、摘要、素材池和来源权利，不发送原文');
     expect(screen.getByLabelText('Import Node 候选素材参考')).toHaveTextContent('不会创建世界、不会写入 canon/正史，也不会写入 EventLog');
+    expect(screen.getByLabelText('Import Node 候选素材参考')).not.toHaveTextContent('不应传入一句话开书');
 
     await user.type(screen.getByLabelText('一句话故事想法'), '一个边境殖民地依赖濒临失控的跃迁灯塔');
     await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
@@ -668,7 +671,8 @@ describe('WorldPage world creation', () => {
         },
       ],
     );
-    expect(await screen.findByLabelText('本次草稿引用的候选素材')).toHaveTextContent('不会创建世界、写入 canon/正史或写入 EventLog');
+    expect(await screen.findByLabelText('本次草稿引用的候选素材')).toHaveTextContent('只使用标题、摘要、素材池和来源权利，不使用原文');
+    expect(screen.getByLabelText('本次草稿引用的候选素材')).toHaveTextContent('不会创建世界、写入 canon/正史或写入 EventLog');
   });
 
   it('creates the built-in sample world and loads its overview', async () => {

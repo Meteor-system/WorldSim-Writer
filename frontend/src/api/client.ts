@@ -118,19 +118,36 @@ export function createWorld(data: WorldCreateRequest) {
   });
 }
 
+function cleanWorldCreationMaterialReferences(
+  materialReferences?: WorldCreationMaterialReference[],
+): WorldCreationMaterialReference[] {
+  return (materialReferences ?? [])
+    .slice(0, 3)
+    .map((reference) => ({
+      source: 'import_node' as const,
+      ...(reference.asset_id !== undefined ? { asset_id: reference.asset_id ?? null } : {}),
+      title: reference.title,
+      summary: reference.summary,
+      ...(reference.asset_pool !== undefined ? { asset_pool: reference.asset_pool ?? null } : {}),
+      ...(reference.source_rights !== undefined ? { source_rights: reference.source_rights ?? null } : {}),
+    }))
+    .filter((reference) => reference.title.trim() && reference.summary.trim());
+}
+
 export function draftWorldFromBrief(
   brief: string,
   styleHandbookReference?: StyleHandbookReference | null,
   variantCount?: number,
   materialReferences?: WorldCreationMaterialReference[],
 ) {
+  const cleanedMaterialReferences = cleanWorldCreationMaterialReferences(materialReferences);
   return apiRequest<WorldCreationDraftResponse>('/worlds/draft-from-brief', {
     method: 'POST',
     body: JSON.stringify({
       brief,
       ...(styleHandbookReference ? { style_handbook_reference: styleHandbookReference } : {}),
       ...(variantCount ? { variant_count: variantCount } : {}),
-      ...(materialReferences?.length ? { material_references: materialReferences } : {}),
+      ...(cleanedMaterialReferences.length ? { material_references: cleanedMaterialReferences } : {}),
     }),
   });
 }
