@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
+  ApproveRequest,
   ChapterExecutionContext,
   StyleHandbookReference,
   WorldCreateRequest,
   WorldCreationMaterialReference,
 } from './types';
 import {
+  approveChapter,
   checkApprovalConsistency,
   compareWorldSnapshots,
   createChapter,
@@ -1040,7 +1042,7 @@ describe('draft versioning API helpers', () => {
     });
   });
 
-  it('calls draft stash, paragraph revision, full revision, exact version, diff, approval preview, and approval consistency endpoints', async () => {
+  it('calls draft stash, paragraph revision, full revision, exact version, diff, approval preview, approval consistency, and approve endpoints', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ draft_version: 2 }))
@@ -1049,8 +1051,21 @@ describe('draft versioning API helpers', () => {
       .mockResolvedValueOnce(jsonResponse({ draft_version: 1 }))
       .mockResolvedValueOnce(jsonResponse({ diff_lines: [] }))
       .mockResolvedValueOnce(jsonResponse({ version_conflict: false }))
-      .mockResolvedValueOnce(jsonResponse({ consistency_warnings: [] }));
+      .mockResolvedValueOnce(jsonResponse({ consistency_warnings: [] }))
+      .mockResolvedValueOnce(jsonResponse({ status: 'approved' }));
     vi.stubGlobal('fetch', fetchMock);
+    const approvalPayload = {
+      draft_version: 1,
+      selected_character_change_indexes: [0],
+      selected_foreshadow_change_indexes: [],
+      raw_text: '审核请求不应发送草稿原文',
+      internal_score: 0.93,
+    } as unknown as ApproveRequest;
+    const expectedApprovalPayload: ApproveRequest = {
+      draft_version: 1,
+      selected_character_change_indexes: [0],
+      selected_foreshadow_change_indexes: [],
+    };
 
     await stashDraft(11, { note: '暂存当前草稿' });
     await reviseParagraph(11, { paragraph_index: 1, mode: 'rewrite', instruction: '增强悬念' });
@@ -1058,7 +1073,8 @@ describe('draft versioning API helpers', () => {
     await getDraftVersion(11, 1);
     await getDraftDiff(11, 1, 3);
     await getApprovalPreview(11);
-    await checkApprovalConsistency(11, { draft_version: 1, selected_character_change_indexes: [0], selected_foreshadow_change_indexes: [] });
+    await checkApprovalConsistency(11, approvalPayload);
+    await approveChapter(11, approvalPayload);
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -1086,9 +1102,23 @@ describe('draft versioning API helpers', () => {
       'http://localhost:8000/chapters/11/approval-consistency',
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ draft_version: 1, selected_character_change_indexes: [0], selected_foreshadow_change_indexes: [] }),
+        body: JSON.stringify(expectedApprovalPayload),
       }),
     );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      8,
+      'http://localhost:8000/chapters/11/approve',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(expectedApprovalPayload),
+      }),
+    );
+    const consistencyBody = JSON.parse(fetchMock.mock.calls[6][1]?.body as string);
+    const approveBody = JSON.parse(fetchMock.mock.calls[7][1]?.body as string);
+    expect(consistencyBody.raw_text).toBeUndefined();
+    expect(consistencyBody.internal_score).toBeUndefined();
+    expect(approveBody.raw_text).toBeUndefined();
+    expect(approveBody.internal_score).toBeUndefined();
   });
 
   it('calls critic report generate and fetch endpoints', async () => {

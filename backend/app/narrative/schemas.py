@@ -171,6 +171,8 @@ class DraftResponse(BaseModel):
 
 
 class ApproveRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     draft_version: int | None = None
     selected_character_change_indexes: list[int] | None = None
     selected_foreshadow_change_indexes: list[int] | None = None

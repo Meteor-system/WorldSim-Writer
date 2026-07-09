@@ -509,10 +509,22 @@ export function getApprovalPreview(chapterId: number) {
   return apiRequest<ApprovalPreviewResponse>(`/chapters/${chapterId}/approval-preview`);
 }
 
+function cleanApproveRequest(data: ApproveRequest = {}): ApproveRequest {
+  return {
+    ...(data.draft_version !== undefined ? { draft_version: data.draft_version } : {}),
+    ...(data.selected_character_change_indexes !== undefined
+      ? { selected_character_change_indexes: [...data.selected_character_change_indexes] }
+      : {}),
+    ...(data.selected_foreshadow_change_indexes !== undefined
+      ? { selected_foreshadow_change_indexes: [...data.selected_foreshadow_change_indexes] }
+      : {}),
+  };
+}
+
 export function checkApprovalConsistency(chapterId: number, data: ApproveRequest = {}) {
   return apiRequest<ApprovalConsistencyResponse>(`/chapters/${chapterId}/approval-consistency`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(cleanApproveRequest(data)),
   });
 }
 
@@ -523,7 +535,7 @@ export function getApprovalReadiness(chapterId: number) {
 export function approveChapter(chapterId: number, data: ApproveRequest = {}) {
   return apiRequest<ChapterPipelineResponse>(`/chapters/${chapterId}/approve`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(cleanApproveRequest(data)),
   });
 }
 

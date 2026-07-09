@@ -209,6 +209,33 @@ def test_approve_chapter_updates_world_character_foreshadow_and_events(client, m
     assert overview['recent_events'][0]['world_version_after'] == 2
 
 
+def test_approve_chapter_rejects_extra_fields_without_side_effects(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+    before_events = len(event_logs(db_session, world_id))
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/approve",
+        json={'draft_version': draft['draft_version'], 'raw_text': '审核请求不能夹带草稿原文'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    assert world.world_version == 1
+    assert chapter.status == 'reviewing'
+    assert chapter.approved_version is None
+    assert chapter.approved_content is None
+    assert len(event_logs(db_session, world_id)) == before_events
+
+
 def test_approve_chapter_creates_foreshadow_lifecycle_event(client, monkeypatch):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
