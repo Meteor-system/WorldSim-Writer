@@ -30,8 +30,10 @@ import type {
   ForeshadowStatus,
   ForeshadowUpdate,
   ImportBatchListResponse,
+  ImportCandidateAssetPreview,
   ImportConfirmRequest,
   ImportConfirmResponse,
+  ImportConflict,
   ImportPreviewRequest,
   ImportPreviewResponse,
   NarrativeHealthResponse,
@@ -422,24 +424,59 @@ export function suggestGoal(worldId: number) {
   });
 }
 
+function cleanImportPreviewRequest(data: ImportPreviewRequest): ImportPreviewRequest {
+  return {
+    source_type: data.source_type,
+    source_title: data.source_title,
+    content: data.content,
+  };
+}
+
+function cleanImportCandidateAssetPreview(asset: ImportCandidateAssetPreview): ImportCandidateAssetPreview {
+  return {
+    asset_pool: asset.asset_pool,
+    title: asset.title,
+    summary: asset.summary,
+    raw_text: asset.raw_text,
+    metadata: asset.metadata,
+  };
+}
+
+function cleanImportConflict(conflict: ImportConflict): ImportConflict {
+  return {
+    severity: conflict.severity,
+    category: conflict.category,
+    message: conflict.message,
+    matched_text: conflict.matched_text,
+    details: conflict.details,
+  };
+}
+
 export function previewWorldImport(worldId: number, data: ImportPreviewRequest) {
   return apiRequest<ImportPreviewResponse>(`/worlds/${worldId}/imports/preview`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(cleanImportPreviewRequest(data)),
   });
 }
 
 export function previewStyleHandbook(worldId: number, data: StyleHandbookPreviewRequest) {
   return apiRequest<StyleHandbookPreviewResponse>(`/worlds/${worldId}/imports/style-handbook/preview`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...cleanImportPreviewRequest(data),
+      source_rights: data.source_rights,
+    }),
   });
 }
 
 export function confirmWorldImport(worldId: number, data: ImportConfirmRequest) {
   return apiRequest<ImportConfirmResponse>(`/worlds/${worldId}/imports/confirm`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...cleanImportPreviewRequest(data),
+      assets: data.assets.map(cleanImportCandidateAssetPreview),
+      conflicts: data.conflicts.map(cleanImportConflict),
+    }),
   });
 }
 

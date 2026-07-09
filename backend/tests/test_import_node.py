@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.event.models import EventLog
 from app.import_node.models import ImportBatch, ImportCandidateAsset
@@ -84,6 +84,56 @@ def test_style_handbook_preview_extracts_abstract_draft_without_persistence_or_c
     assert db_session.scalar(select(EventLog).where(EventLog.world_id == world.id).where(EventLog.event_type == 'style_handbook_previewed')) is None
 
 
+def test_import_preview_request_rejects_extra_fields_without_persistence(client, db_session):
+    token = register(client, 'import-preview-extra@example.com')
+    world_payload = create_sample_world(client, token)
+    before_batches = db_session.scalar(select(func.count()).select_from(ImportBatch).where(ImportBatch.world_id == world_payload['id']))
+    before_assets = db_session.scalar(select(func.count()).select_from(ImportCandidateAsset).where(ImportCandidateAsset.world_id == world_payload['id']))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_payload['id']))
+
+    response = client.post(
+        f"/worlds/{world_payload['id']}/imports/preview",
+        headers=auth_headers(token),
+        json={
+            'source_type': 'txt',
+            'source_title': '灵感.txt',
+            'content': '灵感：雨夜出现第二个月亮。',
+            'raw_text': '不应进入导入预览请求根字段。',
+        },
+    )
+
+    assert response.status_code == 422
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert db_session.scalar(select(func.count()).select_from(ImportBatch).where(ImportBatch.world_id == world_payload['id'])) == before_batches
+    assert db_session.scalar(select(func.count()).select_from(ImportCandidateAsset).where(ImportCandidateAsset.world_id == world_payload['id'])) == before_assets
+    assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_payload['id'])) == before_events
+
+
+def test_style_handbook_preview_request_rejects_extra_fields_without_persistence(client, db_session):
+    token = register(client, 'style-handbook-extra@example.com')
+    world_payload = create_sample_world(client, token)
+    before_batches = db_session.scalar(select(func.count()).select_from(ImportBatch).where(ImportBatch.world_id == world_payload['id']))
+    before_assets = db_session.scalar(select(func.count()).select_from(ImportCandidateAsset).where(ImportCandidateAsset.world_id == world_payload['id']))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_payload['id']))
+
+    response = client.post(
+        f"/worlds/{world_payload['id']}/imports/style-handbook/preview",
+        headers=auth_headers(token),
+        json={
+            'source_type': 'pasted_text',
+            'source_title': '参考片段',
+            'source_rights': 'general_reference',
+            'content': '雨夜里，旧城门缓慢打开。',
+            'style_prompt': '不应进入风格手册预览根字段。',
+        },
+    )
+
+    assert response.status_code == 422
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'style_prompt' for error in response.json()['detail'])
+    assert db_session.scalar(select(func.count()).select_from(ImportBatch).where(ImportBatch.world_id == world_payload['id'])) == before_batches
+    assert db_session.scalar(select(func.count()).select_from(ImportCandidateAsset).where(ImportCandidateAsset.world_id == world_payload['id'])) == before_assets
+    assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_payload['id'])) == before_events
+
 
 def test_non_owner_cannot_preview_style_handbook(client):
     owner_token = register(client, 'style-owner@example.com')
@@ -161,6 +211,85 @@ def test_import_confirm_writes_candidates_and_audit_without_mutating_canon_or_wo
     assert material_references
     assert material_references[0]['safety_note'] == '导入素材参考只用于创作提示，不会自动改写正式 canon。'
     assert material_references[0]['title'] in {asset['title'] for asset in payload['assets']}
+
+
+def test_import_confirm_request_rejects_extra_root_fields_without_persistence(client, db_session):
+    token = register(client, 'import-confirm-root-extra@example.com')
+    world_payload = create_sample_world(client, token)
+    content = '灵感：城门口出现第二个月亮。'
+    preview = client.post(
+        f"/worlds/{world_payload['id']}/imports/preview",
+        headers=auth_headers(token),
+        json={'source_type': 'pasted_text', 'source_title': '片段', 'content': content},
+    ).json()
+    before_batches = db_session.scalar(select(func.count()).select_from(ImportBatch).where(ImportBatch.world_id == world_payload['id']))
+    before_assets = db_session.scalar(select(func.count()).select_from(ImportCandidateAsset).where(ImportCandidateAsset.world_id == world_payload['id']))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_payload['id']))
+
+    response = client.post(
+        f"/worlds/{world_payload['id']}/imports/confirm",
+        headers=auth_headers(token),
+        json={
+            'source_type': 'pasted_text',
+            'source_title': '片段',
+            'content': content,
+            'assets': preview['assets'],
+            'conflicts': preview['conflicts'],
+            'write_to_canon': True,
+        },
+    )
+
+    assert response.status_code == 422
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'write_to_canon' for error in response.json()['detail'])
+    assert db_session.scalar(select(func.count()).select_from(ImportBatch).where(ImportBatch.world_id == world_payload['id'])) == before_batches
+    assert db_session.scalar(select(func.count()).select_from(ImportCandidateAsset).where(ImportCandidateAsset.world_id == world_payload['id'])) == before_assets
+    assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_payload['id'])) == before_events
+
+
+def test_import_confirm_request_rejects_extra_nested_fields_without_persistence(client, db_session):
+    token = register(client, 'import-confirm-nested-extra@example.com')
+    world_payload = create_sample_world(client, token)
+    content = '设定：黑水城城墙下埋着旧王朝的骨印。\n灵感：雨夜审讯从一盏坏灯开始。'
+    preview = client.post(
+        f"/worlds/{world_payload['id']}/imports/preview",
+        headers=auth_headers(token),
+        json={'source_type': 'txt', 'source_title': '灵感.txt', 'content': content},
+    ).json()
+    preview['assets'][0]['canonical_status'] = 'approved'
+    if preview['conflicts']:
+        preview['conflicts'][0]['resolution'] = 'auto_apply'
+    else:
+        preview['conflicts'].append({
+            'severity': 'warning',
+            'category': 'manual',
+            'message': '人工冲突',
+            'matched_text': None,
+            'details': {},
+            'resolution': 'auto_apply',
+        })
+    before_batches = db_session.scalar(select(func.count()).select_from(ImportBatch).where(ImportBatch.world_id == world_payload['id']))
+    before_assets = db_session.scalar(select(func.count()).select_from(ImportCandidateAsset).where(ImportCandidateAsset.world_id == world_payload['id']))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_payload['id']))
+
+    response = client.post(
+        f"/worlds/{world_payload['id']}/imports/confirm",
+        headers=auth_headers(token),
+        json={
+            'source_type': 'txt',
+            'source_title': '灵感.txt',
+            'content': content,
+            'assets': preview['assets'],
+            'conflicts': preview['conflicts'],
+        },
+    )
+
+    assert response.status_code == 422
+    detail = response.json()['detail']
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'canonical_status' for error in detail)
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'resolution' for error in detail)
+    assert db_session.scalar(select(func.count()).select_from(ImportBatch).where(ImportBatch.world_id == world_payload['id'])) == before_batches
+    assert db_session.scalar(select(func.count()).select_from(ImportCandidateAsset).where(ImportCandidateAsset.world_id == world_payload['id'])) == before_assets
+    assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_payload['id'])) == before_events
 
 
 def test_import_list_returns_recent_batches_with_candidates(client):

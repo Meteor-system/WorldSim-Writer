@@ -43,7 +43,9 @@ import {
   getDraftDiff,
   getWorldEvents,
   getDraftVersion,
+  confirmWorldImport,
   previewStyleHandbook,
+  previewWorldImport,
   getWorldSeed,
   getWorldTag,
   listWorldSeeds,
@@ -418,12 +420,137 @@ describe('style handbook API helper', () => {
         body: JSON.stringify({
           source_type: 'pasted_text',
           source_title: '参考片段',
-          source_rights: 'general_reference',
           content: '雨夜里出现旧徽记。',
+          source_rights: 'general_reference',
         }),
       }),
     );
     expect(result.handbook.narrative_pacing.label).toBe('叙事节奏');
+  });
+
+  it('sends only allowed import node fields in preview, style handbook, and confirm requests', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ world_id: 7, source_type: 'txt', source_title: '灵感.txt', cleaned_excerpt: '', assets: [], conflicts: [], asset_counts: {} }))
+      .mockResolvedValueOnce(jsonResponse({
+        world_id: 7,
+        source_type: 'pasted_text',
+        source_title: '参考片段',
+        source_rights: 'general_reference',
+        cleaned_excerpt: '',
+        handbook: {
+          narrative_pacing: { label: '叙事节奏', value: '中速推进', evidence: null },
+          language_density: { label: '语言密度', value: '中等', evidence: null },
+          dialogue_ratio: { label: '对白比例', value: '适中', evidence: null },
+          scene_progression: { label: '场景推进', value: '意象推进', evidence: null },
+          suspense_structure: { label: '悬念结构', value: '显性悬念', evidence: null },
+          relationship_tension: { label: '人物关系张力', value: '关系张力明显', evidence: null },
+          foreshadowing_pattern: { label: '伏笔埋设/回收方式', value: '延迟解释', evidence: null },
+          do_guidelines: [],
+          avoid_guidelines: [],
+          originality_guidelines: [],
+        },
+        safety_notes: [],
+        generation_notes: [],
+      }))
+      .mockResolvedValueOnce(jsonResponse({ batch: {}, assets: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await previewWorldImport(7, {
+      source_type: 'txt',
+      source_title: '灵感.txt',
+      content: '灵感：雨夜出现第二个月亮。',
+      raw_text: '不应进入 import preview 请求。',
+    } as unknown as Parameters<typeof previewWorldImport>[1]);
+    await previewStyleHandbook(7, {
+      source_type: 'pasted_text',
+      source_title: '参考片段',
+      source_rights: 'general_reference',
+      content: '雨夜里出现旧徽记。',
+      style_prompt: '不应进入 style handbook 请求。',
+    } as unknown as Parameters<typeof previewStyleHandbook>[1]);
+    await confirmWorldImport(7, {
+      source_type: 'txt',
+      source_title: '灵感.txt',
+      content: '灵感：雨夜出现第二个月亮。',
+      write_to_canon: true,
+      assets: [
+        {
+          asset_pool: 'inspiration',
+          title: '第二个月亮',
+          summary: '城门口出现第二个月亮。',
+          raw_text: '城门口出现第二个月亮。',
+          metadata: { source_line: 1 },
+          canonical_status: 'approved',
+        },
+      ],
+      conflicts: [
+        {
+          severity: 'warning',
+          category: 'manual',
+          message: '人工冲突',
+          matched_text: null,
+          details: {},
+          resolution: 'auto_apply',
+        },
+      ],
+    } as unknown as Parameters<typeof confirmWorldImport>[1]);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:8000/worlds/7/imports/preview',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          source_type: 'txt',
+          source_title: '灵感.txt',
+          content: '灵感：雨夜出现第二个月亮。',
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:8000/worlds/7/imports/style-handbook/preview',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          source_type: 'pasted_text',
+          source_title: '参考片段',
+          content: '雨夜里出现旧徽记。',
+          source_rights: 'general_reference',
+        }),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      'http://localhost:8000/worlds/7/imports/confirm',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          source_type: 'txt',
+          source_title: '灵感.txt',
+          content: '灵感：雨夜出现第二个月亮。',
+          assets: [
+            {
+              asset_pool: 'inspiration',
+              title: '第二个月亮',
+              summary: '城门口出现第二个月亮。',
+              raw_text: '城门口出现第二个月亮。',
+              metadata: { source_line: 1 },
+            },
+          ],
+          conflicts: [
+            {
+              severity: 'warning',
+              category: 'manual',
+              message: '人工冲突',
+              matched_text: null,
+              details: {},
+            },
+          ],
+        }),
+      }),
+    );
   });
 });
 

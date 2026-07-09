@@ -18,6 +18,8 @@ def _strip_required(value: str) -> str:
 
 
 class ImportConflict(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     severity: Literal['info', 'warning', 'blocking'] = 'warning'
     category: str
     message: str
@@ -26,6 +28,8 @@ class ImportConflict(BaseModel):
 
 
 class ImportCandidateAssetPreview(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     asset_pool: AssetPool
     title: str
     summary: str
@@ -39,6 +43,8 @@ class ImportCandidateAssetPreview(BaseModel):
 
 
 class ImportPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     source_type: SourceType
     source_title: str
     content: str = Field(min_length=1, max_length=50000)
