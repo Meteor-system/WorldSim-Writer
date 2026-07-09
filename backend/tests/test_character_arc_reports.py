@@ -136,7 +136,7 @@ def test_character_arc_report_rejects_extra_body_fields_without_side_effects(cli
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     assert llm_client.character_arc_report_calls == 0
     db_session.expire_all()
     world = db_session.get(World, world_id)
