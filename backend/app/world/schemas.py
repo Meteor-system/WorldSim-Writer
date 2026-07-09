@@ -17,6 +17,8 @@ def _strip_required(value: str) -> str:
 
 
 class StarterCharacterCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     name: str
     role_type: str
     status: str | None = None
@@ -32,6 +34,8 @@ class StarterCharacterCreate(BaseModel):
 
 
 class StarterRelationCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     source_index: int = Field(ge=0)
     target_index: int = Field(ge=0)
     relation_type: str
@@ -45,6 +49,8 @@ class StarterRelationCreate(BaseModel):
 
 
 class StarterForeshadowCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     title: str
     description: str
     foreshadow_type: str
@@ -60,12 +66,16 @@ class StarterForeshadowCreate(BaseModel):
 
 
 class StarterAssetsCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     characters: list[StarterCharacterCreate] = Field(min_length=1)
     relations: list[StarterRelationCreate] = Field(default_factory=list)
     foreshadows: list[StarterForeshadowCreate] = Field(default_factory=list)
 
 
 class WorldCreateRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     title: str
     genre_template: str
     truth_canon: str

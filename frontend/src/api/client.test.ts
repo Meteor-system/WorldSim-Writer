@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChapterExecutionContext, StyleHandbookReference, WorldCreationMaterialReference } from './types';
+import type {
+  ChapterExecutionContext,
+  StyleHandbookReference,
+  WorldCreateRequest,
+  WorldCreationMaterialReference,
+} from './types';
 import {
   checkApprovalConsistency,
   compareWorldSnapshots,
@@ -76,10 +81,54 @@ describe('world creation API helpers', () => {
       genre_template: 'sci_fi',
       truth_canon: '跃迁灯塔正在失控。',
       tone_profile: { style: '冷峻太空歌剧' },
+      raw_text: '草稿原文不应进入正式开书请求。',
+      first_chapter_goal: '草稿首章目标不应进入正式开书请求。',
       starter_assets: {
-        characters: [{ name: '许砚', role_type: 'protagonist' }],
-        relations: [],
-        foreshadows: [],
+        raw_text: 'starter 原文不应进入正式开书请求。',
+        characters: [
+          {
+            name: '许砚',
+            role_type: 'protagonist',
+            status: 'active',
+            raw_text: '角色原文不应进入正式开书请求。',
+          },
+        ],
+        relations: [
+          {
+            source_index: 0,
+            target_index: 0,
+            relation_type: 'self_doubt',
+            intensity: 2,
+            raw_text: '关系运行时备注不应进入正式开书请求。',
+          },
+        ],
+        foreshadows: [
+          {
+            title: '黑匣子脉冲',
+            description: '废弃黑匣子收到未来求救信号。',
+            foreshadow_type: 'signal_clue',
+            urgency_level: 4,
+            internal_score: 0.88,
+          },
+        ],
+      },
+    } as unknown as WorldCreateRequest;
+    const expectedPayload: WorldCreateRequest = {
+      title: '群星边境',
+      genre_template: 'sci_fi',
+      truth_canon: '跃迁灯塔正在失控。',
+      tone_profile: { style: '冷峻太空歌剧' },
+      starter_assets: {
+        characters: [{ name: '许砚', role_type: 'protagonist', status: 'active' }],
+        relations: [{ source_index: 0, target_index: 0, relation_type: 'self_doubt', intensity: 2 }],
+        foreshadows: [
+          {
+            title: '黑匣子脉冲',
+            description: '废弃黑匣子收到未来求救信号。',
+            foreshadow_type: 'signal_clue',
+            urgency_level: 4,
+          },
+        ],
       },
     };
 
@@ -89,8 +138,15 @@ describe('world creation API helpers', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       'http://localhost:8000/worlds',
-      expect.objectContaining({ method: 'POST', body: JSON.stringify(payload) }),
+      expect.objectContaining({ method: 'POST', body: JSON.stringify(expectedPayload) }),
     );
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    expect(requestBody.raw_text).toBeUndefined();
+    expect(requestBody.first_chapter_goal).toBeUndefined();
+    expect(requestBody.starter_assets.raw_text).toBeUndefined();
+    expect(requestBody.starter_assets.characters[0].raw_text).toBeUndefined();
+    expect(requestBody.starter_assets.relations[0].raw_text).toBeUndefined();
+    expect(requestBody.starter_assets.foreshadows[0].internal_score).toBeUndefined();
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
       'http://localhost:8000/worlds/from-template',

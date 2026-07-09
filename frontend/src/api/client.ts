@@ -112,10 +112,58 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
 
 /* ── Worlds ── */
 
+function cleanWorldCreateRequest(data: WorldCreateRequest): WorldCreateRequest {
+  return {
+    title: data.title,
+    genre_template: data.genre_template,
+    truth_canon: data.truth_canon,
+    ...(data.tone_profile !== undefined ? { tone_profile: data.tone_profile } : {}),
+    starter_assets: {
+      characters: data.starter_assets.characters.map((character) => ({
+        name: character.name,
+        role_type: character.role_type,
+        ...(character.status !== undefined ? { status: character.status } : {}),
+        ...(character.public_profile !== undefined ? { public_profile: character.public_profile } : {}),
+        ...(character.hidden_traits !== undefined ? { hidden_traits: character.hidden_traits } : {}),
+        ...(character.destiny_flag !== undefined ? { destiny_flag: character.destiny_flag } : {}),
+        ...(character.current_goals !== undefined ? { current_goals: [...character.current_goals] } : {}),
+      })),
+      ...(data.starter_assets.relations !== undefined
+        ? {
+            relations: data.starter_assets.relations.map((relation) => ({
+              source_index: relation.source_index,
+              target_index: relation.target_index,
+              relation_type: relation.relation_type,
+              ...(relation.intensity !== undefined ? { intensity: relation.intensity } : {}),
+              ...(relation.visibility !== undefined ? { visibility: relation.visibility } : {}),
+            })),
+          }
+        : {}),
+      ...(data.starter_assets.foreshadows !== undefined
+        ? {
+            foreshadows: data.starter_assets.foreshadows.map((foreshadow) => ({
+              title: foreshadow.title,
+              description: foreshadow.description,
+              foreshadow_type: foreshadow.foreshadow_type,
+              ...(foreshadow.status !== undefined ? { status: foreshadow.status } : {}),
+              ...(foreshadow.urgency_level !== undefined ? { urgency_level: foreshadow.urgency_level } : {}),
+              ...(foreshadow.related_character_indexes !== undefined
+                ? { related_character_indexes: [...foreshadow.related_character_indexes] }
+                : {}),
+              ...(foreshadow.expected_resolution_window !== undefined
+                ? { expected_resolution_window: foreshadow.expected_resolution_window }
+                : {}),
+            })),
+          }
+        : {}),
+    },
+  };
+}
+
 export function createWorld(data: WorldCreateRequest) {
   return apiRequest<{ id: number }>('/worlds', {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify(cleanWorldCreateRequest(data)),
   });
 }
 

@@ -184,6 +184,24 @@ def test_create_custom_world_from_template_payload(client):
     assert foreshadow['related_character_ids'] == character_ids
 
 
+def test_create_custom_world_rejects_extra_fields_without_side_effects(client, db_session):
+    token = register(client, 'world-extra-fields@example.com')
+    payload = custom_world_payload()
+    payload['raw_text'] = '草稿原文不能进入正式开书契约'
+    payload['starter_assets']['raw_text'] = 'starter 原始素材不能进入正式开书契约'
+    payload['starter_assets']['characters'][0]['internal_score'] = 0.99
+    payload['starter_assets']['relations'][0]['raw_text'] = '运行时关系备注不能进入正式开书契约'
+    payload['starter_assets']['foreshadows'][0]['first_chapter_goal'] = '草稿首章目标不能进入正式开书契约'
+    before_worlds = db_session.scalar(select(func.count()).select_from(World))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+
+    response = client.post('/worlds', headers=auth(token), json=payload)
+
+    assert response.status_code == 422
+    assert db_session.scalar(select(func.count()).select_from(World)) == before_worlds
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
 def test_template_foreshadows_get_initial_timeline_event(client):
     token = register(client)
 
