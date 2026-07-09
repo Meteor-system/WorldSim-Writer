@@ -15,6 +15,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class EmptyLogoutRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+
 class UserResponse(BaseModel):
     id: int
     email: EmailStr

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_user
 from app.auth.models import User
-from app.auth.schemas import AuthResponse, LoginRequest, RegisterRequest, UserResponse
+from app.auth.schemas import AuthResponse, EmptyLogoutRequest, LoginRequest, RegisterRequest, UserResponse
 from app.auth.service import authenticate_user, register_user
 from app.core.database import get_db
 
@@ -23,7 +23,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> AuthResponse:
 
 
 @router.post('/logout')
-def logout() -> dict[str, bool]:
+def logout(_payload: EmptyLogoutRequest | None = None) -> dict[str, bool]:
     return {'success': True}
 
 

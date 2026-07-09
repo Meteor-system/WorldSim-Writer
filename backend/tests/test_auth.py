@@ -68,6 +68,27 @@ def test_login_rejects_invalid_credentials(client):
     assert response.json()['detail'] == 'INVALID_CREDENTIALS'
 
 
+def test_logout_accepts_empty_body_contract(client):
+    no_body = client.post('/auth/logout')
+    empty_object = client.post('/auth/logout', json={})
+
+    assert no_body.status_code == 200
+    assert no_body.json() == {'success': True}
+    assert empty_object.status_code == 200
+    assert empty_object.json() == {'success': True}
+
+
+def test_logout_rejects_extra_fields_without_user_side_effects(client, db_session):
+    client.post('/auth/register', json={'email': 'logout-extra@example.com', 'password': 'strongpass123'})
+    before_user_ids = list(db_session.scalars(select(User.id).order_by(User.id)))
+
+    response = client.post('/auth/logout', json={'raw_text': '登出请求不应接收运行时原文。'})
+
+    assert response.status_code == 422
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert list(db_session.scalars(select(User.id).order_by(User.id))) == before_user_ids
+
+
 def test_me_requires_token(client):
     response = client.get('/auth/me')
 
