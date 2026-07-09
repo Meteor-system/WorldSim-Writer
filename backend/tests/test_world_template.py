@@ -515,3 +515,42 @@ def test_draft_world_from_brief_uses_import_node_materials_as_read_only_referenc
     assert '不得把候选素材自动升级为 canon/正史' in prompt
     assert db_session.scalar(select(func.count()).select_from(World)) == 0
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == 0
+
+
+def test_draft_world_from_brief_rejects_raw_text_material_reference_without_side_effects(
+    client, db_session, monkeypatch
+):
+    token = register(client, 'brief-material-raw-text@example.com')
+    llm = DraftWorldLLMClient()
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: llm)
+    before_worlds = db_session.scalar(select(func.count()).select_from(World))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+
+    response = client.post(
+        '/worlds/draft-from-brief',
+        headers=auth(token),
+        json={
+            'brief': '一个边境殖民地依赖濒临失控的跃迁灯塔',
+            'material_references': [
+                {
+                    'source': 'import_node',
+                    'asset_id': 42,
+                    'title': '雾港钟楼候选素材',
+                    'summary': '一座每天倒敲十三次的钟楼引发城内记忆错位。',
+                    'asset_pool': 'inspiration',
+                    'source_rights': 'general_reference',
+                    'raw_text': '原文不应进入一句话开书请求。',
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden'
+        and error['loc'] == ['body', 'material_references', 0, 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert llm.calls == 0
+    assert db_session.scalar(select(func.count()).select_from(World)) == before_worlds
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events

@@ -79,6 +79,8 @@ class WorldCreateRequest(BaseModel):
 
 
 class WorldCreationMaterialReference(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     source: Literal['import_node'] = 'import_node'
     asset_id: int | None = None
     title: str = Field(min_length=1, max_length=120)
