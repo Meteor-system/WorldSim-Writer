@@ -1,7 +1,7 @@
 from sqlalchemy import func, select
 
 from app.event.models import EventLog
-from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
+from app.llm.schemas import BeatCard, ChapterGeneration, ChapterOutline, ProposedCharacterChange, ProposedForeshadowChange
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter, ChapterDraft
 from app.world.models import World
@@ -24,10 +24,31 @@ class UnknownFailingLLMClient:
 
 class FakeLLMClient:
     def __init__(self):
+        self.outline_messages = []
+        self.generation_messages = []
         self.revision_messages = []
         self.paragraph_messages = []
 
+    def generate_outline(self, messages):
+        self.outline_messages.append(messages)
+        return ChapterOutline(
+            beats=[
+                BeatCard(
+                    beat_id='beat-1',
+                    summary='林砚抵达灵井。',
+                    pov_character='林砚',
+                    location='灵井',
+                    emotional_arc='疑惑到警觉',
+                    key_dialogue_hints=['湿信是谁留下的？'],
+                )
+            ],
+            core_conflict='林砚必须确认灵井异响是否与玉佩有关。',
+            pacing='紧凑推进',
+            role_skill_targets=['保持线索压力'],
+        )
+
     def generate_chapter(self, messages):
+        self.generation_messages.append(messages)
         return ChapterGeneration(
             title='第一章 暗井回声',
             draft_content='林砚在灵井旁听见了第二个人的脚步声。',
@@ -313,6 +334,105 @@ def test_revise_paragraph_rejects_extra_fields_without_side_effects(client, monk
     chapter = db_session.get(Chapter, draft['chapter_id'])
     assert chapter.draft_version == draft['draft_version']
     assert db_session.scalar(select(func.count()).select_from(ChapterDraft).where(ChapterDraft.chapter_id == draft['chapter_id'])) == before_drafts
+    assert len(event_logs(db_session, world_id)) == before_events
+
+
+def test_outline_request_rejects_extra_fields_without_side_effects(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    llm = FakeLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+    chapter_response = client.post(
+        f'/worlds/{world_id}/chapters',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert chapter_response.status_code == 200
+    chapter_id = chapter_response.json()['id']
+    chapter = db_session.get(Chapter, chapter_id)
+    before_outline_beats = chapter.outline_beats
+    before_outline_context = chapter.outline_context
+    before_status = chapter.status
+    before_drafts = db_session.scalar(select(func.count()).select_from(ChapterDraft).where(ChapterDraft.chapter_id == chapter_id))
+    before_events = len(event_logs(db_session, world_id))
+
+    response = client.post(
+        f'/chapters/{chapter_id}/outline',
+        json={
+            'chapter_context': '强调灵井裂纹与湿信。',
+            'raw_text': '提纲请求不能夹带原文。',
+            'internal_score': 0.9,
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert llm.outline_messages == []
+    assert llm.generation_messages == []
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, chapter_id)
+    assert chapter.outline_beats == before_outline_beats
+    assert chapter.outline_context == before_outline_context
+    assert chapter.status == before_status
+    assert db_session.scalar(select(func.count()).select_from(ChapterDraft).where(ChapterDraft.chapter_id == chapter_id)) == before_drafts
+    assert len(event_logs(db_session, world_id)) == before_events
+
+
+def test_write_request_rejects_extra_fields_without_side_effects(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    llm = FakeLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+    chapter_response = client.post(
+        f'/worlds/{world_id}/chapters',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert chapter_response.status_code == 200
+    chapter_id = chapter_response.json()['id']
+    chapter = db_session.get(Chapter, chapter_id)
+    before_outline_beats = chapter.outline_beats
+    before_outline_context = chapter.outline_context
+    before_status = chapter.status
+    before_draft_version = chapter.draft_version
+    before_drafts = db_session.scalar(select(func.count()).select_from(ChapterDraft).where(ChapterDraft.chapter_id == chapter_id))
+    before_events = len(event_logs(db_session, world_id))
+
+    response = client.post(
+        f'/chapters/{chapter_id}/write',
+        json={
+            'outline_beats': [
+                {
+                    'beat_id': 'beat-1',
+                    'summary': '林砚抵达灵井。',
+                    'pov_character': '林砚',
+                    'location': '灵井',
+                    'emotional_arc': '疑惑到警觉',
+                    'key_dialogue_hints': ['湿信是谁留下的？'],
+                }
+            ],
+            'raw_text': '按提纲写作请求不能夹带原文。',
+            'internal_score': 0.9,
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert llm.outline_messages == []
+    assert llm.generation_messages == []
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, chapter_id)
+    assert chapter.outline_beats == before_outline_beats
+    assert chapter.outline_context == before_outline_context
+    assert chapter.status == before_status
+    assert chapter.draft_version == before_draft_version
+    assert db_session.scalar(select(func.count()).select_from(ChapterDraft).where(ChapterDraft.chapter_id == chapter_id)) == before_drafts
     assert len(event_logs(db_session, world_id)) == before_events
 
 

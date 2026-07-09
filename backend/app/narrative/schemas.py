@@ -145,10 +145,14 @@ class CreateChapterRequest(BaseModel):
 
 
 class OutlineRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     chapter_context: str | None = None
 
 
 class WriteRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     outline_beats: list[BeatCard] | None = None
 
 

@@ -50,11 +50,13 @@ import {
   listWorldTags,
   searchWorld,
   unassignWorldTag,
+  generateOutline,
   getRelations,
   reviseDraft,
   reviseParagraph,
   stashDraft,
   updateRelation,
+  writeChapter,
 } from './client';
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
@@ -1055,6 +1057,54 @@ describe('draft versioning API helpers', () => {
     expect(requestBody.raw_text).toBeUndefined();
     expect(requestBody.internal_score).toBeUndefined();
     expect(requestBody.first_chapter_goal).toBeUndefined();
+  });
+
+  it('sends only allowed root fields in outline and write requests', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ chapter_id: 11, outline_beats: [], outline_context: {}, status: 'outlined' }))
+      .mockResolvedValueOnce(jsonResponse({ draft_version: 1 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const outlineBeats = [
+      {
+        beat_id: 'beat-1',
+        summary: '林砚抵达灵井。',
+        pov_character: '林砚',
+        location: '灵井',
+        emotional_arc: '疑惑到警觉',
+        key_dialogue_hints: ['湿信是谁留下的？'],
+      },
+    ];
+
+    await generateOutline(11, {
+      chapter_context: '强调灵井裂纹与湿信。',
+      raw_text: '提纲请求不应发送原文。',
+      internal_score: 0.91,
+    } as unknown as Parameters<typeof generateOutline>[1]);
+    await writeChapter(11, {
+      outline_beats: outlineBeats,
+      raw_text: '按提纲写作请求不应发送原文。',
+      internal_score: 0.92,
+      first_chapter_goal: '运行时首章目标不应发送。',
+    } as unknown as Parameters<typeof writeChapter>[1]);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:8000/chapters/11/outline',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ chapter_context: '强调灵井裂纹与湿信。' }) }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:8000/chapters/11/write',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ outline_beats: outlineBeats }) }),
+    );
+    const outlineBody = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    const writeBody = JSON.parse(fetchMock.mock.calls[1][1]?.body as string);
+    expect(outlineBody.raw_text).toBeUndefined();
+    expect(outlineBody.internal_score).toBeUndefined();
+    expect(writeBody.raw_text).toBeUndefined();
+    expect(writeBody.internal_score).toBeUndefined();
+    expect(writeBody.first_chapter_goal).toBeUndefined();
   });
 
   it('calls draft stash, paragraph revision, full revision, exact version, diff, approval preview, approval consistency, and approve endpoints', async () => {

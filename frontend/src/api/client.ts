@@ -464,14 +464,18 @@ export function createChapter(worldId: number, data: { chapter_goal: string; tit
 export function generateOutline(chapterId: number, data: { chapter_context?: string } = {}) {
   return apiRequest<OutlineResponse>(`/chapters/${chapterId}/outline`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...(data.chapter_context !== undefined ? { chapter_context: data.chapter_context } : {}),
+    }),
   });
 }
 
 export function writeChapter(chapterId: number, data: { outline_beats?: BeatCard[] } = {}) {
   return apiRequest<DraftResponse>(`/chapters/${chapterId}/write`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...(data.outline_beats !== undefined ? { outline_beats: data.outline_beats } : {}),
+    }),
   });
 }
 
