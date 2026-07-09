@@ -258,6 +258,10 @@ def test_approve_chapter_rejects_extra_fields_without_side_effects(client, monke
     )
 
     assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
     db_session.expire_all()
     world = db_session.get(World, world_id)
     chapter = db_session.get(Chapter, draft['chapter_id'])
