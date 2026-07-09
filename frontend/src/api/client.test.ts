@@ -463,6 +463,18 @@ describe('serial plan API helper', () => {
         },
       ],
       safety_notes: ['不会自动写正文、不会写入正史或推进世界进度。'],
+      review_guardrails: ['每章仍需 Studio 审稿确认。'],
+      convergence_guidance: {
+        mode: 'balanced',
+        mode_label: '平衡推进',
+        open_foreshadow_count: 1,
+        high_pressure_count: 0,
+        stale_count: 0,
+        overdue_count: 0,
+        priority_foreshadows: [],
+        recommendation: '避免只铺设新线索。',
+        guidance_notes: [],
+      },
     }));
     vi.stubGlobal('fetch', fetchMock);
 

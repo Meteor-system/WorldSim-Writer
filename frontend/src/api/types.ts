@@ -389,6 +389,7 @@ export type SerialPlanResponse = {
   approved_chapter_count: number;
   queue: SerialPlanChapter[];
   safety_notes: string[];
+  review_guardrails: string[];
   convergence_guidance: SerialPlanConvergenceGuidance;
 };
 

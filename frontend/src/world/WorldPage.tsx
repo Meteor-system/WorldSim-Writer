@@ -58,12 +58,6 @@ import { labelGenre, labelStatus, labelWorldVersion } from './displayLabels';
 
 type Props = { onEnterStudio: (world: WorldOverview, context?: StudioLaunchContext) => void; autoFocusTitle?: boolean };
 
-const SERIAL_PLAN_REVIEW_GUARDRAILS = [
-  '连载队列只是只读计划，不会批量创建章节或正文。',
-  '点击单章目标只会进入 Studio 草稿流程；写入正史前必须由用户审稿确认。',
-  '未写入正史的队列目标不会更新 canon、EventLog、伏笔状态或世界进度。',
-];
-
 type Tab = 'overview' | 'write' | 'characters' | 'relations' | 'foreshadows' | 'analysis' | 'archive';
 
 const TABS: { key: Tab; label: string }[] = [
@@ -317,10 +311,11 @@ function buildSerialPlanExecutionContext(
   world: WorldOverview,
   chapter: SerialPlanChapter,
   convergenceGuidance: SerialPlanResponse['convergence_guidance'],
+  reviewGuardrails: string[],
 ): ChapterExecutionContext {
   const context = buildManualExecutionContext(world, chapter.goal);
   const priorityForeshadowIds = convergenceGuidance.priority_foreshadows.map((item) => item.foreshadow_id);
-  const reviewGuardrailWarnings = SERIAL_PLAN_REVIEW_GUARDRAILS.map((message) => ({
+  const reviewGuardrailWarnings = reviewGuardrails.map((message) => ({
     severity: 'info',
     category: 'serial_plan_review_boundary',
     message,
@@ -444,7 +439,7 @@ function SerialPlanPanel({ serialPlan, loading, error, onGenerate, onLaunchChapt
           <aside className="rounded-2xl border border-amber-900/15 bg-white/50 p-4" aria-label="连载队列审稿边界">
             <p className="text-sm font-black text-[#5e3b1c]">逐章审稿边界</p>
             <ul className="mt-2 space-y-1 text-sm font-bold text-[#5e3b1c]">
-              {SERIAL_PLAN_REVIEW_GUARDRAILS.map((note) => <li key={note}>{note}</li>)}
+              {serialPlan.review_guardrails.map((note) => <li key={note}>{note}</li>)}
             </ul>
           </aside>
           <article className="rounded-2xl bg-amber-50/70 p-4" aria-label="叙事收束提示">
@@ -890,7 +885,12 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
 
   function launchSerialPlanChapter(chapter: SerialPlanChapter) {
     if (!world || !serialPlan) return;
-    const executionContext = withActiveStyleHandbook(buildSerialPlanExecutionContext(world, chapter, serialPlan.convergence_guidance));
+    const executionContext = withActiveStyleHandbook(buildSerialPlanExecutionContext(
+      world,
+      chapter,
+      serialPlan.convergence_guidance,
+      serialPlan.review_guardrails,
+    ));
     onEnterStudio(world, {
       initialChapterGoal: executionContext.goal,
       executionContext,

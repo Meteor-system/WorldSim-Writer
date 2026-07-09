@@ -200,6 +200,8 @@ def test_serial_plan_preview_returns_next_chapter_queue_without_writing_canon_or
     assert payload['queue'][0]['title'] == arc[1]['title']
     assert '核心冲突' in payload['queue'][0]['goal']
     assert '每章仍需单独进入 Studio' in payload['safety_notes'][1]
+    assert payload['review_guardrails'] == list(story_arc_service.SERIAL_PLAN_REVIEW_GUARDRAILS)
+    assert '未写入正史' in payload['review_guardrails'][2]
     assert payload['convergence_guidance']['mode'] == 'balanced'
     assert payload['convergence_guidance']['open_foreshadow_count'] == 1
     assert payload['convergence_guidance']['priority_foreshadows'] == []
@@ -217,6 +219,7 @@ def test_serial_plan_preview_requires_existing_story_arc(client):
     assert response.status_code == 200
     assert response.json()['queue'] == []
     assert '不会一次性生成正文' in response.json()['safety_notes'][0]
+    assert '未写入正史' in response.json()['review_guardrails'][2]
 
 
 def test_serial_plan_preview_surfaces_read_only_convergence_pressure(client, db_session, monkeypatch):

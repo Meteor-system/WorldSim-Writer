@@ -24,6 +24,12 @@ def _model_client(llm_client: LLMClient | None = None) -> LLMClient:
 
 SAFE_MODEL_RUNTIME_ERRORS = {'MODEL_REQUEST_FAILED', 'MODEL_AUTH_FAILED', 'MODEL_RATE_LIMITED'}
 
+SERIAL_PLAN_REVIEW_GUARDRAILS = (
+    '连载队列只是只读计划，不会批量创建章节或正文。',
+    '点击单章目标只会进入 Studio 草稿流程；写入正史前必须由用户审稿确认。',
+    '未写入正史的队列目标不会更新 canon、EventLog、伏笔状态或世界进度。',
+)
+
 
 def _map_model_error(exc: Exception) -> HTTPException:
     if isinstance(exc, TimeoutError):
@@ -260,5 +266,6 @@ def preview_serial_plan(db: Session, user: User, world_id: int, limit: int = 3) 
             '每章仍需单独进入 Studio 创建草稿、审稿并由用户确认。',
             '世界进度和 EventLog 只会在章节写入正史后更新。',
         ],
+        'review_guardrails': list(SERIAL_PLAN_REVIEW_GUARDRAILS),
         'convergence_guidance': _serial_convergence_guidance(db, world),
     }

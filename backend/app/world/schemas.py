@@ -184,6 +184,7 @@ class SerialPlanResponse(BaseModel):
     approved_chapter_count: int
     queue: list[SerialPlanChapter]
     safety_notes: list[str] = Field(default_factory=list)
+    review_guardrails: list[str] = Field(default_factory=list)
     convergence_guidance: SerialPlanConvergenceGuidance
 
 
