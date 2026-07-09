@@ -121,7 +121,17 @@ class PipelineLLMClient:
 
 class CountingPipelineLLMClient(PipelineLLMClient):
     def __init__(self):
+        self.outline_calls = 0
+        self.generation_calls = 0
         self.critique_calls = 0
+
+    def generate_outline(self, messages):
+        self.outline_calls += 1
+        return super().generate_outline(messages)
+
+    def generate_chapter(self, messages):
+        self.generation_calls += 1
+        return super().generate_chapter(messages)
 
     def critique_chapter(self, messages):
         self.critique_calls += 1
@@ -166,6 +176,36 @@ def test_outline_generates_and_persists_beat_cards(client, db_session, monkeypat
     assert chapter.outline_beats[1]['summary'] == '沈微霜出现并隐瞒她知道密道入口。'
 
 
+def test_outline_rejects_extra_body_fields_without_side_effects(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    llm_client = CountingPipelineLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm_client)
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+    before_world_version = db_session.get(World, world_id).world_version
+
+    response = client.post(
+        f'/chapters/{chapter_id}/outline',
+        headers=auth(token),
+        json={'chapter_context': '强调沈微霜的迟疑。', 'raw_text': 'outline endpoint must not accept runtime source text'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert llm_client.outline_calls == 0
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, chapter_id)
+    assert world.world_version == before_world_version
+    assert chapter.status == 'drafting'
+    assert chapter.outline_beats == []
+    assert chapter.outline_context == {}
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
 def test_write_requires_outline_for_pipeline_endpoint(client):
     token, world_id = register_and_create_world(client)
     chapter_id = create_chapter(client, token, world_id).json()['id']
@@ -174,6 +214,45 @@ def test_write_requires_outline_for_pipeline_endpoint(client):
 
     assert response.status_code == 409
     assert response.json()['detail'] == 'OUTLINE_REQUIRED'
+
+
+def test_write_rejects_extra_body_fields_without_side_effects(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    llm_client = CountingPipelineLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm_client)
+    outline_response = client.post(f'/chapters/{chapter_id}/outline', headers=auth(token), json={})
+    assert outline_response.status_code == 200
+    assert llm_client.outline_calls == 1
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+    before_world_version = db_session.get(World, world_id).world_version
+    before_drafts = db_session.scalar(
+        select(func.count()).select_from(ChapterDraft).where(ChapterDraft.chapter_id == chapter_id)
+    )
+    existing_outline = db_session.get(Chapter, chapter_id).outline_beats
+
+    response = client.post(
+        f'/chapters/{chapter_id}/write',
+        headers=auth(token),
+        json={'outline_beats': existing_outline, 'raw_text': 'write endpoint must not accept runtime source text'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert llm_client.generation_calls == 0
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, chapter_id)
+    after_drafts = db_session.scalar(
+        select(func.count()).select_from(ChapterDraft).where(ChapterDraft.chapter_id == chapter_id)
+    )
+    assert world.world_version == before_world_version
+    assert chapter.status == 'outlined'
+    assert after_drafts == before_drafts
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
 
 
 def test_write_uses_edited_beats_and_creates_draft(client, db_session, monkeypatch):
