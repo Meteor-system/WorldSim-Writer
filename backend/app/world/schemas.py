@@ -88,6 +88,10 @@ class WorldCreateRequest(BaseModel):
         return _strip_required(value)
 
 
+class EmptyWorldMutationRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+
 class WorldCreationMaterialReference(BaseModel):
     model_config = ConfigDict(extra='forbid')
 

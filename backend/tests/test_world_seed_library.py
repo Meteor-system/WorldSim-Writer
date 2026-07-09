@@ -70,6 +70,26 @@ def test_create_world_from_seed_uses_formal_world_creation_pipeline(client):
     assert overview['recent_events'][0]['payload']['starter_counts']['characters'] == len(overview['characters'])
 
 
+def test_create_world_from_seed_rejects_extra_body_fields_without_side_effects(client, db_session):
+    token = register(client, 'seed-extra-body@example.com')
+    before_worlds = db_session.scalar(select(func.count()).select_from(World))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+
+    response = client.post(
+        '/worlds/from-seed/dead-god-oracle',
+        headers=auth(token),
+        json={'raw_text': 'Seed 开书端点只接受空请求体。'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert db_session.scalar(select(func.count()).select_from(World)) == before_worlds
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
 def test_unknown_world_seed_returns_404(client):
     token = register(client, 'seed-missing@example.com')
 

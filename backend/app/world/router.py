@@ -6,6 +6,7 @@ from app.auth.models import User
 from app.core.database import get_db
 from app.event.schemas import EventLogListResponse
 from app.world.schemas import (
+    EmptyWorldMutationRequest,
     SerialPlanResponse,
     StoryArcResponse,
     WorldCreateRequest,
@@ -47,7 +48,11 @@ def create_world(
 
 
 @router.post('/from-template', response_model=WorldResponse)
-def create_from_template(current_user: User = Depends(require_user), db: Session = Depends(get_db)) -> WorldResponse:
+def create_from_template(
+    _payload: EmptyWorldMutationRequest | None = None,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> WorldResponse:
     return WorldResponse.model_validate(create_sample_world(db, current_user))
 
 
@@ -83,6 +88,7 @@ def seed_detail(seed_key: str, current_user: User = Depends(require_user)) -> Wo
 @router.post('/from-seed/{seed_key}', response_model=WorldResponse)
 def create_from_seed(
     seed_key: str,
+    _payload: EmptyWorldMutationRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> WorldResponse:

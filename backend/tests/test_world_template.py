@@ -149,6 +149,26 @@ def test_create_sample_world_and_overview(client):
     assert get_response.json()['id'] == world_id
 
 
+def test_create_sample_world_rejects_extra_body_fields_without_side_effects(client, db_session):
+    token = register(client, 'template-extra-body@example.com')
+    before_worlds = db_session.scalar(select(func.count()).select_from(World))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+
+    response = client.post(
+        '/worlds/from-template',
+        headers=auth(token),
+        json={'raw_text': '模板开书端点只接受空请求体。'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert db_session.scalar(select(func.count()).select_from(World)) == before_worlds
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
 def test_create_custom_world_from_template_payload(client):
     token = register(client)
 
