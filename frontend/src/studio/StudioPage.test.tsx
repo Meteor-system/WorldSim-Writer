@@ -333,6 +333,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('推荐 POV：林砚')).toBeInTheDocument();
     expect(screen.getByText('优先角色：林砚')).toBeInTheDocument();
     expect(screen.getByText('优先伏笔：裂纹玉佩')).toBeInTheDocument();
+    expect(screen.getByText('下一章需要补足试探过程。')).toBeInTheDocument();
 
     const goal = screen.getByLabelText('章节目标');
     await user.clear(goal);
@@ -348,6 +349,31 @@ describe('StudioPage Review Studio 2.0 controls', () => {
       }),
     }));
     expect(await screen.findByText('已冻结本章设定：next_chapter_prep · v2')).toBeInTheDocument();
+  });
+
+  it('shows serial-plan review guardrails from execution context before creating a chapter', async () => {
+    render(
+      <StudioPage
+        world={world}
+        launchContext={{
+          initialChapterGoal: executionContext.goal,
+          executionContext: {
+            ...executionContext,
+            continuity_warnings: [
+              { severity: 'info', category: 'serial_plan_review_boundary', message: '连载队列只是只读计划，不会批量创建章节或正文。', related_character_ids: [], related_foreshadow_ids: [] },
+              { severity: 'info', category: 'serial_plan_review_boundary', message: '写入正史前必须由用户审稿确认。', related_character_ids: [], related_foreshadow_ids: [] },
+            ],
+          },
+        }}
+        onBack={vi.fn()}
+        onApproved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('连续性提醒：2 条')).toBeInTheDocument();
+    expect(screen.getByText('连载队列只是只读计划，不会批量创建章节或正文。')).toBeInTheDocument();
+    expect(screen.getByText('写入正史前必须由用户审稿确认。')).toBeInTheDocument();
+    expect(approveChapter).not.toHaveBeenCalled();
   });
 
   it('shows the writing style handbook reference in execution context without writing canon', async () => {

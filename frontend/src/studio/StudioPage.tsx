@@ -78,6 +78,13 @@ function ExecutionContextSummary({ context, frozen }: { context?: ChapterExecuti
       <p className="mt-2 ink-muted">优先伏笔：{names(context.priority_foreshadows)}</p>
       <p className="mt-2 ink-muted">推进提示：{context.progression_hints.length} 条</p>
       <p className="mt-2 ink-muted">连续性提醒：{context.continuity_warnings.length} 条</p>
+      {context.continuity_warnings.length > 0 && (
+        <ul className="mt-3 space-y-2 rounded-xl bg-amber-50/70 p-3 text-sm text-[#5e3b1c]" aria-label="连续性提醒列表">
+          {context.continuity_warnings.map((warning, index) => (
+            <li key={`${warning.category}-${index}`}>{warning.message}</li>
+          ))}
+        </ul>
+      )}
       {context.style_handbook_reference && (
         <p className="mt-2 ink-muted">写作风格参考：{context.style_handbook_reference.source_title}（仅抽象风格维度，不写入正史）</p>
       )}
