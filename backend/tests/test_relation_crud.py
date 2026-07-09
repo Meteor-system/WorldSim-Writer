@@ -240,7 +240,7 @@ def test_relation_create_rejects_extra_fields_without_side_effects(client, db_se
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     after_relations = client.get(f'/worlds/{world_id}/relations', headers=auth(token)).json()
     assert after_relations == before_relations
     assert world_state(db_session, world_id).world_version == before_world_version
@@ -262,7 +262,7 @@ def test_relation_update_rejects_extra_fields_without_side_effects(client, db_se
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     after_relation = client.get(f'/relations/{existing_id}', headers=auth(token)).json()
     assert after_relation == before_relation
     assert world_state(db_session, world_id).world_version == before_world_version
@@ -285,7 +285,7 @@ def test_relation_delete_rejects_extra_body_fields_without_side_effects(client, 
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     after_relation = client.get(f'/relations/{existing_id}', headers=auth(token)).json()
     assert after_relation == before_relation
     assert world_state(db_session, world_id).world_version == before_world_version
