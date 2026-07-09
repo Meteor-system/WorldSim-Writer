@@ -482,6 +482,54 @@ def test_direct_draft_rejects_raw_text_style_reference_before_model_call(client,
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
 
 
+def test_approval_requests_reject_extra_body_fields_without_side_effects(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client, 'approval-extra@example.com')
+    llm = CapturingLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '批准前额外字段应被拦截。'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    world = db_session.get(World, world_id)
+    before_chapter_status = chapter.status
+    before_approved_content = chapter.approved_content
+    before_approved_version = chapter.approved_version
+    before_world_version = world.world_version
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id))
+
+    cases = [
+        (
+            f"/chapters/{draft['chapter_id']}/approval-consistency",
+            {'draft_version': draft['draft_version'], 'raw_text': 'approval consistency raw payload'},
+        ),
+        (
+            f"/chapters/{draft['chapter_id']}/approve",
+            {'draft_version': draft['draft_version'], 'raw_text': 'approval raw payload'},
+        ),
+    ]
+
+    for url, payload in cases:
+        response = client.post(url, json=payload, headers={'Authorization': f'Bearer {token}'})
+
+        assert response.status_code == 422
+        assert any(
+            error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+            for error in response.json()['detail']
+        )
+
+        db_session.expire_all()
+        chapter = db_session.get(Chapter, draft['chapter_id'])
+        world = db_session.get(World, world_id)
+        assert chapter.status == before_chapter_status
+        assert chapter.approved_content == before_approved_content
+        assert chapter.approved_version == before_approved_version
+        assert world.world_version == before_world_version
+        assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id)) == before_events
+
+
 def test_chapter_history_detail_exposes_execution_context(client, monkeypatch):
     token, world_id = register_and_create_world(client, 'history-context@example.com')
     context = sample_execution_context()
