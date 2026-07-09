@@ -1,4 +1,4 @@
-﻿import json
+import json
 
 import pytest
 from sqlalchemy import func, select
@@ -138,6 +138,20 @@ class InvalidStoryArcLLMClient:
         raise ValueError('MODEL_RESPONSE_INVALID')
 
 
+class CountingWorldPlanningLLMClient:
+    def __init__(self):
+        self.story_arc_calls = 0
+        self.suggest_goal_calls = 0
+
+    def generate_story_arc(self, messages):
+        self.story_arc_calls += 1
+        return parse_story_arc(json.dumps(valid_story_arc_payload('新')))
+
+    def suggest_goal(self, messages):
+        self.suggest_goal_calls += 1
+        return {'goal': '让林砚追查裂纹玉佩的来源。'}
+
+
 def test_build_story_arc_messages_include_world_context(client, db_session):
     token, world_id = register_and_create_world(client)
     world = db_session.get(World, world_id)
@@ -178,6 +192,57 @@ def test_generate_story_arc_overwrites_existing_arc(client, monkeypatch):
     assert first['story_arc'][0]['title'].endswith('旧')
     assert second['story_arc'][0]['title'].endswith('新')
     assert len(second['story_arc']) == 10
+
+
+def test_generate_story_arc_rejects_extra_body_fields_without_side_effects(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(story_arc_service, 'LLMClient', lambda: FakeStoryArcLLMClient('旧'))
+    original_arc = client.post(f'/worlds/{world_id}/story-arc', headers={'Authorization': f'Bearer {token}'}).json()['story_arc']
+    llm = CountingWorldPlanningLLMClient()
+    monkeypatch.setattr(story_arc_service, 'LLMClient', lambda: llm)
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+    before_world_version = db_session.get(World, world_id).world_version
+
+    response = client.post(
+        f'/worlds/{world_id}/story-arc',
+        headers={'Authorization': f'Bearer {token}'},
+        json={'raw_text': '故事大纲规划端点只接受空请求体。'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    db_session.expire_all()
+    assert llm.story_arc_calls == 0
+    assert db_session.get(World, world_id).story_arc == original_arc
+    assert db_session.get(World, world_id).world_version == before_world_version
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
+def test_suggest_goal_rejects_extra_body_fields_without_side_effects(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    llm = CountingWorldPlanningLLMClient()
+    monkeypatch.setattr(story_arc_service, 'LLMClient', lambda: llm)
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+    before_world_version = db_session.get(World, world_id).world_version
+
+    response = client.post(
+        f'/worlds/{world_id}/suggest-goal',
+        headers={'Authorization': f'Bearer {token}'},
+        json={'raw_text': '章节目标建议端点只接受空请求体。'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+    db_session.expire_all()
+    assert llm.suggest_goal_calls == 0
+    assert db_session.get(World, world_id).world_version == before_world_version
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
 
 
 def test_serial_plan_preview_returns_next_chapter_queue_without_writing_canon_or_events(client, db_session, monkeypatch):

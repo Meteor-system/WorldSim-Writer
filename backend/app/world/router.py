@@ -123,6 +123,7 @@ def overview(world_id: int, current_user: User = Depends(require_user), db: Sess
 @router.post('/{world_id}/story-arc', response_model=StoryArcResponse)
 def story_arc(
     world_id: int,
+    _payload: EmptyWorldMutationRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> StoryArcResponse:
@@ -142,6 +143,7 @@ def serial_plan(
 @router.post('/{world_id}/suggest-goal')
 def suggest_goal(
     world_id: int,
+    _payload: EmptyWorldMutationRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> dict:

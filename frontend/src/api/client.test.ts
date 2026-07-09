@@ -39,6 +39,7 @@ import {
   deleteWorldTag,
   generateCharacterArcReport,
   generateCriticReport,
+  generateStoryArc,
   getApprovalPreview,
   getCharacterArcReport,
   getChapterHistory,
@@ -64,6 +65,7 @@ import {
   listWorldTags,
   searchWorld,
   unassignWorldTag,
+  suggestGoal,
   generateOutline,
   getRelations,
   editDraft,
@@ -856,6 +858,37 @@ describe('world pulse API helper', () => {
     expect(response.primary_mode).toBe('converge');
   });
 });
+
+describe('world planning API helpers', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('sends empty bodies for story arc and goal suggestion mutations', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ world_id: 7, story_arc: [] }))
+      .mockResolvedValueOnce(jsonResponse({ goal: '让林砚追查裂纹玉佩的来源。' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await generateStoryArc(7);
+    await suggestGoal(7);
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'http://localhost:8000/worlds/7/story-arc',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'http://localhost:8000/worlds/7/suggest-goal',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
+    );
+  });
+});
+
 
 describe('serial plan API helper', () => {
   beforeEach(() => {
