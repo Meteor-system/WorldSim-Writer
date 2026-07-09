@@ -716,6 +716,8 @@ describe('world tag API helpers', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(7, 'http://localhost:8000/worlds/7/tags/3/objects/bulk', expect.objectContaining({ method: 'POST', body: JSON.stringify({ object_type: 'character', object_ids: [1, 2, 3] }) }));
     expect(fetchMock).toHaveBeenNthCalledWith(8, 'http://localhost:8000/worlds/7/tags/3/objects/character/1', expect.objectContaining({ method: 'DELETE' }));
     expect(fetchMock).toHaveBeenNthCalledWith(9, 'http://localhost:8000/worlds/7/tags/3', expect.objectContaining({ method: 'DELETE' }));
+    expect(fetchMock.mock.calls[7][1]?.body).toBeUndefined();
+    expect(fetchMock.mock.calls[8][1]?.body).toBeUndefined();
     expect(bulk.assigned_count).toBe(2);
   });
 

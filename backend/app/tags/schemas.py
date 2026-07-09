@@ -11,6 +11,10 @@ def _strip_required(value: str) -> str:
     return stripped
 
 
+class EmptyTagDeleteRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+
 class TagCreateRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 

@@ -535,6 +535,72 @@ def test_unassign_and_delete_tag_do_not_increment_world_version(client):
     assert events['summary']['event_type_counts'] == {'WORLD_CREATED': 1}
 
 
+def test_unassign_tag_rejects_extra_body_fields_without_side_effects(client):
+    token = register(client, 'tags-unassign-body@example.com')
+    world = create_world(client, token)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    tag = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '解绑边界'}).json()
+    character_id = overview['characters'][0]['id']
+    client.post(
+        f"/worlds/{world['id']}/tags/{tag['id']}/objects",
+        headers=auth(token),
+        json={'object_type': 'character', 'object_id': character_id},
+    )
+    before_detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
+    before_overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    before_events = client.get(f"/worlds/{world['id']}/events", headers=auth(token)).json()
+
+    response = client.request(
+        'DELETE',
+        f"/worlds/{world['id']}/tags/{tag['id']}/objects/character/{character_id}",
+        headers=auth(token),
+        json={'raw_text': '删除端点不应接收运行时字段'},
+    )
+
+    assert response.status_code == 422
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    after_detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
+    after_overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    after_events = client.get(f"/worlds/{world['id']}/events", headers=auth(token)).json()
+    assert after_detail == before_detail
+    assert after_overview['world_version'] == before_overview['world_version']
+    assert after_events['summary']['event_type_counts'] == before_events['summary']['event_type_counts']
+
+
+def test_delete_tag_rejects_extra_body_fields_without_side_effects(client):
+    token = register(client, 'tags-delete-body@example.com')
+    world = create_world(client, token)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    tag = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '删除边界'}).json()
+    client.post(
+        f"/worlds/{world['id']}/tags/{tag['id']}/objects",
+        headers=auth(token),
+        json={'object_type': 'character', 'object_id': overview['characters'][0]['id']},
+    )
+    before_list = client.get(f"/worlds/{world['id']}/tags", headers=auth(token)).json()
+    before_detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
+    before_overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    before_events = client.get(f"/worlds/{world['id']}/events", headers=auth(token)).json()
+
+    response = client.request(
+        'DELETE',
+        f"/worlds/{world['id']}/tags/{tag['id']}",
+        headers=auth(token),
+        json={'raw_text': '删除端点不应接收运行时字段'},
+    )
+
+    assert response.status_code == 422
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    after_list = client.get(f"/worlds/{world['id']}/tags", headers=auth(token)).json()
+    after_detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
+    after_overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    after_events = client.get(f"/worlds/{world['id']}/events", headers=auth(token)).json()
+    assert after_list == before_list
+    assert after_detail == before_detail
+    assert after_overview['world_version'] == before_overview['world_version']
+    assert after_events['summary']['event_type_counts'] == before_events['summary']['event_type_counts']
+
+
 def test_archived_world_rejects_tag_writes_but_allows_reads(client):
     token = register(client, 'tags-archived@example.com')
     world = create_world(client, token)

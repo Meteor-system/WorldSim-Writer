@@ -5,6 +5,7 @@ from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
 from app.tags.schemas import (
+    EmptyTagDeleteRequest,
     ObjectTagAssignRequest,
     ObjectTagBulkAssignRequest,
     ObjectTagBulkAssignResponse,
@@ -77,6 +78,7 @@ def get_world_tag(
 def delete_world_tag(
     world_id: int,
     tag_id: int,
+    _payload: EmptyTagDeleteRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> None:
@@ -111,6 +113,7 @@ def unassign_world_tag(
     tag_id: int,
     object_type: str,
     object_id: int,
+    _payload: EmptyTagDeleteRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> None:
