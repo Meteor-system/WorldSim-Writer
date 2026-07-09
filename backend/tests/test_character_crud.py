@@ -247,7 +247,7 @@ def test_character_create_rejects_extra_fields_without_side_effects(client, db_s
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     after_characters = client.get(f'/worlds/{world_id}/characters', headers=auth(token)).json()
     assert after_characters == before_characters
     assert world_state(db_session, world_id).world_version == before_world_version
@@ -269,7 +269,7 @@ def test_character_update_rejects_extra_fields_without_side_effects(client, db_s
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     after_character = client.get(f"/characters/{existing['id']}", headers=auth(token)).json()
     assert after_character == before_character
     assert world_state(db_session, world_id).world_version == before_world_version
@@ -292,7 +292,7 @@ def test_character_delete_rejects_extra_body_fields_without_side_effects(client,
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     after_character = client.get(f"/characters/{existing['id']}", headers=auth(token)).json()
     assert after_character == before_character
     assert world_state(db_session, world_id).world_version == before_world_version
