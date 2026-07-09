@@ -282,6 +282,59 @@ def test_direct_draft_rejects_stale_execution_context_before_model_call(client, 
     assert llm.messages == []
 
 
+def test_direct_draft_rejects_raw_text_style_reference_before_model_call(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client, 'raw-style-direct-context@example.com')
+    context = sample_execution_context()
+    context['style_handbook_reference'] = {
+        'source_title': '参考片段',
+        'source_rights': 'general_reference',
+        'handbook': {
+            'narrative_pacing': {
+                'label': '叙事节奏',
+                'value': '中速推进。',
+                'raw_text': '原文不应进入章节执行上下文风格引用。',
+            },
+            'language_density': {'label': '语言密度', 'value': '中等语言密度。'},
+            'dialogue_ratio': {'label': '对白比例', 'value': '对白与叙述交替。'},
+            'scene_progression': {'label': '场景推进', 'value': '用意象带动转场。'},
+            'suspense_structure': {'label': '悬念结构', 'value': '每节保留待解问题。'},
+            'relationship_tension': {'label': '人物关系张力', 'value': '围绕亏欠推进。'},
+            'foreshadowing_pattern': {'label': '伏笔埋设/回收方式', 'value': '先给异常，再延迟解释。'},
+            'do_guidelines': ['保留抽象节奏。'],
+            'avoid_guidelines': ['不要复用原文句子、人物名、专有设定或标志性桥段。'],
+            'originality_guidelines': ['正式章节仍需 Studio 审稿。'],
+        },
+        'safety_notes': ['风格手册只是写作参考，不写入 canon。'],
+    }
+    llm = CapturingLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+    before_chapters = db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+
+    response = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': context['goal'], 'execution_context': context},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden'
+        and error['loc'] == [
+            'body',
+            'execution_context',
+            'style_handbook_reference',
+            'handbook',
+            'narrative_pacing',
+            'raw_text',
+        ]
+        for error in response.json()['detail']
+    )
+    assert llm.messages == []
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
 def test_chapter_history_detail_exposes_execution_context(client, monkeypatch):
     token, world_id = register_and_create_world(client, 'history-context@example.com')
     context = sample_execution_context()

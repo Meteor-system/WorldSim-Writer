@@ -477,6 +477,37 @@ def test_draft_world_from_brief_applies_style_handbook_as_reference_without_crea
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == 0
 
 
+def test_draft_world_from_brief_rejects_raw_text_style_reference_without_side_effects(
+    client, db_session, monkeypatch
+):
+    token = register(client, 'brief-style-raw-text@example.com')
+    llm = DraftWorldLLMClient()
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: llm)
+    style_reference = style_handbook_reference_payload()
+    style_reference['raw_text'] = '原文不应进入一句话开书风格引用。'
+    before_worlds = db_session.scalar(select(func.count()).select_from(World))
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog))
+
+    response = client.post(
+        '/worlds/draft-from-brief',
+        headers=auth(token),
+        json={
+            'brief': '一个边境殖民地依赖濒临失控的跃迁灯塔',
+            'style_handbook_reference': style_reference,
+        },
+    )
+
+    assert response.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden'
+        and error['loc'] == ['body', 'style_handbook_reference', 'raw_text']
+        for error in response.json()['detail']
+    )
+    assert llm.calls == 0
+    assert db_session.scalar(select(func.count()).select_from(World)) == before_worlds
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
 def test_draft_world_from_brief_uses_import_node_materials_as_read_only_references(
     client, db_session, monkeypatch
 ):

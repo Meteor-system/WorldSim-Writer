@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.llm.schemas import BeatCard
 
@@ -67,12 +67,16 @@ class ExecutionContextMaterialReference(BaseModel):
 
 
 class ExecutionContextStyleHandbookDimension(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     label: str
     value: str
     evidence: str | None = None
 
 
 class ExecutionContextStyleHandbookDraft(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     narrative_pacing: ExecutionContextStyleHandbookDimension
     language_density: ExecutionContextStyleHandbookDimension
     dialogue_ratio: ExecutionContextStyleHandbookDimension
@@ -86,6 +90,8 @@ class ExecutionContextStyleHandbookDraft(BaseModel):
 
 
 class ExecutionContextStyleHandbookReference(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     source_title: str
     source_rights: Literal['own_work', 'authorized', 'public_domain', 'general_reference']
     handbook: ExecutionContextStyleHandbookDraft
