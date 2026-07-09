@@ -570,7 +570,7 @@ def test_unassign_tag_rejects_extra_body_fields_without_side_effects(client):
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     after_detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
     after_overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
     after_events = client.get(f"/worlds/{world['id']}/events", headers=auth(token)).json()
@@ -602,7 +602,7 @@ def test_delete_tag_rejects_extra_body_fields_without_side_effects(client):
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     after_list = client.get(f"/worlds/{world['id']}/tags", headers=auth(token)).json()
     after_detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
     after_overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
