@@ -103,7 +103,7 @@ def test_import_preview_request_rejects_extra_fields_without_persistence(client,
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     assert db_session.scalar(select(func.count()).select_from(ImportBatch).where(ImportBatch.world_id == world_payload['id'])) == before_batches
     assert db_session.scalar(select(func.count()).select_from(ImportCandidateAsset).where(ImportCandidateAsset.world_id == world_payload['id'])) == before_assets
     assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_payload['id'])) == before_events
@@ -129,7 +129,7 @@ def test_style_handbook_preview_request_rejects_extra_fields_without_persistence
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'style_prompt' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'style_prompt'] for error in response.json()['detail'])
     assert db_session.scalar(select(func.count()).select_from(ImportBatch).where(ImportBatch.world_id == world_payload['id'])) == before_batches
     assert db_session.scalar(select(func.count()).select_from(ImportCandidateAsset).where(ImportCandidateAsset.world_id == world_payload['id'])) == before_assets
     assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_payload['id'])) == before_events
@@ -240,7 +240,7 @@ def test_import_confirm_request_rejects_extra_root_fields_without_persistence(cl
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'write_to_canon' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'write_to_canon'] for error in response.json()['detail'])
     assert db_session.scalar(select(func.count()).select_from(ImportBatch).where(ImportBatch.world_id == world_payload['id'])) == before_batches
     assert db_session.scalar(select(func.count()).select_from(ImportCandidateAsset).where(ImportCandidateAsset.world_id == world_payload['id'])) == before_assets
     assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_payload['id'])) == before_events
@@ -285,8 +285,8 @@ def test_import_confirm_request_rejects_extra_nested_fields_without_persistence(
 
     assert response.status_code == 422
     detail = response.json()['detail']
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'canonical_status' for error in detail)
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'resolution' for error in detail)
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'assets', 0, 'canonical_status'] for error in detail)
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'conflicts', 0, 'resolution'] for error in detail)
     assert db_session.scalar(select(func.count()).select_from(ImportBatch).where(ImportBatch.world_id == world_payload['id'])) == before_batches
     assert db_session.scalar(select(func.count()).select_from(ImportCandidateAsset).where(ImportCandidateAsset.world_id == world_payload['id'])) == before_assets
     assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_payload['id'])) == before_events
