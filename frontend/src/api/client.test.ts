@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type {
   ApproveRequest,
   ChapterExecutionContext,
+  CharacterCreate,
+  CharacterRelationCreate,
+  CharacterRelationUpdate,
+  CharacterUpdate,
   StyleHandbookReference,
   WorldCreateRequest,
   WorldCreationMaterialReference,
@@ -11,6 +15,7 @@ import {
   checkApprovalConsistency,
   compareWorldSnapshots,
   createChapter,
+  createCharacter,
   createRelation,
   createSampleWorld,
   createWorld,
@@ -60,6 +65,7 @@ import {
   reviseDraft,
   reviseParagraph,
   stashDraft,
+  updateCharacter,
   updateRelation,
   writeChapter,
 } from './client';
@@ -842,6 +848,88 @@ describe('arc plan API helper', () => {
   });
 });
 
+describe('character API helpers', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('sends only allowed fields in create and update payloads', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({
+        id: 3,
+        name: '林七',
+        role_type: 'supporting',
+        status: 'active',
+        public_profile: { visible: true },
+        hidden_traits: { secret: '守门' },
+        destiny_flag: '守门人',
+        current_goals: ['保护青岚城'],
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        id: 3,
+        name: '林七改',
+        role_type: 'lead',
+        status: 'active',
+        public_profile: { visible: false },
+        hidden_traits: { secret: '追查旧案' },
+        destiny_flag: '追查者',
+        current_goals: ['追查旧案'],
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createCharacter(7, {
+      name: '林七',
+      role_type: 'supporting',
+      status: 'active',
+      public_profile: { visible: true },
+      hidden_traits: { secret: '守门' },
+      destiny_flag: '守门人',
+      current_goals: ['保护青岚城'],
+      edit_reason: '新增角色备注',
+      raw_text: '运行时原文不应进入角色创建请求。',
+    } as unknown as CharacterCreate);
+    await updateCharacter(3, {
+      name: '林七改',
+      role_type: 'lead',
+      status: 'active',
+      public_profile: { visible: false },
+      hidden_traits: { secret: '追查旧案' },
+      destiny_flag: '追查者',
+      current_goals: ['追查旧案'],
+      edit_reason: '更新角色备注',
+      raw_text: '运行时原文不应进入角色更新请求。',
+    } as unknown as CharacterUpdate);
+
+    const createBody = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    const updateBody = JSON.parse(fetchMock.mock.calls[1][1]?.body as string);
+    expect(createBody).toEqual({
+      name: '林七',
+      role_type: 'supporting',
+      status: 'active',
+      public_profile: { visible: true },
+      hidden_traits: { secret: '守门' },
+      destiny_flag: '守门人',
+      current_goals: ['保护青岚城'],
+      edit_reason: '新增角色备注',
+    });
+    expect(updateBody).toEqual({
+      name: '林七改',
+      role_type: 'lead',
+      status: 'active',
+      public_profile: { visible: false },
+      hidden_traits: { secret: '追查旧案' },
+      destiny_flag: '追查者',
+      current_goals: ['追查旧案'],
+      edit_reason: '更新角色备注',
+    });
+    expect(createBody.raw_text).toBeUndefined();
+    expect(updateBody.raw_text).toBeUndefined();
+  });
+});
+
 describe('relation API helpers', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -899,6 +987,54 @@ describe('relation API helpers', () => {
         }),
       }),
     );
+  });
+
+  it('sends only allowed fields in relation create and update payloads', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ id: 9, source_character_id: 1, target_character_id: 2, relation_type: 'ally', intensity: 4, visibility: 'private' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 9, source_character_id: 1, target_character_id: 2, relation_type: 'rival', intensity: 5, visibility: 'public' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createRelation(7, {
+      source_character_id: 1,
+      target_character_id: 2,
+      relation_type: 'ally',
+      intensity: 4,
+      visibility: 'private',
+      edit_reason: '新增关系备注',
+      raw_text: '运行时原文不应进入关系创建请求。',
+    } as unknown as CharacterRelationCreate);
+    await updateRelation(9, {
+      source_character_id: 1,
+      target_character_id: 2,
+      relation_type: 'rival',
+      intensity: 5,
+      visibility: 'public',
+      edit_reason: '关系转折备注',
+      raw_text: '运行时原文不应进入关系更新请求。',
+    } as unknown as CharacterRelationUpdate);
+
+    const createBody = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    const updateBody = JSON.parse(fetchMock.mock.calls[1][1]?.body as string);
+    expect(createBody).toEqual({
+      source_character_id: 1,
+      target_character_id: 2,
+      relation_type: 'ally',
+      intensity: 4,
+      visibility: 'private',
+      edit_reason: '新增关系备注',
+    });
+    expect(updateBody).toEqual({
+      source_character_id: 1,
+      target_character_id: 2,
+      relation_type: 'rival',
+      intensity: 5,
+      visibility: 'public',
+      edit_reason: '关系转折备注',
+    });
+    expect(createBody.raw_text).toBeUndefined();
+    expect(updateBody.raw_text).toBeUndefined();
   });
 
   it('lists relations and sends delete edit reasons as query parameters', async () => {

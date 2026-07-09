@@ -220,6 +220,53 @@ def test_relation_create_rejects_blank_type_and_bad_intensity(client):
     assert high_intensity_response.status_code == 422
 
 
+def test_relation_create_rejects_extra_fields_without_side_effects(client, db_session):
+    token = register(client)
+    world_id = create_world(client, token)
+    source_id, target_id = character_ids(client, token, world_id)[:2]
+    before_relations = client.get(f'/worlds/{world_id}/relations', headers=auth(token)).json()
+    before_world_version = world_state(db_session, world_id).world_version
+    before_event_ids = [event.id for event in world_events(db_session, world_id)]
+
+    response = client.post(
+        f'/worlds/{world_id}/relations',
+        headers=auth(token),
+        json={
+            'source_character_id': source_id,
+            'target_character_id': target_id,
+            'relation_type': 'secret_ally',
+            'raw_text': '不应被接受的运行时字段',
+        },
+    )
+
+    assert response.status_code == 422
+    after_relations = client.get(f'/worlds/{world_id}/relations', headers=auth(token)).json()
+    assert after_relations == before_relations
+    assert world_state(db_session, world_id).world_version == before_world_version
+    assert [event.id for event in world_events(db_session, world_id)] == before_event_ids
+
+
+def test_relation_update_rejects_extra_fields_without_side_effects(client, db_session):
+    token = register(client)
+    world_id = create_world(client, token)
+    existing_id = db_session.scalar(select(CharacterRelation.id).where(CharacterRelation.world_id == world_id))
+    before_relation = client.get(f'/relations/{existing_id}', headers=auth(token)).json()
+    before_world_version = world_state(db_session, world_id).world_version
+    before_event_ids = [event.id for event in world_events(db_session, world_id)]
+
+    response = client.put(
+        f'/relations/{existing_id}',
+        headers=auth(token),
+        json={'relation_type': '不应修改', 'raw_text': '不应被接受的运行时字段'},
+    )
+
+    assert response.status_code == 422
+    after_relation = client.get(f'/relations/{existing_id}', headers=auth(token)).json()
+    assert after_relation == before_relation
+    assert world_state(db_session, world_id).world_version == before_world_version
+    assert [event.id for event in world_events(db_session, world_id)] == before_event_ids
+
+
 def test_archived_world_rejects_relation_writes_but_allows_reads(client, db_session):
     token = register(client)
     world_id = create_world(client, token)

@@ -11,6 +11,8 @@ def _strip_required(value: str) -> str:
 
 
 class CharacterCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     name: str
     role_type: str
     status: str | None = None
@@ -27,6 +29,8 @@ class CharacterCreate(BaseModel):
 
 
 class CharacterUpdate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     name: str | None = None
     role_type: str | None = None
     status: str | None = None
@@ -58,6 +62,8 @@ class CharacterResponse(BaseModel):
 
 
 class CharacterRelationCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     source_character_id: int
     target_character_id: int
     relation_type: str
@@ -72,6 +78,8 @@ class CharacterRelationCreate(BaseModel):
 
 
 class CharacterRelationUpdate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     source_character_id: int | None = None
     target_character_id: int | None = None
     relation_type: str | None = None

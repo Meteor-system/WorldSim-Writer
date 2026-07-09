@@ -735,7 +735,16 @@ export function critiqueChapter(chapterId: number) {
 export function createCharacter(worldId: number, data: CharacterCreate) {
   return apiRequest<Character>(`/worlds/${worldId}/characters`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      name: data.name,
+      role_type: data.role_type,
+      ...(data.status !== undefined ? { status: data.status } : {}),
+      ...(data.public_profile !== undefined ? { public_profile: data.public_profile } : {}),
+      ...(data.hidden_traits !== undefined ? { hidden_traits: data.hidden_traits } : {}),
+      ...(data.destiny_flag !== undefined ? { destiny_flag: data.destiny_flag } : {}),
+      ...(data.current_goals !== undefined ? { current_goals: data.current_goals } : {}),
+      ...(data.edit_reason !== undefined ? { edit_reason: data.edit_reason } : {}),
+    }),
   });
 }
 
@@ -750,7 +759,16 @@ export function getCharacter(characterId: number) {
 export function updateCharacter(characterId: number, data: CharacterUpdate) {
   return apiRequest<Character>(`/characters/${characterId}`, {
     method: 'PUT',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.role_type !== undefined ? { role_type: data.role_type } : {}),
+      ...(data.status !== undefined ? { status: data.status } : {}),
+      ...(data.public_profile !== undefined ? { public_profile: data.public_profile } : {}),
+      ...(data.hidden_traits !== undefined ? { hidden_traits: data.hidden_traits } : {}),
+      ...(data.destiny_flag !== undefined ? { destiny_flag: data.destiny_flag } : {}),
+      ...(data.current_goals !== undefined ? { current_goals: data.current_goals } : {}),
+      ...(data.edit_reason !== undefined ? { edit_reason: data.edit_reason } : {}),
+    }),
   });
 }
 
@@ -764,7 +782,14 @@ export function deleteCharacter(characterId: number, editReason?: string) {
 export function createRelation(worldId: number, data: CharacterRelationCreate) {
   return apiRequest<CharacterRelation>(`/worlds/${worldId}/relations`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      source_character_id: data.source_character_id,
+      target_character_id: data.target_character_id,
+      relation_type: data.relation_type,
+      ...(data.intensity !== undefined ? { intensity: data.intensity } : {}),
+      ...(data.visibility !== undefined ? { visibility: data.visibility } : {}),
+      ...(data.edit_reason !== undefined ? { edit_reason: data.edit_reason } : {}),
+    }),
   });
 }
 
@@ -779,7 +804,14 @@ export function getRelation(relationId: number) {
 export function updateRelation(relationId: number, data: CharacterRelationUpdate) {
   return apiRequest<CharacterRelation>(`/relations/${relationId}`, {
     method: 'PUT',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...(data.source_character_id !== undefined ? { source_character_id: data.source_character_id } : {}),
+      ...(data.target_character_id !== undefined ? { target_character_id: data.target_character_id } : {}),
+      ...(data.relation_type !== undefined ? { relation_type: data.relation_type } : {}),
+      ...(data.intensity !== undefined ? { intensity: data.intensity } : {}),
+      ...(data.visibility !== undefined ? { visibility: data.visibility } : {}),
+      ...(data.edit_reason !== undefined ? { edit_reason: data.edit_reason } : {}),
+    }),
   });
 }
 
