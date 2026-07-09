@@ -114,7 +114,7 @@ def test_create_snapshot_rejects_extra_fields_without_side_effects(client, db_se
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     db_session.expire_all()
     after_snapshot_count = db_session.scalar(
         select(func.count()).select_from(WorldSnapshot).where(WorldSnapshot.world_id == world_id)
@@ -144,7 +144,7 @@ def test_markdown_export_rejects_extra_body_fields_without_side_effects(client, 
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     db_session.expire_all()
     after_snapshot_count = db_session.scalar(
         select(func.count()).select_from(WorldSnapshot).where(WorldSnapshot.world_id == world_id)
