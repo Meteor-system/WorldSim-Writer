@@ -11,6 +11,10 @@ def _strip_required(value: str) -> str:
     return stripped
 
 
+class EmptyForeshadowDeleteRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+
 class ForeshadowCreate(BaseModel):
     model_config = ConfigDict(extra='forbid')
 

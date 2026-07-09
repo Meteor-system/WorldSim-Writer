@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_user
 from app.auth.models import User
-from app.character.schemas import CharacterCreate, CharacterResponse, CharacterUpdate
+from app.character.schemas import CharacterCreate, CharacterResponse, CharacterUpdate, EmptyCharacterDeleteRequest
 from app.character.service import (
     create_character,
     delete_character,
@@ -61,6 +61,7 @@ def update(
 def delete(
     character_id: int,
     edit_reason: str | None = Query(default=None),
+    _payload: EmptyCharacterDeleteRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> None:

@@ -10,7 +10,7 @@ from app.character.relation_service import (
     get_relations,
     update_relation,
 )
-from app.character.schemas import CharacterRelationCreate, CharacterRelationResponse, CharacterRelationUpdate
+from app.character.schemas import CharacterRelationCreate, CharacterRelationResponse, CharacterRelationUpdate, EmptyCharacterDeleteRequest
 from app.core.database import get_db
 
 router = APIRouter(tags=['relations'])
@@ -61,6 +61,7 @@ def update(
 def delete(
     relation_id: int,
     edit_reason: str | None = Query(default=None),
+    _payload: EmptyCharacterDeleteRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> None:

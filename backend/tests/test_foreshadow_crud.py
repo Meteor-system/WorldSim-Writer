@@ -501,6 +501,32 @@ def test_foreshadow_update_rejects_extra_fields_without_side_effects(client, db_
     assert [event.id for event in world_events(db_session, world_id)] == before_event_ids
 
 
+def test_foreshadow_delete_rejects_extra_body_fields_without_side_effects(client, db_session):
+    token = register(client)
+    world_id = create_world(client, token)
+    existing = create_foreshadow(client, token, world_id)
+    before_foreshadow = client.get(f"/foreshadows/{existing['id']}", headers=auth(token)).json()
+    before_timeline = client.get(f"/foreshadows/{existing['id']}/timeline", headers=auth(token)).json()
+    before_world_version = world_state(db_session, world_id).world_version
+    before_event_ids = [event.id for event in world_events(db_session, world_id)]
+
+    response = client.request(
+        'DELETE',
+        f"/foreshadows/{existing['id']}",
+        headers=auth(token),
+        json={'raw_text': '删除端点不应接收运行时字段'},
+    )
+
+    assert response.status_code == 422
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    after_foreshadow = client.get(f"/foreshadows/{existing['id']}", headers=auth(token)).json()
+    after_timeline = client.get(f"/foreshadows/{existing['id']}/timeline", headers=auth(token)).json()
+    assert after_foreshadow == before_foreshadow
+    assert after_timeline == before_timeline
+    assert world_state(db_session, world_id).world_version == before_world_version
+    assert [event.id for event in world_events(db_session, world_id)] == before_event_ids
+
+
 def test_foreshadow_rejects_unknown_related_character(client):
     token = register(client)
     world_id = create_world(client, token)

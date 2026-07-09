@@ -274,6 +274,29 @@ def test_character_update_rejects_extra_fields_without_side_effects(client, db_s
     assert [event.id for event in world_events(db_session, world_id)] == before_event_ids
 
 
+def test_character_delete_rejects_extra_body_fields_without_side_effects(client, db_session):
+    token = register(client)
+    world_id = create_world(client, token)
+    existing = client.get(f'/worlds/{world_id}/characters', headers=auth(token)).json()[0]
+    before_character = client.get(f"/characters/{existing['id']}", headers=auth(token)).json()
+    before_world_version = world_state(db_session, world_id).world_version
+    before_event_ids = [event.id for event in world_events(db_session, world_id)]
+
+    response = client.request(
+        'DELETE',
+        f"/characters/{existing['id']}",
+        headers=auth(token),
+        json={'raw_text': '删除端点不应接收运行时字段'},
+    )
+
+    assert response.status_code == 422
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    after_character = client.get(f"/characters/{existing['id']}", headers=auth(token)).json()
+    assert after_character == before_character
+    assert world_state(db_session, world_id).world_version == before_world_version
+    assert [event.id for event in world_events(db_session, world_id)] == before_event_ids
+
+
 def test_delete_character_removes_foreshadow_reference(client):
     token = register(client)
     world_id = create_world(client, token)

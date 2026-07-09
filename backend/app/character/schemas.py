@@ -10,6 +10,10 @@ def _strip_required(value: str) -> str:
     return stripped
 
 
+class EmptyCharacterDeleteRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+
 class CharacterCreate(BaseModel):
     model_config = ConfigDict(extra='forbid')
 

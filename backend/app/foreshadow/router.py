@@ -5,6 +5,7 @@ from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
 from app.foreshadow.schemas import (
+    EmptyForeshadowDeleteRequest,
     ForeshadowCreate,
     ForeshadowEventResponse,
     ForeshadowLedgerResponse,
@@ -108,6 +109,7 @@ def update(
 def delete(
     foreshadow_id: int,
     edit_reason: str | None = Query(default=None),
+    _payload: EmptyForeshadowDeleteRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> None:
