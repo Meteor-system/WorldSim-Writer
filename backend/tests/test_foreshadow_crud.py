@@ -450,6 +450,57 @@ def test_foreshadow_rejects_blank_required_fields_and_bad_urgency(client):
     assert high_urgency_response.status_code == 422
 
 
+def test_foreshadow_create_rejects_extra_fields_without_side_effects(client, db_session):
+    token = register(client)
+    world_id = create_world(client, token)
+    before_foreshadows = client.get(f'/worlds/{world_id}/foreshadows', headers=auth(token)).json()
+    before_world_version = world_state(db_session, world_id).world_version
+    before_event_ids = [event.id for event in world_events(db_session, world_id)]
+
+    response = client.post(
+        f'/worlds/{world_id}/foreshadows',
+        headers=auth(token),
+        json={
+            'title': '越界伏笔',
+            'description': '不应落库的伏笔。',
+            'foreshadow_type': 'plot',
+            'raw_text': '不应被接受的运行时字段',
+        },
+    )
+
+    assert response.status_code == 422
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    after_foreshadows = client.get(f'/worlds/{world_id}/foreshadows', headers=auth(token)).json()
+    assert after_foreshadows == before_foreshadows
+    assert world_state(db_session, world_id).world_version == before_world_version
+    assert [event.id for event in world_events(db_session, world_id)] == before_event_ids
+
+
+def test_foreshadow_update_rejects_extra_fields_without_side_effects(client, db_session):
+    token = register(client)
+    world_id = create_world(client, token)
+    existing = create_foreshadow(client, token, world_id)
+    before_foreshadow = client.get(f"/foreshadows/{existing['id']}", headers=auth(token)).json()
+    before_timeline = client.get(f"/foreshadows/{existing['id']}/timeline", headers=auth(token)).json()
+    before_world_version = world_state(db_session, world_id).world_version
+    before_event_ids = [event.id for event in world_events(db_session, world_id)]
+
+    response = client.put(
+        f"/foreshadows/{existing['id']}",
+        headers=auth(token),
+        json={'status': 'advanced', 'raw_text': '不应被接受的运行时字段'},
+    )
+
+    assert response.status_code == 422
+    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    after_foreshadow = client.get(f"/foreshadows/{existing['id']}", headers=auth(token)).json()
+    after_timeline = client.get(f"/foreshadows/{existing['id']}/timeline", headers=auth(token)).json()
+    assert after_foreshadow == before_foreshadow
+    assert after_timeline == before_timeline
+    assert world_state(db_session, world_id).world_version == before_world_version
+    assert [event.id for event in world_events(db_session, world_id)] == before_event_ids
+
+
 def test_foreshadow_rejects_unknown_related_character(client):
     token = register(client)
     world_id = create_world(client, token)

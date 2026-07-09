@@ -12,6 +12,8 @@ def _strip_required(value: str) -> str:
 
 
 class ForeshadowCreate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     source_chapter_id: int | None = None
     title: str
     description: str
@@ -29,6 +31,8 @@ class ForeshadowCreate(BaseModel):
 
 
 class ForeshadowUpdate(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     source_chapter_id: int | None = None
     title: str | None = None
     description: str | None = None

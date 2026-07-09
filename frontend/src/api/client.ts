@@ -825,7 +825,17 @@ export function deleteRelation(relationId: number, editReason?: string) {
 export function createForeshadow(worldId: number, data: ForeshadowCreate) {
   return apiRequest<Foreshadow>(`/worlds/${worldId}/foreshadows`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...(data.source_chapter_id !== undefined ? { source_chapter_id: data.source_chapter_id } : {}),
+      title: data.title,
+      description: data.description,
+      foreshadow_type: data.foreshadow_type,
+      ...(data.status !== undefined ? { status: data.status } : {}),
+      ...(data.urgency_level !== undefined ? { urgency_level: data.urgency_level } : {}),
+      ...(data.related_character_ids !== undefined ? { related_character_ids: data.related_character_ids } : {}),
+      ...(data.expected_resolution_window !== undefined ? { expected_resolution_window: data.expected_resolution_window } : {}),
+      ...(data.edit_reason !== undefined ? { edit_reason: data.edit_reason } : {}),
+    }),
   });
 }
 
@@ -855,7 +865,17 @@ export function getForeshadow(foreshadowId: number) {
 export function updateForeshadow(foreshadowId: number, data: ForeshadowUpdate) {
   return apiRequest<Foreshadow>(`/foreshadows/${foreshadowId}`, {
     method: 'PUT',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...(data.source_chapter_id !== undefined ? { source_chapter_id: data.source_chapter_id } : {}),
+      ...(data.title !== undefined ? { title: data.title } : {}),
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.foreshadow_type !== undefined ? { foreshadow_type: data.foreshadow_type } : {}),
+      ...(data.status !== undefined ? { status: data.status } : {}),
+      ...(data.urgency_level !== undefined ? { urgency_level: data.urgency_level } : {}),
+      ...(data.related_character_ids !== undefined ? { related_character_ids: data.related_character_ids } : {}),
+      ...(data.expected_resolution_window !== undefined ? { expected_resolution_window: data.expected_resolution_window } : {}),
+      ...(data.edit_reason !== undefined ? { edit_reason: data.edit_reason } : {}),
+    }),
   });
 }
 

@@ -6,6 +6,8 @@ import type {
   CharacterRelationCreate,
   CharacterRelationUpdate,
   CharacterUpdate,
+  ForeshadowCreate,
+  ForeshadowUpdate,
   StyleHandbookReference,
   WorldCreateRequest,
   WorldCreationMaterialReference,
@@ -16,6 +18,7 @@ import {
   compareWorldSnapshots,
   createChapter,
   createCharacter,
+  createForeshadow,
   createRelation,
   createSampleWorld,
   createWorld,
@@ -66,6 +69,7 @@ import {
   reviseParagraph,
   stashDraft,
   updateCharacter,
+  updateForeshadow,
   updateRelation,
   writeChapter,
 } from './client';
@@ -924,6 +928,94 @@ describe('character API helpers', () => {
       destiny_flag: '追查者',
       current_goals: ['追查旧案'],
       edit_reason: '更新角色备注',
+    });
+    expect(createBody.raw_text).toBeUndefined();
+    expect(updateBody.raw_text).toBeUndefined();
+  });
+});
+
+describe('foreshadow API helpers', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem('worldsim_token', 'test-token');
+    vi.restoreAllMocks();
+  });
+
+  it('sends only allowed fields in create and update payloads', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({
+        id: 4,
+        source_chapter_id: 2,
+        title: '铜铃异响',
+        description: '夜半铜铃无人自鸣。',
+        foreshadow_type: 'plot',
+        status: 'planted',
+        urgency_level: 4,
+        related_character_ids: [3],
+        expected_resolution_window: '第三幕',
+      }))
+      .mockResolvedValueOnce(jsonResponse({
+        id: 4,
+        source_chapter_id: 2,
+        title: '铜铃异响改',
+        description: '夜半铜铃在城门倒响。',
+        foreshadow_type: 'plot',
+        status: 'advanced',
+        urgency_level: 5,
+        related_character_ids: [],
+        expected_resolution_window: '第二幕末',
+      }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await createForeshadow(7, {
+      source_chapter_id: 2,
+      title: '铜铃异响',
+      description: '夜半铜铃无人自鸣。',
+      foreshadow_type: 'plot',
+      status: 'planted',
+      urgency_level: 4,
+      related_character_ids: [3],
+      expected_resolution_window: '第三幕',
+      edit_reason: '新增伏笔备注',
+      raw_text: '运行时原文不应进入伏笔创建请求。',
+    } as unknown as ForeshadowCreate);
+    await updateForeshadow(4, {
+      source_chapter_id: 2,
+      title: '铜铃异响改',
+      description: '夜半铜铃在城门倒响。',
+      foreshadow_type: 'plot',
+      status: 'advanced',
+      urgency_level: 5,
+      related_character_ids: [],
+      expected_resolution_window: '第二幕末',
+      edit_reason: '推进伏笔备注',
+      raw_text: '运行时原文不应进入伏笔更新请求。',
+    } as unknown as ForeshadowUpdate);
+
+    const createBody = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    const updateBody = JSON.parse(fetchMock.mock.calls[1][1]?.body as string);
+    expect(createBody).toEqual({
+      source_chapter_id: 2,
+      title: '铜铃异响',
+      description: '夜半铜铃无人自鸣。',
+      foreshadow_type: 'plot',
+      status: 'planted',
+      urgency_level: 4,
+      related_character_ids: [3],
+      expected_resolution_window: '第三幕',
+      edit_reason: '新增伏笔备注',
+    });
+    expect(updateBody).toEqual({
+      source_chapter_id: 2,
+      title: '铜铃异响改',
+      description: '夜半铜铃在城门倒响。',
+      foreshadow_type: 'plot',
+      status: 'advanced',
+      urgency_level: 5,
+      related_character_ids: [],
+      expected_resolution_window: '第二幕末',
+      edit_reason: '推进伏笔备注',
     });
     expect(createBody.raw_text).toBeUndefined();
     expect(updateBody.raw_text).toBeUndefined();
