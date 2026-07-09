@@ -44,6 +44,13 @@ def assert_only_world_created_event(client, token, world_id):
     assert events['summary']['event_type_counts'] == {'WORLD_CREATED': 1}
 
 
+def assert_extra_forbidden_raw_text(response):
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in response.json()['detail']
+    )
+
+
 def create_approved_chapter(db_session, world_id):
     chapter = Chapter(
         world_id=world_id,
@@ -277,6 +284,7 @@ def test_create_tag_rejects_extra_fields_without_creating_tag_or_event(client):
     )
 
     assert response.status_code == 422
+    assert_extra_forbidden_raw_text(response)
     assert client.get(f"/worlds/{world['id']}/tags", headers=auth(token)).json()['tags'] == []
     assert_only_world_created_event(client, token, world['id'])
 
@@ -293,6 +301,7 @@ def test_update_tag_rejects_extra_fields_without_changing_tag_or_event(client):
     )
 
     assert response.status_code == 422
+    assert_extra_forbidden_raw_text(response)
     detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
     assert detail['tag']['name'] == '旧标签'
     assert detail['tag']['color'] == 'gray'
@@ -318,6 +327,7 @@ def test_merge_tag_rejects_extra_fields_without_merging_or_event(client):
     )
 
     assert response.status_code == 422
+    assert_extra_forbidden_raw_text(response)
     source_detail = client.get(f"/worlds/{world['id']}/tags/{source['id']}", headers=auth(token))
     target_detail = client.get(f"/worlds/{world['id']}/tags/{target['id']}", headers=auth(token)).json()
     assert source_detail.status_code == 200
@@ -343,6 +353,7 @@ def test_assign_tag_rejects_extra_fields_without_creating_assignment_or_event(cl
     )
 
     assert response.status_code == 422
+    assert_extra_forbidden_raw_text(response)
     detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
     assert detail['tag']['assignment_count'] == 0
     assert_only_world_created_event(client, token, world['id'])
@@ -365,6 +376,7 @@ def test_bulk_assign_tag_rejects_extra_fields_without_creating_assignments_or_ev
     )
 
     assert response.status_code == 422
+    assert_extra_forbidden_raw_text(response)
     detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
     assert detail['tag']['assignment_count'] == 0
     assert_only_world_created_event(client, token, world['id'])
