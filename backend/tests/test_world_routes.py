@@ -115,6 +115,30 @@ def test_world_status_update_rejects_invalid_status(client):
     assert response.status_code == 422
 
 
+def test_world_status_update_rejects_extra_fields_without_changing_status_or_events(client, db_session):
+    token = register(client, 'archive-extra-field@example.com')
+    world = create_sample_world(client, token)
+
+    response = client.patch(
+        f"/worlds/{world['id']}/status",
+        json={'status': 'archived', 'raw_text': '运行时备注不应进入状态更新请求。'},
+        headers=auth_headers(token),
+    )
+
+    assert response.status_code == 422
+    db_session.expire_all()
+    stored_world = db_session.get(World, world['id'])
+    assert stored_world.status == 'active'
+    events = list(
+        db_session.scalars(
+            select(EventLog)
+            .where(EventLog.world_id == world['id'])
+            .where(EventLog.event_type == 'world_status_changed')
+        )
+    )
+    assert events == []
+
+
 def test_world_status_update_rejects_non_owner(client):
     owner_token = register(client, 'archive-real-owner@example.com')
     other_token = register(client, 'archive-other@example.com')

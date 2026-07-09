@@ -17,6 +17,7 @@ import {
   createWorldFromSeed,
   createWorldTag,
   draftWorldFromBrief,
+  updateWorldStatus,
   updateWorldTag,
   mergeWorldTag,
   assignWorldTag,
@@ -648,6 +649,35 @@ describe('world tag API helpers', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(8, 'http://localhost:8000/worlds/7/tags/3/objects/character/1', expect.objectContaining({ method: 'DELETE' }));
     expect(fetchMock).toHaveBeenNthCalledWith(9, 'http://localhost:8000/worlds/7/tags/3', expect.objectContaining({ method: 'DELETE' }));
     expect(bulk.assigned_count).toBe(2);
+  });
+
+  it('sends only allowed fields for world status and tag mutations', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ id: 7, status: 'archived' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 3, world_id: 7, name: '主线', slug: '主线', color: 'amber', created_at: '2026-05-31T00:00:00Z' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 3, world_id: 7, name: '主线压力', slug: '主线压力', color: null, created_at: '2026-05-31T00:00:00Z' }))
+      .mockResolvedValueOnce(jsonResponse({ world_id: 7, source_tag_id: 3, target_tag_id: 4, moved_count: 0, already_assigned_count: 0, deleted_source_tag: true }))
+      .mockResolvedValueOnce(jsonResponse({ id: 9, world_id: 7, tag_id: 3, object_type: 'character', object_id: 1, created_at: '2026-05-31T00:00:00Z' }))
+      .mockResolvedValueOnce(jsonResponse({ world_id: 7, tag_id: 3, object_type: 'character', requested_count: 1, assigned_count: 1, already_assigned_count: 0, assigned_object_ids: [1], already_assigned_object_ids: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await updateWorldStatus(7, { status: 'archived', raw_text: '运行时备注' } as unknown as Parameters<typeof updateWorldStatus>[1]);
+    await createWorldTag(7, { name: '主线', color: 'amber', raw_text: '运行时备注' } as unknown as Parameters<typeof createWorldTag>[1]);
+    await updateWorldTag(7, 3, { name: '主线压力', color: null, raw_text: '运行时备注' } as unknown as Parameters<typeof updateWorldTag>[2]);
+    await mergeWorldTag(7, 3, { target_tag_id: 4, raw_text: '运行时备注' } as unknown as Parameters<typeof mergeWorldTag>[2]);
+    await assignWorldTag(7, 3, { object_type: 'character', object_id: 1, raw_text: '运行时备注' } as unknown as Parameters<typeof assignWorldTag>[2]);
+    await bulkAssignWorldTag(7, 3, { object_type: 'character', object_ids: [1], raw_text: '运行时备注' } as unknown as Parameters<typeof bulkAssignWorldTag>[2]);
+
+    const bodies = fetchMock.mock.calls.map((call) => JSON.parse(call[1]?.body as string));
+    expect(bodies).toEqual([
+      { status: 'archived' },
+      { name: '主线', color: 'amber' },
+      { name: '主线压力', color: null },
+      { target_tag_id: 4 },
+      { object_type: 'character', object_id: 1 },
+      { object_type: 'character', object_ids: [1] },
+    ]);
   });
 });
 

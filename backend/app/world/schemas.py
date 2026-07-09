@@ -142,6 +142,8 @@ class WorldCreationDraftResponse(BaseModel):
 
 
 class WorldStatusUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     status: str
 
     @field_validator('status')

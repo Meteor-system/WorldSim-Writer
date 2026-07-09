@@ -334,7 +334,7 @@ export function createWorldFromSeed(seedKey: string) {
 export function updateWorldStatus(worldId: number, data: WorldStatusUpdateRequest) {
   return apiRequest<WorldSummary>(`/worlds/${worldId}/status`, {
     method: 'PATCH',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ status: data.status }),
   });
 }
 
@@ -362,21 +362,27 @@ export function listWorldTags(worldId: number) {
 export function createWorldTag(worldId: number, data: { name: string; color?: string }) {
   return apiRequest<TagResponse>(`/worlds/${worldId}/tags`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      name: data.name,
+      ...(data.color !== undefined ? { color: data.color } : {}),
+    }),
   });
 }
 
 export function updateWorldTag(worldId: number, tagId: number, data: TagUpdateRequest) {
   return apiRequest<TagResponse>(`/worlds/${worldId}/tags/${tagId}`, {
     method: 'PATCH',
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.color !== undefined ? { color: data.color } : {}),
+    }),
   });
 }
 
 export function mergeWorldTag(worldId: number, sourceTagId: number, data: TagMergeRequest) {
   return apiRequest<TagMergeResponse>(`/worlds/${worldId}/tags/${sourceTagId}/merge`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ target_tag_id: data.target_tag_id }),
   });
 }
 
@@ -387,14 +393,14 @@ export function getWorldTag(worldId: number, tagId: number) {
 export function assignWorldTag(worldId: number, tagId: number, data: { object_type: string; object_id: number }) {
   return apiRequest<ObjectTagResponse>(`/worlds/${worldId}/tags/${tagId}/objects`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ object_type: data.object_type, object_id: data.object_id }),
   });
 }
 
 export function bulkAssignWorldTag(worldId: number, tagId: number, data: { object_type: string; object_ids: number[] }) {
   return apiRequest<ObjectTagBulkAssignResponse>(`/worlds/${worldId}/tags/${tagId}/objects/bulk`, {
     method: 'POST',
-    body: JSON.stringify(data),
+    body: JSON.stringify({ object_type: data.object_type, object_ids: [...data.object_ids] }),
   });
 }
 

@@ -39,6 +39,11 @@ def create_world(client, token):
     return client.post('/worlds', headers=auth(token), json=tag_world_payload()).json()
 
 
+def assert_only_world_created_event(client, token, world_id):
+    events = client.get(f'/worlds/{world_id}/events', headers=auth(token)).json()
+    assert events['summary']['event_type_counts'] == {'WORLD_CREATED': 1}
+
+
 def create_approved_chapter(db_session, world_id):
     chapter = Chapter(
         world_id=world_id,
@@ -259,6 +264,110 @@ def test_duplicate_tag_names_are_rejected_per_world(client):
     assert first.status_code == 200
     assert duplicate.status_code == 409
     assert duplicate.json()['detail'] == 'TAG_ALREADY_EXISTS'
+
+
+def test_create_tag_rejects_extra_fields_without_creating_tag_or_event(client):
+    token = register(client, 'tags-extra-create@example.com')
+    world = create_world(client, token)
+
+    response = client.post(
+        f"/worlds/{world['id']}/tags",
+        headers=auth(token),
+        json={'name': '潜台词', 'color': 'purple', 'raw_text': '运行时备注不应进入标签创建请求。'},
+    )
+
+    assert response.status_code == 422
+    assert client.get(f"/worlds/{world['id']}/tags", headers=auth(token)).json()['tags'] == []
+    assert_only_world_created_event(client, token, world['id'])
+
+
+def test_update_tag_rejects_extra_fields_without_changing_tag_or_event(client):
+    token = register(client, 'tags-extra-update@example.com')
+    world = create_world(client, token)
+    tag = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '旧标签', 'color': 'gray'}).json()
+
+    response = client.patch(
+        f"/worlds/{world['id']}/tags/{tag['id']}",
+        headers=auth(token),
+        json={'name': '新标签', 'color': 'amber', 'raw_text': '运行时备注不应进入标签更新请求。'},
+    )
+
+    assert response.status_code == 422
+    detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
+    assert detail['tag']['name'] == '旧标签'
+    assert detail['tag']['color'] == 'gray'
+    assert_only_world_created_event(client, token, world['id'])
+
+
+def test_merge_tag_rejects_extra_fields_without_merging_or_event(client):
+    token = register(client, 'tags-extra-merge@example.com')
+    world = create_world(client, token)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    source = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '旧线'}).json()
+    target = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '新线'}).json()
+    client.post(
+        f"/worlds/{world['id']}/tags/{source['id']}/objects",
+        headers=auth(token),
+        json={'object_type': 'character', 'object_id': overview['characters'][0]['id']},
+    )
+
+    response = client.post(
+        f"/worlds/{world['id']}/tags/{source['id']}/merge",
+        headers=auth(token),
+        json={'target_tag_id': target['id'], 'raw_text': '运行时备注不应进入标签合并请求。'},
+    )
+
+    assert response.status_code == 422
+    source_detail = client.get(f"/worlds/{world['id']}/tags/{source['id']}", headers=auth(token))
+    target_detail = client.get(f"/worlds/{world['id']}/tags/{target['id']}", headers=auth(token)).json()
+    assert source_detail.status_code == 200
+    assert source_detail.json()['tag']['assignment_count'] == 1
+    assert target_detail['tag']['assignment_count'] == 0
+    assert_only_world_created_event(client, token, world['id'])
+
+
+def test_assign_tag_rejects_extra_fields_without_creating_assignment_or_event(client):
+    token = register(client, 'tags-extra-assign@example.com')
+    world = create_world(client, token)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    tag = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '重点角色'}).json()
+
+    response = client.post(
+        f"/worlds/{world['id']}/tags/{tag['id']}/objects",
+        headers=auth(token),
+        json={
+            'object_type': 'character',
+            'object_id': overview['characters'][0]['id'],
+            'raw_text': '运行时备注不应进入对象打标请求。',
+        },
+    )
+
+    assert response.status_code == 422
+    detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
+    assert detail['tag']['assignment_count'] == 0
+    assert_only_world_created_event(client, token, world['id'])
+
+
+def test_bulk_assign_tag_rejects_extra_fields_without_creating_assignments_or_event(client):
+    token = register(client, 'tags-extra-bulk@example.com')
+    world = create_world(client, token)
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=auth(token)).json()
+    tag = client.post(f"/worlds/{world['id']}/tags", headers=auth(token), json={'name': '批量重点'}).json()
+
+    response = client.post(
+        f"/worlds/{world['id']}/tags/{tag['id']}/objects/bulk",
+        headers=auth(token),
+        json={
+            'object_type': 'character',
+            'object_ids': [overview['characters'][0]['id']],
+            'raw_text': '运行时备注不应进入批量打标请求。',
+        },
+    )
+
+    assert response.status_code == 422
+    detail = client.get(f"/worlds/{world['id']}/tags/{tag['id']}", headers=auth(token)).json()
+    assert detail['tag']['assignment_count'] == 0
+    assert_only_world_created_event(client, token, world['id'])
 
 
 def test_assign_tag_to_supported_objects_and_get_detail(client, db_session):

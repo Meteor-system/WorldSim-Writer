@@ -12,6 +12,8 @@ def _strip_required(value: str) -> str:
 
 
 class TagCreateRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     name: str
     color: str | None = None
 
@@ -30,6 +32,8 @@ class TagCreateRequest(BaseModel):
 
 
 class TagUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     name: str | None = None
     color: str | None = None
 
@@ -50,6 +54,8 @@ class TagUpdateRequest(BaseModel):
 
 
 class TagMergeRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     target_tag_id: int
 
     @field_validator('target_tag_id')
@@ -70,6 +76,8 @@ class TagMergeResponse(BaseModel):
 
 
 class ObjectTagAssignRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     object_type: str
     object_id: int
 
@@ -80,6 +88,8 @@ class ObjectTagAssignRequest(BaseModel):
 
 
 class ObjectTagBulkAssignRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
     object_type: str
     object_ids: list[int]
 
