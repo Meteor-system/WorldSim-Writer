@@ -1,4 +1,4 @@
-﻿import type {
+import type {
   ApprovalConsistencyResponse,
   ApprovalPreviewResponse,
   ApprovalReadinessResponse,
@@ -55,6 +55,7 @@
   TagUpdateRequest,
   WorldCreateRequest,
   WorldCreationDraftResponse,
+  WorldCreationMaterialReference,
   WorldMarkdownExportResponse,
   WorldPulseResponse,
   WorldStatusUpdateRequest,
@@ -117,13 +118,19 @@ export function createWorld(data: WorldCreateRequest) {
   });
 }
 
-export function draftWorldFromBrief(brief: string, styleHandbookReference?: StyleHandbookReference | null, variantCount?: number) {
+export function draftWorldFromBrief(
+  brief: string,
+  styleHandbookReference?: StyleHandbookReference | null,
+  variantCount?: number,
+  materialReferences?: WorldCreationMaterialReference[],
+) {
   return apiRequest<WorldCreationDraftResponse>('/worlds/draft-from-brief', {
     method: 'POST',
     body: JSON.stringify({
       brief,
       ...(styleHandbookReference ? { style_handbook_reference: styleHandbookReference } : {}),
       ...(variantCount ? { variant_count: variantCount } : {}),
+      ...(materialReferences?.length ? { material_references: materialReferences } : {}),
     }),
   });
 }

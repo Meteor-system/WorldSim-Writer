@@ -1,4 +1,4 @@
-﻿from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_user
@@ -59,11 +59,13 @@ def draft_from_brief(
     style_handbook_reference = (
         data.style_handbook_reference.model_dump() if data.style_handbook_reference else None
     )
+    material_references = [reference.model_dump() for reference in data.material_references]
     return WorldCreationDraftResponse.model_validate(
         generate_world_creation_draft(
             data.brief,
             style_handbook_reference=style_handbook_reference,
             variant_count=data.variant_count,
+            material_references=material_references,
         )
     )
 

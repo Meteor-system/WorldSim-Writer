@@ -586,6 +586,91 @@ describe('WorldPage world creation', () => {
     expect(listWorldImports).toHaveBeenCalledWith(7);
   });
 
+  it('opens the creation form with import node materials as read-only brief references', async () => {
+    const user = userEvent.setup();
+    const importBatchResponse = {
+      world_id: 7,
+      batches: [
+        {
+          id: 9,
+          world_id: 7,
+          source_type: 'pasted_text' as const,
+          source_title: '旧素材摘录',
+          original_excerpt: '原文不会进入开书草稿。',
+          cleaned_excerpt: '清洗片段。',
+          status: 'confirmed' as const,
+          asset_counts: { inspiration: 1 },
+          conflicts: [],
+          created_at: '2026-05-31T00:00:00Z',
+          confirmed_at: '2026-05-31T00:00:00Z',
+          assets: [
+            {
+              id: 42,
+              world_id: 7,
+              batch_id: 9,
+              status: 'candidate' as const,
+              asset_pool: 'inspiration' as const,
+              title: '雾港钟楼候选素材',
+              summary: '一座每天倒敲十三次的钟楼引发城内记忆错位。',
+              raw_text: '不应传入一句话开书。',
+              metadata: {},
+              created_at: '2026-05-31T00:00:00Z',
+            },
+          ],
+        },
+      ],
+    };
+    vi.mocked(listWorldImports)
+      .mockResolvedValueOnce(importBatchResponse)
+      .mockResolvedValueOnce(importBatchResponse);
+    vi.mocked(draftWorldFromBrief).mockResolvedValueOnce({
+      source_brief: '一个边境殖民地依赖濒临失控的跃迁灯塔',
+      draft: briefDraftPayload,
+      first_chapter_goal: '让伊莱发现自己的死因记录被烧穿。',
+      generation_notes: ['已参考候选素材提炼原创方向。'],
+      safety_notes: ['候选素材只读，不会写入 canon/正史或 EventLog。'],
+      material_references: [
+        {
+          source: 'import_node',
+          asset_id: 42,
+          title: '雾港钟楼候选素材',
+          summary: '一座每天倒敲十三次的钟楼引发城内记忆错位。',
+          asset_pool: 'inspiration',
+          source_rights: 'general_reference',
+        },
+      ],
+    });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '继续创作' }));
+    await user.click(await screen.findByRole('button', { name: '用候选素材开新书草稿' }));
+
+    expect(await screen.findByText('Import Node 候选素材参考（只读）')).toBeInTheDocument();
+    expect(screen.getByLabelText('Import Node 候选素材参考')).toHaveTextContent('雾港钟楼候选素材');
+    expect(screen.getByLabelText('Import Node 候选素材参考')).toHaveTextContent('不会创建世界、不会写入 canon/正史，也不会写入 EventLog');
+
+    await user.type(screen.getByLabelText('一句话故事想法'), '一个边境殖民地依赖濒临失控的跃迁灯塔');
+    await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
+
+    expect(draftWorldFromBrief).toHaveBeenCalledWith(
+      '一个边境殖民地依赖濒临失控的跃迁灯塔',
+      null,
+      3,
+      [
+        {
+          source: 'import_node',
+          asset_id: 42,
+          title: '雾港钟楼候选素材',
+          summary: '一座每天倒敲十三次的钟楼引发城内记忆错位。',
+          asset_pool: 'inspiration',
+          source_rights: 'general_reference',
+        },
+      ],
+    );
+    expect(await screen.findByLabelText('本次草稿引用的候选素材')).toHaveTextContent('不会创建世界、写入 canon/正史或写入 EventLog');
+  });
+
   it('creates the built-in sample world and loads its overview', async () => {
     const user = userEvent.setup();
     vi.mocked(apiRequest).mockReset();

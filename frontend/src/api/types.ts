@@ -197,6 +197,15 @@ export type WorldCreateRequest = {
   starter_assets: StarterAssetsCreate;
 };
 
+export type WorldCreationMaterialReference = {
+  source: 'import_node';
+  asset_id?: number | null;
+  title: string;
+  summary: string;
+  asset_pool?: 'inspiration' | 'character' | 'canon' | null;
+  source_rights?: 'own_work' | 'authorized' | 'public_domain' | 'general_reference' | null;
+};
+
 export type WorldCreationDraftVariant = {
   variant_id: string;
   label: string;
@@ -205,6 +214,7 @@ export type WorldCreationDraftVariant = {
   generation_notes: string[];
   safety_notes: string[];
   followup_questions?: string[];
+  material_references?: WorldCreationMaterialReference[];
 };
 
 export type WorldCreationDraftResponse = {
@@ -216,6 +226,7 @@ export type WorldCreationDraftResponse = {
   followup_questions?: string[];
   variants?: WorldCreationDraftVariant[];
   style_handbook_reference?: StyleHandbookReference | null;
+  material_references?: WorldCreationMaterialReference[];
 };
 
 export type WorldSeedStarterGuidance = {

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -78,10 +78,25 @@ class WorldCreateRequest(BaseModel):
         return _strip_required(value)
 
 
+class WorldCreationMaterialReference(BaseModel):
+    source: Literal['import_node'] = 'import_node'
+    asset_id: int | None = None
+    title: str = Field(min_length=1, max_length=120)
+    summary: str = Field(min_length=1, max_length=800)
+    asset_pool: Literal['inspiration', 'character', 'canon'] | None = None
+    source_rights: Literal['own_work', 'authorized', 'public_domain', 'general_reference'] | None = None
+
+    @field_validator('title', 'summary')
+    @classmethod
+    def validate_required_strings(cls, value: str) -> str:
+        return _strip_required(value)
+
+
 class WorldCreationDraftRequest(BaseModel):
     brief: str = Field(min_length=3, max_length=800)
     style_handbook_reference: ExecutionContextStyleHandbookReference | None = None
     variant_count: int = Field(default=1, ge=1, le=3)
+    material_references: list[WorldCreationMaterialReference] = Field(default_factory=list, max_length=3)
 
     @field_validator('brief')
     @classmethod
@@ -97,6 +112,7 @@ class WorldCreationDraftVariant(BaseModel):
     generation_notes: list[str] = Field(default_factory=list)
     safety_notes: list[str] = Field(default_factory=list)
     followup_questions: list[str] = Field(default_factory=list)
+    material_references: list[WorldCreationMaterialReference] = Field(default_factory=list)
 
 
 class WorldCreationDraftResponse(BaseModel):
@@ -108,6 +124,7 @@ class WorldCreationDraftResponse(BaseModel):
     followup_questions: list[str] = Field(default_factory=list)
     variants: list[WorldCreationDraftVariant] = Field(default_factory=list)
     style_handbook_reference: ExecutionContextStyleHandbookReference | None = None
+    material_references: list[WorldCreationMaterialReference] = Field(default_factory=list)
 
 
 class WorldStatusUpdateRequest(BaseModel):

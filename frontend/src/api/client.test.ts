@@ -147,6 +147,49 @@ describe('world creation API helpers', () => {
     );
   });
 
+  it('passes import node material references to one-sentence world draft generation', async () => {
+    const materialReferences = [
+      {
+        source: 'import_node' as const,
+        asset_id: 42,
+        title: '雾港钟楼候选素材',
+        summary: '一座每天倒敲十三次的钟楼引发城内记忆错位。',
+        asset_pool: 'inspiration' as const,
+        source_rights: 'general_reference' as const,
+      },
+    ];
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      source_brief: '一个边境殖民地依赖濒临失控的跃迁灯塔',
+      draft: {
+        title: '群星边境',
+        genre_template: 'sci_fi',
+        truth_canon: '跃迁灯塔正在失控。',
+        starter_assets: { characters: [{ name: '许砚', role_type: 'protagonist' }] },
+      },
+      first_chapter_goal: '让许砚第一次听见跃迁灯塔低鸣。',
+      generation_notes: [],
+      safety_notes: ['确认前不会创建世界。'],
+      material_references: materialReferences,
+      variants: [],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await draftWorldFromBrief('一个边境殖民地依赖濒临失控的跃迁灯塔', null, 3, materialReferences);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/worlds/draft-from-brief',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          brief: '一个边境殖民地依赖濒临失控的跃迁灯塔',
+          variant_count: 3,
+          material_references: materialReferences,
+        }),
+      }),
+    );
+    expect(result.material_references).toEqual(materialReferences);
+  });
+
   it('passes a style handbook reference and variant count to one-sentence world draft generation', async () => {
     const styleHandbookReference = {
       source_title: '公版海洋小说片段',

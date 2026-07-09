@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
   assignWorldTag,
@@ -37,7 +37,7 @@ import {
   updateWorldStatus,
   updateWorldTag,
 } from '../api/client';
-import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, SerialPlanChapter, SerialPlanResponse, StoryArcChapter, StudioLaunchContext, StyleHandbookReference, WorldCreateRequest, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
+import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, ImportBatchWithAssetsResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, SerialPlanChapter, SerialPlanResponse, StoryArcChapter, StudioLaunchContext, StyleHandbookReference, WorldCreateRequest, WorldCreationMaterialReference, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
@@ -125,6 +125,17 @@ function openForeshadows(world: WorldOverview): WorldOverview['foreshadows'] {
   return world.foreshadows
     .filter((item) => isOpenForeshadow(item.status))
     .sort((a, b) => (b.urgency_level ?? 0) - (a.urgency_level ?? 0));
+}
+
+function materialReferencesFromImportBatches(batches: ImportBatchWithAssetsResponse[]): WorldCreationMaterialReference[] {
+  return batches.flatMap((batch) => batch.assets.map((asset) => ({
+    source: 'import_node' as const,
+    asset_id: asset.id,
+    title: asset.title,
+    summary: asset.summary,
+    asset_pool: asset.asset_pool,
+    source_rights: 'general_reference' as const,
+  })));
 }
 
 function dashboardActions(world: WorldOverview, isArchivedWorld: boolean): Array<{ label: string; detail: string; primary?: boolean }> {
@@ -574,6 +585,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [analysisLoaded, setAnalysisLoaded] = useState(false);
   const [selectedExecutionContext, setSelectedExecutionContext] = useState<ChapterExecutionContext | null>(null);
   const [selectedStyleHandbook, setSelectedStyleHandbook] = useState<StyleHandbookReference | null>(null);
+  const [creationMaterialReferences, setCreationMaterialReferences] = useState<WorldCreationMaterialReference[]>([]);
+  const [creationMaterialLoading, setCreationMaterialLoading] = useState(false);
+  const [creationMaterialError, setCreationMaterialError] = useState('');
   const [worldCreationDraftGoal, setWorldCreationDraftGoal] = useState('');
   const [expandedStoryArcChapters, setExpandedStoryArcChapters] = useState<number[]>([]);
   const [tab, setTab] = useState<Tab>('overview');
@@ -724,6 +738,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
     setShowCreationForm(false);
     setSelectedExecutionContext(null);
+    setCreationMaterialReferences([]);
+    setCreationMaterialError('');
     setWorldCreationDraftGoal('');
     setTab('overview');
   }
@@ -761,6 +777,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
       setSelectedExecutionContext(null);
+      setCreationMaterialReferences([]);
+      setCreationMaterialError('');
       setWorldCreationDraftGoal(context?.firstChapterGoal ?? '');
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建世界失败');
@@ -779,6 +797,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setWorld(overview);
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
+      setCreationMaterialReferences([]);
+      setCreationMaterialError('');
       setWorldCreationDraftGoal('');
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建世界失败');
@@ -797,6 +817,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setWorld(overview);
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
+      setCreationMaterialReferences([]);
+      setCreationMaterialError('');
       setWorldCreationDraftGoal('');
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建灵感模板失败');
@@ -844,14 +866,41 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     setWorld(null);
     setShowCreationForm(false);
     setArchiveError('');
+    setCreationMaterialReferences([]);
+    setCreationMaterialError('');
     setWorldCreationDraftGoal('');
   }
 
   function startNewWorld() {
     setWorld(null);
     setShowCreationForm(true);
+    setCreationMaterialReferences([]);
+    setCreationMaterialError('');
     setWorldCreationDraftGoal('');
     void loadSeedLibrary();
+  }
+
+  async function startNewWorldWithImportMaterials() {
+    if (!world) return;
+    setCreationMaterialLoading(true);
+    setCreationMaterialError('');
+    try {
+      const response = await listWorldImports(world.id);
+      const references = materialReferencesFromImportBatches(response.batches).slice(0, 6);
+      if (references.length === 0) {
+        setCreationMaterialError('当前小说还没有可引用的 Import Node 候选素材');
+        return;
+      }
+      setCreationMaterialReferences(references);
+      setWorld(null);
+      setShowCreationForm(true);
+      setWorldCreationDraftGoal('');
+      void loadSeedLibrary();
+    } catch (err) {
+      setCreationMaterialError(err instanceof Error ? err.message : '读取 Import Node 候选素材失败');
+    } finally {
+      setCreationMaterialLoading(false);
+    }
   }
 
   async function toggleWorldArchiveStatus() {
@@ -1008,6 +1057,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
           onCreateSample={submitSampleWorld}
           onDraftFromBrief={draftWorldFromBrief}
           activeStyleHandbook={selectedStyleHandbook}
+          materialReferences={creationMaterialReferences}
           seeds={seedLibrary}
           seedLoading={seedLibraryLoading}
           seedError={seedLibraryError}
@@ -1175,6 +1225,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               onListBatches={listWorldImports}
               onConfirmed={() => void refreshNextPrep(world.id)}
             />
+            <div className="rounded-2xl bg-amber-50/80 p-4">
+              <p className="text-sm font-black text-[#3b2511]">用 Import Node 候选素材开新书</p>
+              <p className="manuscript mt-1 text-sm text-[#5e3b1c]">只把候选素材标题和摘要带入一句话开书作为只读写作参考；不会创建世界、不会写入 canon/正史或 EventLog。</p>
+              <button className="secondary-button mt-3" type="button" disabled={creationMaterialLoading} onClick={() => void startNewWorldWithImportMaterials()}>
+                {creationMaterialLoading ? '读取候选素材中...' : '用候选素材开新书草稿'}
+              </button>
+              {creationMaterialError && <p className="paper-error mt-3" role="alert">{creationMaterialError}</p>}
+            </div>
             {selectedStyleHandbook && (
               <p className="rounded-2xl bg-amber-50/80 p-3 text-sm font-bold text-[#5e3b1c]" data-testid="active-style-handbook">
                 已设为写作风格参考：{selectedStyleHandbook.source_title}（仅抽象维度，不写入正史）

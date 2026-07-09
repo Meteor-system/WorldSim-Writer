@@ -40,6 +40,42 @@ def _map_model_error(exc: Exception) -> HTTPException:
     return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_REQUEST_FAILED')
 
 
+def _normalize_material_references(material_references: list[dict] | None) -> list[dict]:
+    if not material_references:
+        return []
+    normalized = []
+    for reference in material_references[:3]:
+        title = str(reference.get('title') or '').strip()
+        summary = str(reference.get('summary') or '').strip()
+        if not title or not summary:
+            continue
+        normalized.append({
+            'source': reference.get('source') or 'import_node',
+            'asset_id': reference.get('asset_id'),
+            'title': title[:120],
+            'summary': summary[:800],
+            'asset_pool': reference.get('asset_pool'),
+            'source_rights': reference.get('source_rights'),
+        })
+    return normalized
+
+
+def _material_references_prompt_block(material_references: list[dict] | None) -> str:
+    references = _normalize_material_references(material_references)
+    if not references:
+        return ''
+    lines = [
+        '用户选择了 Import Node 候选素材作为只读写作参考；它们不是 canon/正史，不能自动变成正式设定，也不能绕过创建确认或 Studio 审稿。',
+        '只能参考标题、摘要、素材池和来源权利信息来提炼原创方向；禁止照抄源文本、人物名、专有设定或受保护表达。',
+    ]
+    for index, reference in enumerate(references, start=1):
+        lines.append(
+            f"{index}. 标题：{reference['title']}；摘要：{reference['summary']}；"
+            f"素材池：{reference.get('asset_pool') or 'unknown'}；来源权利：{reference.get('source_rights') or 'unknown'}。"
+        )
+    return '\n'.join(lines)
+
+
 def _style_handbook_prompt_block(style_handbook_reference: dict | None) -> str:
     if not style_handbook_reference:
         return ''
@@ -78,6 +114,7 @@ def build_world_creation_draft_messages(
     brief: str,
     style_handbook_reference: dict | None = None,
     variant_label: str | None = None,
+    material_references: list[dict] | None = None,
 ) -> list[dict[str, str]]:
     variant_instruction = f'本次请生成“{variant_label}”方向的候选草稿。' if variant_label else ''
     user_content = (
@@ -90,6 +127,9 @@ def build_world_creation_draft_messages(
     style_block = _style_handbook_prompt_block(style_handbook_reference)
     if style_block:
         user_content += '\n' + style_block
+    material_block = _material_references_prompt_block(material_references)
+    if material_block:
+        user_content += '\n' + material_block
     return [
         {
             'role': 'system',
@@ -102,6 +142,7 @@ def build_world_creation_draft_messages(
                 'foreshadow status 只能是 planted、advanced、resolved 或 expired；新世界默认优先 planted。'
                 '必须生成原创世界胚胎；如果用户 brief 指向受保护作品、角色名、专有设定或标志性桥段，应抽象为通用题材参数，不复用名称或桥段。'
                 '如果提供了写作风格手册参考，只把它当作抽象语言气质倾向，写入 tone_profile 的风格描述，不得复用原文句子、人物名或专有设定。'
+                '如果提供了 Import Node 候选素材，只能作为只读写作参考来提炼原创方向，不得把候选素材自动升级为 canon/正史，不得照抄源文本、人物名、专有设定或受保护表达。'
                 '不得声称已经写入正史、创建世界、推进世界进度或生成正式章节。'
             ),
         },
@@ -199,15 +240,22 @@ def generate_world_creation_draft(
     llm_client: LLMClient | None = None,
     style_handbook_reference: dict | None = None,
     variant_count: int = 1,
+    material_references: list[dict] | None = None,
 ) -> dict:
     client = _model_client(llm_client)
     count = min(max(variant_count, 1), 3)
+    normalized_material_references = _normalize_material_references(material_references)
     variant_labels = ['主线高张力版', '角色关系驱动版', '世界规则悬疑版']
     variants = []
     try:
         for index in range(count):
             generated = client.generate_world_creation_draft(
-                build_world_creation_draft_messages(brief, style_handbook_reference, variant_labels[index] if count > 1 else None)
+                build_world_creation_draft_messages(
+                    brief,
+                    style_handbook_reference,
+                    variant_labels[index] if count > 1 else None,
+                    normalized_material_references,
+                )
             )
             draft = WorldCreateRequest.model_validate(generated.draft)
             _validate_starter_assets(draft)
@@ -219,6 +267,7 @@ def generate_world_creation_draft(
                 'generation_notes': generated.generation_notes,
                 'safety_notes': generated.safety_notes,
                 'followup_questions': generated.followup_questions,
+                'material_references': normalized_material_references,
             })
     except HTTPException as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID') from exc
@@ -234,6 +283,7 @@ def generate_world_creation_draft(
         'followup_questions': primary['followup_questions'],
         'variants': variants,
         'style_handbook_reference': style_handbook_reference,
+        'material_references': normalized_material_references,
     }
 
 

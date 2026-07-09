@@ -475,3 +475,43 @@ def test_draft_world_from_brief_applies_style_handbook_as_reference_without_crea
     assert '不要复用原文句子、人物名或专有设定。' in prompt
     assert db_session.scalar(select(func.count()).select_from(World)) == 0
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == 0
+
+
+def test_draft_world_from_brief_uses_import_node_materials_as_read_only_references(
+    client, db_session, monkeypatch
+):
+    token = register(client, 'brief-material@example.com')
+    llm = DraftWorldLLMClient()
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: llm)
+    material_references = [
+        {
+            'source': 'import_node',
+            'asset_id': 42,
+            'title': '雾港钟楼候选素材',
+            'summary': '一座每天倒敲十三次的钟楼引发城内记忆错位。',
+            'asset_pool': 'inspiration',
+            'source_rights': 'general_reference',
+        }
+    ]
+
+    response = client.post(
+        '/worlds/draft-from-brief',
+        headers=auth(token),
+        json={
+            'brief': '一个边境殖民地依赖濒临失控的跃迁灯塔',
+            'material_references': material_references,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['material_references'] == material_references
+    assert payload['variants'][0]['material_references'] == material_references
+    prompt = '\n'.join(message['content'] for message in llm.captured_messages)
+    assert 'Import Node 候选素材作为只读写作参考' in prompt
+    assert '雾港钟楼候选素材' in prompt
+    assert '一座每天倒敲十三次的钟楼引发城内记忆错位。' in prompt
+    assert '不能自动变成正式设定' in prompt
+    assert '不得把候选素材自动升级为 canon/正史' in prompt
+    assert db_session.scalar(select(func.count()).select_from(World)) == 0
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == 0

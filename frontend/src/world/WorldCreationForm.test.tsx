@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { StyleHandbookReference, WorldCreateRequest, WorldSeedSummary } from '../api/types';
+import type { StyleHandbookReference, WorldCreateRequest, WorldCreationMaterialReference, WorldSeedSummary } from '../api/types';
 import { WorldCreationForm } from './WorldCreationForm';
 
 afterEach(() => cleanup());
@@ -36,6 +36,25 @@ const draftPayload: WorldCreateRequest = {
     foreshadows: [{ title: '空白死因页', description: '伊莱的死因记录被银火烧穿。', foreshadow_type: 'fate_record_clue', status: 'planted', urgency_level: 4, related_character_indexes: [0, 1] }],
   },
 };
+
+const materialReferences: WorldCreationMaterialReference[] = [
+  {
+    source: 'import_node',
+    asset_id: 42,
+    title: '雾港钟楼候选素材',
+    summary: '一座每天倒敲十三次的钟楼引发城内记忆错位。',
+    asset_pool: 'inspiration',
+    source_rights: 'general_reference',
+  },
+  {
+    source: 'import_node',
+    asset_id: 43,
+    title: '失踪灯塔守望人',
+    summary: '守望人留下只写了半页的航线日志。',
+    asset_pool: 'character',
+    source_rights: 'general_reference',
+  },
+];
 
 const seedPayload: WorldCreateRequest = {
   title: '无日城',
@@ -238,6 +257,41 @@ describe('WorldCreationForm', () => {
     await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
 
     expect(onDraftFromBrief).toHaveBeenCalledWith('一个边境殖民地依赖濒临失控的跃迁灯塔', styleHandbookReference, 3);
+  });
+
+  it('passes selected import node material references when generating a brief draft', async () => {
+    const user = userEvent.setup();
+    const onDraftFromBrief = vi.fn().mockResolvedValue({
+      source_brief: '一个边境殖民地依赖濒临失控的跃迁灯塔',
+      draft: draftPayload,
+      first_chapter_goal: '让伊莱发现自己的死因记录被烧穿。',
+      generation_notes: ['已参考候选素材提炼原创方向。'],
+      safety_notes: ['候选素材只读，不会写入 canon/正史或 EventLog。'],
+      material_references: [materialReferences[1]],
+    });
+    render(
+      <WorldCreationForm
+        creating={false}
+        onCreate={vi.fn()}
+        onCreateSample={vi.fn()}
+        onDraftFromBrief={onDraftFromBrief}
+        materialReferences={materialReferences}
+      />,
+    );
+
+    expect(screen.getByLabelText('Import Node 候选素材参考')).toHaveTextContent('不会创建世界、不会写入 canon/正史，也不会写入 EventLog');
+    await user.click(screen.getByLabelText(/雾港钟楼候选素材/));
+    await user.type(screen.getByLabelText('一句话故事想法'), '一个边境殖民地依赖濒临失控的跃迁灯塔');
+    await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
+
+    expect(onDraftFromBrief).toHaveBeenCalledWith(
+      '一个边境殖民地依赖濒临失控的跃迁灯塔',
+      null,
+      3,
+      [materialReferences[1]],
+    );
+    expect(await screen.findByLabelText('本次草稿引用的候选素材')).toHaveTextContent('失踪灯塔守望人');
+    expect(screen.getByLabelText('本次草稿引用的候选素材')).toHaveTextContent('不会创建世界、写入 canon/正史或写入 EventLog');
   });
 
   it('applies seed payloads to the editable form', async () => {

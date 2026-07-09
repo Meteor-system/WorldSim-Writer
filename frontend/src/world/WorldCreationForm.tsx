@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   StarterCharacterCreate,
   StarterForeshadowCreate,
@@ -8,6 +8,7 @@ import type {
   WorldCreateRequest,
   WorldCreationDraftResponse,
   WorldCreationDraftVariant,
+  WorldCreationMaterialReference,
   WorldSeedDetail,
   WorldSeedSummary,
 } from '../api/types';
@@ -18,8 +19,14 @@ type Props = {
   creating: boolean;
   onCreate: (payload: WorldCreateRequest, context?: { firstChapterGoal?: string }) => Promise<void>;
   onCreateSample: () => Promise<void>;
-  onDraftFromBrief?: (brief: string, styleHandbookReference?: StyleHandbookReference | null, variantCount?: number) => Promise<WorldCreationDraftResponse>;
+  onDraftFromBrief?: (
+    brief: string,
+    styleHandbookReference?: StyleHandbookReference | null,
+    variantCount?: number,
+    materialReferences?: WorldCreationMaterialReference[],
+  ) => Promise<WorldCreationDraftResponse>;
   activeStyleHandbook?: StyleHandbookReference | null;
+  materialReferences?: WorldCreationMaterialReference[];
   seeds?: WorldSeedSummary[];
   selectedSeedKey?: string | null;
   seedLoading?: boolean;
@@ -60,12 +67,19 @@ function mapIndexAfterRemoval(index: number, removedIndex: number): number | nul
   return index;
 }
 
+const EMPTY_MATERIAL_REFERENCES: WorldCreationMaterialReference[] = [];
+
+function materialReferenceKey(reference: WorldCreationMaterialReference, index: number): string {
+  return `${reference.source}:${reference.asset_id ?? `local-${index}`}:${reference.title}`;
+}
+
 export function WorldCreationForm({
   creating,
   onCreate,
   onCreateSample,
   onDraftFromBrief,
   activeStyleHandbook = null,
+  materialReferences = EMPTY_MATERIAL_REFERENCES,
   seeds = [],
   selectedSeedKey = null,
   seedLoading = false,
@@ -79,9 +93,16 @@ export function WorldCreationForm({
   const [brief, setBrief] = useState('');
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState('');
-  const [draftMeta, setDraftMeta] = useState<Pick<WorldCreationDraftResponse, 'first_chapter_goal' | 'generation_notes' | 'safety_notes' | 'followup_questions'> | null>(null);
+  const [selectedMaterialReferenceKeys, setSelectedMaterialReferenceKeys] = useState<string[]>(() =>
+    materialReferences.slice(0, 3).map((reference, index) => materialReferenceKey(reference, index)),
+  );
+  const [draftMeta, setDraftMeta] = useState<Pick<WorldCreationDraftResponse, 'first_chapter_goal' | 'generation_notes' | 'safety_notes' | 'followup_questions' | 'material_references'> | null>(null);
   const [draftVariants, setDraftVariants] = useState<WorldCreationDraftVariant[]>([]);
   const [selectedDraftVariantId, setSelectedDraftVariantId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSelectedMaterialReferenceKeys(materialReferences.slice(0, 3).map((reference, index) => materialReferenceKey(reference, index)));
+  }, [materialReferences]);
 
   function applyDraftVariant(variant: WorldCreationDraftVariant) {
     setSelectedPresetKey('');
@@ -93,6 +114,7 @@ export function WorldCreationForm({
       generation_notes: variant.generation_notes,
       safety_notes: variant.safety_notes,
       followup_questions: variant.followup_questions ?? [],
+      material_references: variant.material_references ?? [],
     });
   }
 
@@ -105,6 +127,18 @@ export function WorldCreationForm({
     setSelectedDraftVariantId(null);
     setDraftError('');
     setForm(clonePreset(preset));
+  }
+
+  function selectedMaterialReferences(): WorldCreationMaterialReference[] {
+    return materialReferences.filter((reference, index) => selectedMaterialReferenceKeys.includes(materialReferenceKey(reference, index))).slice(0, 3);
+  }
+
+  function toggleMaterialReference(key: string) {
+    setSelectedMaterialReferenceKeys((current) => {
+      if (current.includes(key)) return current.filter((item) => item !== key);
+      if (current.length >= 3) return current;
+      return [...current, key];
+    });
   }
 
   async function applySeed(seedKey: string) {
@@ -293,11 +327,17 @@ export function WorldCreationForm({
     setDrafting(true);
     setDraftError('');
     try {
-      const response = activeStyleHandbook
-        ? await onDraftFromBrief(normalizedBrief, activeStyleHandbook, 3)
-        : await onDraftFromBrief(normalizedBrief, null, 3);
+      const selectedReferences = selectedMaterialReferences();
+      const response = selectedReferences.length > 0
+        ? await onDraftFromBrief(normalizedBrief, activeStyleHandbook, 3, selectedReferences)
+        : activeStyleHandbook
+          ? await onDraftFromBrief(normalizedBrief, activeStyleHandbook, 3)
+          : await onDraftFromBrief(normalizedBrief, null, 3);
       const variants = response.variants?.length
-        ? response.variants
+        ? response.variants.map((variant) => ({
+            ...variant,
+            material_references: variant.material_references ?? response.material_references ?? [],
+          }))
         : [{
             variant_id: 'variant-1',
             label: '推荐方向',
@@ -306,6 +346,7 @@ export function WorldCreationForm({
             generation_notes: response.generation_notes,
             safety_notes: response.safety_notes,
             followup_questions: response.followup_questions ?? [],
+            material_references: response.material_references ?? [],
           }];
       setDraftVariants(variants);
       applyDraftVariant(variants[0]);
@@ -354,6 +395,32 @@ export function WorldCreationForm({
               将参考写作风格手册：{activeStyleHandbook.source_title}（仅抽象风格维度，不会写入正史或改变世界事实）
             </p>
           )}
+          {materialReferences.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-amber-900/15 bg-white/65 p-4" aria-label="Import Node 候选素材参考">
+              <p className="text-sm font-black text-[#3b2511]">Import Node 候选素材参考（只读）</p>
+              <p className="manuscript mt-1 text-xs text-[#5e3b1c]">最多选择 3 条作为写作参考；它们不会创建世界、不会写入 canon/正史，也不会写入 EventLog。</p>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {materialReferences.map((reference, index) => {
+                  const key = materialReferenceKey(reference, index);
+                  const selected = selectedMaterialReferenceKeys.includes(key);
+                  return (
+                    <label key={key} className="rounded-2xl border border-amber-900/15 bg-amber-50/70 p-3 text-sm text-[#4a321e]">
+                      <input
+                        className="mr-2"
+                        type="checkbox"
+                        checked={selected}
+                        disabled={!selected && selectedMaterialReferenceKeys.length >= 3}
+                        onChange={() => toggleMaterialReference(key)}
+                      />
+                      <span className="font-black">{reference.title}</span>
+                      <span className="ml-2 text-xs text-[#7a542b]">{reference.asset_pool ?? 'reference'} · {reference.source_rights ?? 'unknown'}</span>
+                      <span className="mt-1 block text-xs text-[#5e3b1c]">{reference.summary}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <label className="mt-4 block">
             <span className="text-sm font-semibold text-[#4a321e]">一句话故事想法</span>
             <textarea
@@ -397,6 +464,15 @@ export function WorldCreationForm({
                 <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-[#5e3b1c]">
                   {[...draftMeta.generation_notes, ...draftMeta.safety_notes].map((note) => <li key={note}>{note}</li>)}
                 </ul>
+              )}
+              {(draftMeta.material_references ?? []).length > 0 && (
+                <div className="mt-4 rounded-2xl bg-amber-50/80 p-3" aria-label="本次草稿引用的候选素材">
+                  <p className="text-sm font-black text-[#3b2511]">本次草稿引用的候选素材（只读）</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-[#5e3b1c]">
+                    {draftMeta.material_references?.map((reference) => <li key={`${reference.asset_id ?? reference.title}`}>{reference.title}：{reference.summary}</li>)}
+                  </ul>
+                  <p className="mt-2 text-xs font-bold text-[#5e3b1c]">这些候选素材只作为写作参考；确认前不会创建世界、写入 canon/正史或写入 EventLog。</p>
+                </div>
               )}
               {(draftMeta.followup_questions ?? []).length > 0 && (
                 <div className="mt-4 rounded-2xl bg-amber-50/80 p-3" aria-label="一句话草稿追问问题">
