@@ -197,12 +197,22 @@ export type WorldCreateRequest = {
   starter_assets: StarterAssetsCreate;
 };
 
+export type WorldCreationDraftVariant = {
+  variant_id: string;
+  label: string;
+  draft: WorldCreateRequest;
+  first_chapter_goal: string;
+  generation_notes: string[];
+  safety_notes: string[];
+};
+
 export type WorldCreationDraftResponse = {
   source_brief: string;
   draft: WorldCreateRequest;
   first_chapter_goal: string;
   generation_notes: string[];
   safety_notes: string[];
+  variants?: WorldCreationDraftVariant[];
   style_handbook_reference?: StyleHandbookReference | null;
 };
 

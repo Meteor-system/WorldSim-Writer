@@ -117,14 +117,14 @@ export function createWorld(data: WorldCreateRequest) {
   });
 }
 
-export function draftWorldFromBrief(brief: string, styleHandbookReference?: StyleHandbookReference | null) {
+export function draftWorldFromBrief(brief: string, styleHandbookReference?: StyleHandbookReference | null, variantCount?: number) {
   return apiRequest<WorldCreationDraftResponse>('/worlds/draft-from-brief', {
     method: 'POST',
-    body: JSON.stringify(
-      styleHandbookReference
-        ? { brief, style_handbook_reference: styleHandbookReference }
-        : { brief },
-    ),
+    body: JSON.stringify({
+      brief,
+      ...(styleHandbookReference ? { style_handbook_reference: styleHandbookReference } : {}),
+      ...(variantCount ? { variant_count: variantCount } : {}),
+    }),
   });
 }
 

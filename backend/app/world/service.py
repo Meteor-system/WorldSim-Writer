@@ -74,10 +74,16 @@ def _style_handbook_prompt_block(style_handbook_reference: dict | None) -> str:
     return '\n'.join(lines)
 
 
-def build_world_creation_draft_messages(brief: str, style_handbook_reference: dict | None = None) -> list[dict[str, str]]:
+def build_world_creation_draft_messages(
+    brief: str,
+    style_handbook_reference: dict | None = None,
+    variant_label: str | None = None,
+) -> list[dict[str, str]]:
+    variant_instruction = f'本次请生成“{variant_label}”方向的候选草稿。' if variant_label else ''
     user_content = (
         f'用户一句话脑洞：{brief}\n'
         '请生成一个可由用户确认和编辑的世界创建草稿。'
+        f'{variant_instruction}'
         'generation_notes 用 1-3 条说明草稿如何理解用户脑洞；safety_notes 用 1-3 条说明确认前不会写入 canon/正史。'
     )
     style_block = _style_handbook_prompt_block(style_handbook_reference)
@@ -191,24 +197,39 @@ def generate_world_creation_draft(
     brief: str,
     llm_client: LLMClient | None = None,
     style_handbook_reference: dict | None = None,
+    variant_count: int = 1,
 ) -> dict:
     client = _model_client(llm_client)
+    count = min(max(variant_count, 1), 3)
+    variant_labels = ['主线高张力版', '角色关系驱动版', '世界规则悬疑版']
+    variants = []
     try:
-        generated = client.generate_world_creation_draft(
-            build_world_creation_draft_messages(brief, style_handbook_reference)
-        )
-        draft = WorldCreateRequest.model_validate(generated.draft)
-        _validate_starter_assets(draft)
+        for index in range(count):
+            generated = client.generate_world_creation_draft(
+                build_world_creation_draft_messages(brief, style_handbook_reference, variant_labels[index] if count > 1 else None)
+            )
+            draft = WorldCreateRequest.model_validate(generated.draft)
+            _validate_starter_assets(draft)
+            variants.append({
+                'variant_id': f'variant-{index + 1}',
+                'label': variant_labels[index],
+                'draft': draft,
+                'first_chapter_goal': generated.first_chapter_goal,
+                'generation_notes': generated.generation_notes,
+                'safety_notes': generated.safety_notes,
+            })
     except HTTPException as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID') from exc
     except (TimeoutError, ValueError, RuntimeError) as exc:
         raise _map_model_error(exc) from exc
+    primary = variants[0]
     return {
         'source_brief': brief,
-        'draft': draft,
-        'first_chapter_goal': generated.first_chapter_goal,
-        'generation_notes': generated.generation_notes,
-        'safety_notes': generated.safety_notes,
+        'draft': primary['draft'],
+        'first_chapter_goal': primary['first_chapter_goal'],
+        'generation_notes': primary['generation_notes'],
+        'safety_notes': primary['safety_notes'],
+        'variants': variants,
         'style_handbook_reference': style_handbook_reference,
     }
 

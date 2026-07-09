@@ -1,4 +1,4 @@
-import type { FormEvent } from 'react';
+﻿import type { FormEvent } from 'react';
 import { useState } from 'react';
 import type {
   StarterCharacterCreate,
@@ -7,6 +7,7 @@ import type {
   StyleHandbookReference,
   WorldCreateRequest,
   WorldCreationDraftResponse,
+  WorldCreationDraftVariant,
   WorldSeedDetail,
   WorldSeedSummary,
 } from '../api/types';
@@ -17,7 +18,7 @@ type Props = {
   creating: boolean;
   onCreate: (payload: WorldCreateRequest, context?: { firstChapterGoal?: string }) => Promise<void>;
   onCreateSample: () => Promise<void>;
-  onDraftFromBrief?: (brief: string, styleHandbookReference?: StyleHandbookReference | null) => Promise<WorldCreationDraftResponse>;
+  onDraftFromBrief?: (brief: string, styleHandbookReference?: StyleHandbookReference | null, variantCount?: number) => Promise<WorldCreationDraftResponse>;
   activeStyleHandbook?: StyleHandbookReference | null;
   seeds?: WorldSeedSummary[];
   selectedSeedKey?: string | null;
@@ -79,12 +80,28 @@ export function WorldCreationForm({
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState('');
   const [draftMeta, setDraftMeta] = useState<Pick<WorldCreationDraftResponse, 'first_chapter_goal' | 'generation_notes' | 'safety_notes'> | null>(null);
+  const [draftVariants, setDraftVariants] = useState<WorldCreationDraftVariant[]>([]);
+  const [selectedDraftVariantId, setSelectedDraftVariantId] = useState<string | null>(null);
+
+  function applyDraftVariant(variant: WorldCreationDraftVariant) {
+    setSelectedPresetKey('');
+    setActiveSeedKey(null);
+    setSelectedDraftVariantId(variant.variant_id);
+    setForm(JSON.parse(JSON.stringify(variant.draft)) as WorldCreateRequest);
+    setDraftMeta({
+      first_chapter_goal: variant.first_chapter_goal,
+      generation_notes: variant.generation_notes,
+      safety_notes: variant.safety_notes,
+    });
+  }
 
   function selectPreset(key: string) {
     const preset = GENRE_PRESETS.find((item) => item.key === key) ?? GENRE_PRESETS[0];
     setSelectedPresetKey(preset.key);
     setActiveSeedKey(null);
     setDraftMeta(null);
+    setDraftVariants([]);
+    setSelectedDraftVariantId(null);
     setDraftError('');
     setForm(clonePreset(preset));
   }
@@ -95,6 +112,8 @@ export function WorldCreationForm({
     setSelectedPresetKey('');
     setActiveSeedKey(seedKey);
     setDraftMeta(null);
+    setDraftVariants([]);
+    setSelectedDraftVariantId(null);
     setDraftError('');
     setForm(JSON.parse(JSON.stringify(seed.payload)) as WorldCreateRequest);
   }
@@ -274,16 +293,20 @@ export function WorldCreationForm({
     setDraftError('');
     try {
       const response = activeStyleHandbook
-        ? await onDraftFromBrief(normalizedBrief, activeStyleHandbook)
-        : await onDraftFromBrief(normalizedBrief);
-      setSelectedPresetKey('');
-      setActiveSeedKey(null);
-      setForm(JSON.parse(JSON.stringify(response.draft)) as WorldCreateRequest);
-      setDraftMeta({
-        first_chapter_goal: response.first_chapter_goal,
-        generation_notes: response.generation_notes,
-        safety_notes: response.safety_notes,
-      });
+        ? await onDraftFromBrief(normalizedBrief, activeStyleHandbook, 3)
+        : await onDraftFromBrief(normalizedBrief, null, 3);
+      const variants = response.variants?.length
+        ? response.variants
+        : [{
+            variant_id: 'variant-1',
+            label: '推荐方向',
+            draft: response.draft,
+            first_chapter_goal: response.first_chapter_goal,
+            generation_notes: response.generation_notes,
+            safety_notes: response.safety_notes,
+          }];
+      setDraftVariants(variants);
+      applyDraftVariant(variants[0]);
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : '生成世界创建草稿失败');
     } finally {
@@ -345,6 +368,25 @@ export function WorldCreationForm({
             <p className="text-xs font-bold text-[#5e3b1c]">自动填表后仍可继续编辑；只有点击“创建自定义世界”才会创建世界。</p>
           </div>
           {draftError && <p className="paper-error mt-4" role="alert">{draftError}</p>}
+          {draftVariants.length > 1 && (
+            <div className="mt-5 grid gap-3 md:grid-cols-3" aria-label="世界草稿候选方向">
+              {draftVariants.map((variant) => (
+                <button
+                  key={variant.variant_id}
+                  type="button"
+                  className={`rounded-2xl border p-3 text-left transition ${
+                    selectedDraftVariantId === variant.variant_id ? 'border-amber-900 bg-white/85' : 'border-amber-900/15 bg-white/55 hover:bg-white/75'
+                  }`}
+                  onClick={() => applyDraftVariant(variant)}
+                >
+                  <span className="text-sm font-black text-[#3b2511]">{variant.label}</span>
+                  <p className="mt-1 text-sm font-bold text-[#5e3b1c]">{variant.draft.title}</p>
+                  <p className="mt-2 text-xs text-[#5e3b1c]">第一章目标：{variant.first_chapter_goal}</p>
+                  <p className="mt-2 text-xs text-[#5e3b1c]">候选草稿，点击只会填入下方表单；确认创建前不会写入正史。</p>
+                </button>
+              ))}
+            </div>
+          )}
           {draftMeta && (
             <div className="mt-5 rounded-2xl border border-amber-900/15 bg-white/65 p-4" role="status" aria-live="polite">
               <p className="text-sm font-black text-[#3b2511]">世界创建草稿已填入下方表单</p>

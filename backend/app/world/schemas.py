@@ -81,11 +81,21 @@ class WorldCreateRequest(BaseModel):
 class WorldCreationDraftRequest(BaseModel):
     brief: str = Field(min_length=3, max_length=800)
     style_handbook_reference: ExecutionContextStyleHandbookReference | None = None
+    variant_count: int = Field(default=1, ge=1, le=3)
 
     @field_validator('brief')
     @classmethod
     def validate_brief(cls, value: str) -> str:
         return _strip_required(value)
+
+
+class WorldCreationDraftVariant(BaseModel):
+    variant_id: str
+    label: str
+    draft: WorldCreateRequest
+    first_chapter_goal: str
+    generation_notes: list[str] = Field(default_factory=list)
+    safety_notes: list[str] = Field(default_factory=list)
 
 
 class WorldCreationDraftResponse(BaseModel):
@@ -94,6 +104,7 @@ class WorldCreationDraftResponse(BaseModel):
     first_chapter_goal: str
     generation_notes: list[str] = Field(default_factory=list)
     safety_notes: list[str] = Field(default_factory=list)
+    variants: list[WorldCreationDraftVariant] = Field(default_factory=list)
     style_handbook_reference: ExecutionContextStyleHandbookReference | None = None
 
 

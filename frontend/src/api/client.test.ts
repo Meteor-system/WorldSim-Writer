@@ -120,7 +120,34 @@ describe('world creation API helpers', () => {
     expect(result.draft.title).toBe('死因王国');
   });
 
-  it('passes a style handbook reference to one-sentence world draft generation', async () => {
+  it('passes a variant count to one-sentence world draft generation when requested', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({
+      source_brief: '一个所有人出生时都会被分配死因的王国',
+      draft: {
+        title: '死因王国',
+        genre_template: 'fantasy',
+        truth_canon: '每个人出生时都会获得一个未来死因。',
+        starter_assets: { characters: [{ name: '伊莱', role_type: 'protagonist' }] },
+      },
+      first_chapter_goal: '让伊莱发现自己的死因记录被烧穿。',
+      generation_notes: ['已生成创建草稿。'],
+      safety_notes: ['确认前不会创建世界。'],
+      variants: [],
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await draftWorldFromBrief('一个所有人出生时都会被分配死因的王国', null, 3);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/worlds/draft-from-brief',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ brief: '一个所有人出生时都会被分配死因的王国', variant_count: 3 }),
+      }),
+    );
+  });
+
+  it('passes a style handbook reference and variant count to one-sentence world draft generation', async () => {
     const styleHandbookReference = {
       source_title: '公版海洋小说片段',
       source_rights: 'public_domain' as const,
@@ -150,10 +177,11 @@ describe('world creation API helpers', () => {
       generation_notes: [],
       safety_notes: ['确认前不会创建世界。'],
       style_handbook_reference: styleHandbookReference,
+      variants: [],
     }));
     vi.stubGlobal('fetch', fetchMock);
 
-    await draftWorldFromBrief('一个边境殖民地依赖濒临失控的跃迁灯塔', styleHandbookReference);
+    await draftWorldFromBrief('一个边境殖民地依赖濒临失控的跃迁灯塔', styleHandbookReference, 3);
 
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:8000/worlds/draft-from-brief',
@@ -162,6 +190,7 @@ describe('world creation API helpers', () => {
         body: JSON.stringify({
           brief: '一个边境殖民地依赖濒临失控的跃迁灯塔',
           style_handbook_reference: styleHandbookReference,
+          variant_count: 3,
         }),
       }),
     );

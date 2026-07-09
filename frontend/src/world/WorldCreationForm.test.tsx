@@ -1,5 +1,5 @@
-import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+﻿import '@testing-library/jest-dom/vitest';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { StyleHandbookReference, WorldCreateRequest, WorldSeedSummary } from '../api/types';
@@ -101,7 +101,7 @@ describe('WorldCreationForm', () => {
     await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配死因的王国');
     await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
 
-    expect(onDraftFromBrief).toHaveBeenCalledWith('一个所有人出生时都会被分配死因的王国');
+    expect(onDraftFromBrief).toHaveBeenCalledWith('一个所有人出生时都会被分配死因的王国', null, 3);
     expect(onCreate).not.toHaveBeenCalled();
     expect(await screen.findByText('世界创建草稿已填入下方表单')).toBeInTheDocument();
     expect(screen.getByText('确认前不会创建世界、写入正史或推进世界进度。')).toBeInTheDocument();
@@ -112,6 +112,71 @@ describe('WorldCreationForm', () => {
       expect.objectContaining({ title: '死因王国', genre_template: 'fantasy' }),
       { firstChapterGoal: '让伊莱发现自己的死因记录被烧穿。' },
     );
+  });
+
+  it('shows draft variants and switches the editable form without creating the world', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const relationDraft: WorldCreateRequest = {
+      ...draftPayload,
+      title: '命运同盟王国',
+      truth_canon: '死因记录迫使两个敌对家族结盟。',
+      starter_assets: {
+        ...draftPayload.starter_assets,
+        characters: draftPayload.starter_assets.characters.map((character) => ({ ...character })),
+        relations: draftPayload.starter_assets.relations?.map((relation) => ({ ...relation })),
+        foreshadows: draftPayload.starter_assets.foreshadows?.map((foreshadow) => ({ ...foreshadow })),
+      },
+    };
+    const onDraftFromBrief = vi.fn().mockResolvedValue({
+      source_brief: '一个所有人出生时都会被分配死因的王国',
+      draft: draftPayload,
+      first_chapter_goal: '让伊莱发现自己的死因记录被烧穿。',
+      generation_notes: ['已生成可编辑草稿。'],
+      safety_notes: ['确认前不会创建世界、写入正史或推进世界进度。'],
+      variants: [
+        {
+          variant_id: 'variant-1',
+          label: '主线高张力版',
+          draft: draftPayload,
+          first_chapter_goal: '让伊莱发现自己的死因记录被烧穿。',
+          generation_notes: ['高张力开局。'],
+          safety_notes: ['确认创建前不会写入正史。'],
+        },
+        {
+          variant_id: 'variant-2',
+          label: '角色关系驱动版',
+          draft: relationDraft,
+          first_chapter_goal: '让伊莱和维拉在死因档案前被迫结盟。',
+          generation_notes: ['强调角色互相试探。'],
+          safety_notes: ['确认创建前不会写入正史。'],
+        },
+      ],
+    });
+    render(
+      <WorldCreationForm
+        creating={false}
+        onCreate={onCreate}
+        onCreateSample={vi.fn()}
+        onDraftFromBrief={onDraftFromBrief}
+      />,
+    );
+
+    await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配死因的王国');
+    await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
+
+    expect(onDraftFromBrief).toHaveBeenCalledWith('一个所有人出生时都会被分配死因的王国', null, 3);
+    const variants = await screen.findByLabelText('世界草稿候选方向');
+    expect(within(variants).getByRole('button', { name: /主线高张力版/ })).toHaveTextContent('让伊莱发现自己的死因记录被烧穿。');
+    expect(within(variants).getByRole('button', { name: /角色关系驱动版/ })).toHaveTextContent('确认创建前不会写入正史');
+    expect(screen.getByLabelText('世界标题')).toHaveValue('死因王国');
+    expect(screen.getAllByText('第一章目标：让伊莱发现自己的死因记录被烧穿。').length).toBeGreaterThanOrEqual(1);
+
+    await user.click(within(variants).getByRole('button', { name: /角色关系驱动版/ }));
+
+    expect(screen.getByLabelText('世界标题')).toHaveValue('命运同盟王国');
+    expect(screen.getAllByText('第一章目标：让伊莱和维拉在死因档案前被迫结盟。').length).toBeGreaterThanOrEqual(1);
+    expect(onCreate).not.toHaveBeenCalled();
   });
 
   it('passes the active style handbook when generating a world draft from a brief', async () => {
@@ -156,7 +221,7 @@ describe('WorldCreationForm', () => {
     await user.type(screen.getByLabelText('一句话故事想法'), '一个边境殖民地依赖濒临失控的跃迁灯塔');
     await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
 
-    expect(onDraftFromBrief).toHaveBeenCalledWith('一个边境殖民地依赖濒临失控的跃迁灯塔', styleHandbookReference);
+    expect(onDraftFromBrief).toHaveBeenCalledWith('一个边境殖民地依赖濒临失控的跃迁灯塔', styleHandbookReference, 3);
   });
 
   it('applies seed payloads to the editable form', async () => {

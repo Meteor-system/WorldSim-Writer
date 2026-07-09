@@ -10,9 +10,13 @@ from app.world.models import World
 class DraftWorldLLMClient:
     def __init__(self):
         self.captured_messages = None
+        self.captured_message_batches = []
+        self.calls = 0
 
     def generate_world_creation_draft(self, messages):
+        self.calls += 1
         self.captured_messages = messages
+        self.captured_message_batches.append(messages)
         return WorldCreationDraftPayload(
             draft=custom_world_payload(),
             first_chapter_goal='让许砚第一次听见跃迁灯塔低鸣。',
@@ -395,14 +399,15 @@ def test_world_access_is_limited_to_owner(client):
     assert overview_response.json()['detail'] == 'FORBIDDEN'
 
 
-def test_draft_world_from_brief_returns_editable_payload_without_creating_world(client, db_session, monkeypatch):
+def test_draft_world_from_brief_returns_editable_variants_without_creating_world(client, db_session, monkeypatch):
     token = register(client, 'brief-draft@example.com')
-    monkeypatch.setattr(world_service, 'LLMClient', lambda: DraftWorldLLMClient())
+    llm = DraftWorldLLMClient()
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: llm)
 
     response = client.post(
         '/worlds/draft-from-brief',
         headers=auth(token),
-        json={'brief': '一个边境殖民地依赖濒临失控的跃迁灯塔'},
+        json={'brief': '一个边境殖民地依赖濒临失控的跃迁灯塔', 'variant_count': 3},
     )
 
     assert response.status_code == 200
@@ -411,6 +416,17 @@ def test_draft_world_from_brief_returns_editable_payload_without_creating_world(
     assert payload['draft']['title'] == '群星边境'
     assert payload['first_chapter_goal'] == '让许砚第一次听见跃迁灯塔低鸣。'
     assert payload['safety_notes'] == ['确认前不会创建世界、写入正史或推进世界进度。']
+    assert len(payload['variants']) == 3
+    assert payload['variants'][0]['variant_id'] == 'variant-1'
+    assert payload['variants'][0]['label'] == '主线高张力版'
+    assert payload['variants'][0]['draft'] == payload['draft']
+    assert payload['variants'][0]['first_chapter_goal'] == payload['first_chapter_goal']
+    assert [variant['label'] for variant in payload['variants']] == ['主线高张力版', '角色关系驱动版', '世界规则悬疑版']
+    assert llm.calls == 3
+    prompts = ['\n'.join(message['content'] for message in batch) for batch in llm.captured_message_batches]
+    assert '本次请生成“主线高张力版”方向的候选草稿。' in prompts[0]
+    assert '本次请生成“角色关系驱动版”方向的候选草稿。' in prompts[1]
+    assert '本次请生成“世界规则悬疑版”方向的候选草稿。' in prompts[2]
     assert db_session.scalar(select(func.count()).select_from(World)) == 0
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == 0
 

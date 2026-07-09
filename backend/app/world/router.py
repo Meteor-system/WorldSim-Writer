@@ -60,7 +60,11 @@ def draft_from_brief(
         data.style_handbook_reference.model_dump() if data.style_handbook_reference else None
     )
     return WorldCreationDraftResponse.model_validate(
-        generate_world_creation_draft(data.brief, style_handbook_reference=style_handbook_reference)
+        generate_world_creation_draft(
+            data.brief,
+            style_handbook_reference=style_handbook_reference,
+            variant_count=data.variant_count,
+        )
     )
 
 
