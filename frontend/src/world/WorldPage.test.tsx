@@ -517,26 +517,45 @@ describe('WorldPage operations dashboard', () => {
     expect(getChapterHistory).not.toHaveBeenCalled();
   });
 
-  it('shows a focused first-chapter onboarding card for new worlds and hides it after arc generation', async () => {
+  it('lets a new world quick-start the first draft without generating an arc, while keeping the arc optional', async () => {
     const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
     vi.mocked(apiRequest).mockReset();
     vi.mocked(apiRequest)
       .mockResolvedValueOnce([{ id: 7 }])
       .mockResolvedValueOnce(newWorld);
-    vi.mocked(generateStoryArc).mockResolvedValueOnce({
-      world_id: 7,
-      story_arc: storyArcWorld.story_arc,
-    });
 
-    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+    const { unmount } = render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
 
     const onboarding = within(await screen.findByLabelText('第一章写作引导'));
-    expect(onboarding.getByText('生成故事大纲 → 写第一章')).toBeInTheDocument();
-    expect(onboarding.getByText('这本小说还没有写入正史。先生成前 10 章故事弧线，再用第一章目标进入创作台。')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: '继续下一章' })).not.toBeInTheDocument();
+    expect(onboarding.getByText('直接写第一章，或先生成故事大纲')).toBeInTheDocument();
+    expect(onboarding.getByText(/林砚/)).toBeInTheDocument();
+    expect(onboarding.getByText(/追查湿信来源/)).toBeInTheDocument();
+    await user.click(onboarding.getByRole('button', { name: '生成第一章草稿并进入 Studio' }));
 
-    await user.click(onboarding.getByRole('button', { name: '生成故事大纲' }));
+    expect(generateStoryArc).not.toHaveBeenCalled();
+    expect(onEnterStudio).toHaveBeenCalledWith(newWorld, {
+      initialChapterGoal: expect.stringContaining('林砚'),
+      executionContext: expect.objectContaining({
+        source: 'manual',
+        source_world_version: 1,
+        next_chapter_number: 1,
+        source_signals: ['first_chapter_quick_start'],
+      }),
+      autoDraftFirstChapter: true,
+    });
+    expect(onEnterStudio.mock.calls[0][1]?.initialChapterGoal).toContain('追查湿信来源');
 
+    unmount();
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(newWorld);
+    vi.mocked(generateStoryArc).mockResolvedValueOnce({ world_id: 7, story_arc: storyArcWorld.story_arc });
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    const optionalOnboarding = within(await screen.findByLabelText('第一章写作引导'));
+    await user.click(optionalOnboarding.getByRole('button', { name: '生成故事大纲' }));
     expect(generateStoryArc).toHaveBeenCalledWith(7);
     expect(await screen.findByRole('button', { name: '继续下一章' })).toBeInTheDocument();
     expect(screen.queryByLabelText('第一章写作引导')).not.toBeInTheDocument();
@@ -583,8 +602,10 @@ describe('WorldPage world creation', () => {
 
     await user.click(await screen.findByRole('button', { name: '继续创作' }));
 
-    expect(await screen.findByText('第一章起点')).toBeInTheDocument();
-    expect(screen.getByText('生成第一章 → 写入正史 → 查看世界变化')).toBeInTheDocument();
+    const launchpad = await screen.findByText('第一章起点');
+    expect(launchpad).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '生成第一章草稿并进入 Studio' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '生成第一轮故事弧线' })).toBeInTheDocument();
     expect(screen.getByText('素材导入节点')).toBeInTheDocument();
     expect(listWorldImports).toHaveBeenCalledWith(7);
   });
@@ -1019,6 +1040,64 @@ describe('WorldPage world creation', () => {
     expect(apiRequest).toHaveBeenNthCalledWith(2, '/worlds/7/overview');
     expect(await screen.findByText('青岚城')).toBeInTheDocument();
   });
+
+  it('keeps Seed B first-chapter guidance isolated when creating directly from its card', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    const seedAGoal = '让沈昼确认空白日晷为何没有影子。';
+    const seedBGoal = '让乔岚在回声舱门前截获来自过去的求救讯号。';
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(newWorld);
+    vi.mocked(listWorldSeeds).mockResolvedValueOnce({
+      seeds: [
+        {
+          key: 'forgotten-sun-city',
+          label: '无日城',
+          genre_template: 'weird_fantasy',
+          hook: '所有人都忘记太阳存在过。',
+          tension_profile: ['集体失忆'],
+          starter_summary: { character_count: 1, relation_count: 0, foreshadow_count: 1, character_names: ['沈昼'], foreshadow_titles: ['空白日晷'] },
+          starter_guidance: { first_chapter_goal: seedAGoal, protagonist_relationships: [], foreshadow_pressure: [], story_health_hints: [] },
+        },
+        {
+          key: 'ember-station',
+          label: '余烬站',
+          genre_template: 'sci_fi',
+          hook: '失联空间站正向过去发送求救讯号。',
+          tension_profile: ['时间回环'],
+          starter_summary: { character_count: 1, relation_count: 0, foreshadow_count: 1, character_names: ['乔岚'], foreshadow_titles: ['回声舱门'] },
+          starter_guidance: { first_chapter_goal: seedBGoal, protagonist_relationships: [], foreshadow_pressure: [], story_health_hints: [] },
+        },
+      ],
+    });
+    vi.mocked(createWorldFromSeed).mockResolvedValueOnce({ id: 7 });
+
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    const seedBCard = (await screen.findByRole('heading', { name: '余烬站' })).closest('article');
+    expect(seedBCard).not.toBeNull();
+    await user.click(within(seedBCard!).getByRole('button', { name: '直接创建此模板' }));
+
+    expect(createWorldFromSeed).toHaveBeenCalledWith('ember-station');
+    const creationEntry = await screen.findByLabelText('创建草稿第一章入口');
+    expect(creationEntry).toHaveTextContent(seedBGoal);
+    expect(creationEntry).not.toHaveTextContent(seedAGoal);
+    await user.click(within(creationEntry).getByRole('button', { name: '生成第一章草稿并进入 Studio' }));
+
+    expect(generateStoryArc).not.toHaveBeenCalled();
+    expect(onEnterStudio).toHaveBeenCalledWith(newWorld, {
+      initialChapterGoal: seedBGoal,
+      executionContext: expect.objectContaining({
+        source: 'manual',
+        source_signals: ['world_creation_draft'],
+        goal: seedBGoal,
+      }),
+      autoDraftFirstChapter: true,
+    });
+    expect(onEnterStudio.mock.calls[0][1]?.initialChapterGoal).not.toContain('沈昼');
+  });
 });
 
 describe('WorldPage bookshelf', () => {
@@ -1230,7 +1309,8 @@ describe('WorldPage Story Arc Planner', () => {
     await openWriteTab(user);
 
     expect(await screen.findByText('第一章起点')).toBeInTheDocument();
-    expect(screen.getByText('先生成前 10 章故事弧线，再把下一章目标带入创作台。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '生成第一章草稿并进入 Studio' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '生成第一轮故事弧线' })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '生成第一轮故事弧线' }));
 
@@ -1546,6 +1626,88 @@ describe('WorldPage 叙事运营台', () => {
     expect(screen.queryByRole('button', { name: '创建世界快照' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '导出世界档案' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '加载快照列表' })).toBeInTheDocument();
+  });
+
+  it('caches lazy narrative panels per world and reloads them after switching worlds', async () => {
+    const user = userEvent.setup();
+    const worlds = [
+      { id: 7, title: '青岚城', genre_template: 'xianxia', truth_canon: '灵脉正在衰退。', truth_canon_version: 1, world_version: 2, status: 'active', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+      { id: 8, title: '星舰余烬', genre_template: 'sci_fi', truth_canon: '星舰仍在航行。', truth_canon_version: 1, world_version: 1, status: 'active', tone_profile: {}, current_characters: [], current_foreshadows: [], current_relations: [] },
+    ];
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockImplementation((path: string) => {
+      if (path === '/worlds') return Promise.resolve(worlds);
+      if (path === '/worlds/7/overview') return Promise.resolve(world);
+      if (path === '/worlds/8/overview') return Promise.resolve(secondWorld);
+      return Promise.reject(new Error(`Unexpected API request: ${path}`));
+    });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    await user.click(await screen.findByRole('button', { name: '打开 青岚城' }));
+    expect(await screen.findByText('世界正史档案')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '继续创作' }));
+    await waitFor(() => expect(getNextChapterPrep).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: '世界概览' }));
+    await user.click(screen.getByRole('button', { name: '继续创作' }));
+    await waitFor(() => expect(getNextChapterPrep).toHaveBeenCalledTimes(1));
+    expect(getNextChapterPrep).toHaveBeenCalledWith(7);
+
+    await user.click(screen.getByRole('button', { name: '世界概览' }));
+    await user.click(screen.getByRole('button', { name: '运营分析' }));
+    await waitFor(() => {
+      expect(getWorldPulse).toHaveBeenCalledTimes(1);
+      expect(getArcPlan).toHaveBeenCalledTimes(1);
+      expect(getNarrativeHealth).toHaveBeenCalledTimes(1);
+      expect(getOpenThreads).toHaveBeenCalledTimes(1);
+    });
+    await user.click(screen.getByRole('button', { name: '世界概览' }));
+    await user.click(screen.getByRole('button', { name: '运营分析' }));
+    await waitFor(() => {
+      expect(getWorldPulse).toHaveBeenCalledTimes(1);
+      expect(getArcPlan).toHaveBeenCalledTimes(1);
+      expect(getNarrativeHealth).toHaveBeenCalledTimes(1);
+      expect(getOpenThreads).toHaveBeenCalledTimes(1);
+    });
+    expect(getWorldPulse).toHaveBeenCalledWith(7);
+    expect(getArcPlan).toHaveBeenCalledWith(7);
+    expect(getNarrativeHealth).toHaveBeenCalledWith(7);
+    expect(getOpenThreads).toHaveBeenCalledWith(7);
+
+    await user.click(screen.getByRole('button', { name: '世界概览' }));
+    await user.click(screen.getByRole('button', { name: '归档导出' }));
+    await waitFor(() => expect(getChapterHistory).toHaveBeenCalledTimes(1));
+    await user.click(screen.getByRole('button', { name: '世界概览' }));
+    await user.click(screen.getByRole('button', { name: '归档导出' }));
+    await waitFor(() => expect(getChapterHistory).toHaveBeenCalledTimes(1));
+    expect(getChapterHistory).toHaveBeenCalledWith(7);
+
+    await user.click(screen.getByRole('button', { name: '返回作品书架' }));
+    expect(await screen.findByText('作品书架')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '打开 星舰余烬' }));
+    expect(await screen.findByText('世界正史档案')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '继续创作' }));
+    await waitFor(() => expect(getNextChapterPrep).toHaveBeenCalledTimes(2));
+    await user.click(screen.getByRole('button', { name: '世界概览' }));
+    await user.click(screen.getByRole('button', { name: '运营分析' }));
+    await waitFor(() => {
+      expect(getWorldPulse).toHaveBeenCalledTimes(2);
+      expect(getArcPlan).toHaveBeenCalledTimes(2);
+      expect(getNarrativeHealth).toHaveBeenCalledTimes(2);
+      expect(getOpenThreads).toHaveBeenCalledTimes(2);
+    });
+    await user.click(screen.getByRole('button', { name: '世界概览' }));
+    await user.click(screen.getByRole('button', { name: '归档导出' }));
+    await waitFor(() => expect(getChapterHistory).toHaveBeenCalledTimes(2));
+
+    expect(getNextChapterPrep).toHaveBeenNthCalledWith(2, 8);
+    expect(getWorldPulse).toHaveBeenNthCalledWith(2, 8);
+    expect(getArcPlan).toHaveBeenNthCalledWith(2, 8);
+    expect(getNarrativeHealth).toHaveBeenNthCalledWith(2, 8);
+    expect(getOpenThreads).toHaveBeenNthCalledWith(2, 8);
+    expect(getChapterHistory).toHaveBeenNthCalledWith(2, 8);
   });
 
   it('loads and displays narrative panels across the split tabs', async () => {

@@ -134,6 +134,23 @@ function openForeshadows(world: WorldOverview): WorldOverview['foreshadows'] {
     .sort((a, b) => (b.urgency_level ?? 0) - (a.urgency_level ?? 0));
 }
 
+function buildFirstChapterQuickStartGoal(world: WorldOverview): string {
+  const characterWithGoal = world.characters.find((character) =>
+    Boolean(character.name.trim() && character.current_goals?.[0]?.trim()),
+  );
+  if (characterWithGoal) {
+    return `建议让${characterWithGoal.name}先尝试${characterWithGoal.current_goals[0].trim()}，并在行动中建立第一章冲突。`;
+  }
+
+  const urgentForeshadow = openForeshadows(world)[0];
+  if (urgentForeshadow) {
+    return `建议围绕伏笔「${urgentForeshadow.title}」安排一次会迫使角色行动的开场事件。`;
+  }
+
+  const canonExcerpt = world.truth_canon.trim().slice(0, 72) || '尚待展开的世界设定';
+  return `建议从「${world.title}」的一个具体场景开篇，让角色面对世界设定中的异常：${canonExcerpt}${world.truth_canon.trim().length > canonExcerpt.length ? '…' : ''}`;
+}
+
 function materialReferencesFromImportBatches(batches: ImportBatchWithAssetsResponse[]): WorldCreationMaterialReference[] {
   return batches.flatMap((batch) => batch.assets.map((asset) => ({
     source: 'import_node' as const,
@@ -161,7 +178,7 @@ function dashboardActions(world: WorldOverview, isArchivedWorld: boolean, hasAct
       : hasActiveChapter
         ? { label: '继续进行中的章节', detail: '恢复已保留的 Studio 创作进度，不会创建第二个未批准章节。', primary: true }
         : needsFirstChapterOnboarding
-          ? { label: '先生成故事大纲', detail: '这本小说还没有写入正史；请先完成上方第一步引导。' }
+          ? { label: '直接写第一章或生成故事大纲', detail: '这本小说还没有写入正史；可直接生成第一章草稿，也可先补充故事大纲。' }
           : { label: '继续下一章', detail: `下一章会继承世界进度${labelWorldVersion(world.world_version)}和已写入正史的变化。`, primary: true },
   ];
   if (urgentForeshadow) {
@@ -398,19 +415,25 @@ type FirstChapterLaunchpadProps = {
   arcLoading: boolean;
   onGenerateArc: () => void;
   onLaunchChapter: (chapter: StoryArcChapter) => void;
+  onQuickStart: () => void;
+  quickStartGoal: string;
 };
 
-function FirstChapterLaunchpad({ world, nextChapter, arcLoading, onGenerateArc, onLaunchChapter }: FirstChapterLaunchpadProps) {
+function FirstChapterLaunchpad({ world, nextChapter, arcLoading, onGenerateArc, onLaunchChapter, onQuickStart, quickStartGoal }: FirstChapterLaunchpadProps) {
   return (
     <article className="mt-8 rounded-2xl border border-amber-900/15 bg-amber-100/60 p-4 shadow-sm">
       <p className="chapter-kicker">第一章起点</p>
       {world.story_arc.length === 0 ? (
         <div className="mt-3">
-          <p className="manuscript text-sm text-[#5e3b1c]">先生成前 10 章故事弧线，再把下一章目标带入创作台。</p>
-          <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">生成第一章 → 写入正史 → 查看世界变化</p>
-          <button className="primary-button mt-4" type="button" disabled={arcLoading} onClick={onGenerateArc}>
-            {arcLoading ? '故事弧线规划中…' : '生成第一轮故事弧线'}
-          </button>
+          <p className="manuscript text-sm text-[#5e3b1c]">不必先规划 10 章；可以直接写第一章，也可先生成故事大纲。</p>
+          <p className="manuscript mt-2 text-sm">建议首章目标：{quickStartGoal}</p>
+          <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">只生成草稿，确认前不写入正史。</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button className="primary-button" type="button" onClick={onQuickStart}>生成第一章草稿并进入 Studio</button>
+            <button className="secondary-button" type="button" disabled={arcLoading} onClick={onGenerateArc}>
+              {arcLoading ? '故事弧线规划中…' : '生成第一轮故事弧线'}
+            </button>
+          </div>
         </div>
       ) : nextChapter ? (
         <div className="mt-3 space-y-3">
@@ -542,18 +565,23 @@ function ArchivedWorldPauseCard({ archiveLoading, onReturnToBookshelf, onRestore
 
 type FirstChapterOnboardingCardProps = {
   arcLoading: boolean;
+  quickStartGoal: string;
+  onQuickStart: () => void;
   onGenerateArc: () => Promise<void> | void;
   onOpenWriteTab: () => void;
 };
 
-function FirstChapterOnboardingCard({ arcLoading, onGenerateArc, onOpenWriteTab }: FirstChapterOnboardingCardProps) {
+function FirstChapterOnboardingCard({ arcLoading, quickStartGoal, onQuickStart, onGenerateArc, onOpenWriteTab }: FirstChapterOnboardingCardProps) {
   return (
     <article className="mt-6 rounded-3xl border-2 border-amber-900/20 bg-amber-100/80 p-5 shadow-sm" aria-label="第一章写作引导">
       <p className="chapter-kicker">第一步</p>
-      <h2 className="mt-2 text-2xl font-black text-[#34210f]">生成故事大纲 → 写第一章</h2>
-      <p className="manuscript mt-2 text-sm text-[#5e3b1c]">这本小说还没有写入正史。先生成前 10 章故事弧线，再用第一章目标进入创作台。</p>
+      <h2 className="mt-2 text-2xl font-black text-[#34210f]">直接写第一章，或先生成故事大纲</h2>
+      <p className="manuscript mt-2 text-sm text-[#5e3b1c]">这本小说还没有写入正史。故事大纲是可选增强，不必先规划 10 章。</p>
+      <p className="manuscript mt-2 text-sm">建议首章目标：{quickStartGoal}</p>
+      <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">只生成草稿，确认前不写入正史。</p>
       <div className="mt-4 flex flex-wrap gap-2">
-        <button className="primary-button" type="button" disabled={arcLoading} onClick={() => void onGenerateArc()}>
+        <button className="primary-button" type="button" onClick={onQuickStart}>生成第一章草稿并进入 Studio</button>
+        <button className="secondary-button" type="button" disabled={arcLoading} onClick={() => void onGenerateArc()}>
           {arcLoading ? '故事弧线规划中…' : '生成故事大纲'}
         </button>
         <button className="secondary-button" type="button" onClick={onOpenWriteTab}>查看继续创作页</button>
@@ -835,6 +863,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
   }
 
   async function submitSeedWorld(seedKey: string) {
+    const firstChapterGoal = seedLibrary.find((seed) => seed.key === seedKey)?.starter_guidance.first_chapter_goal ?? '';
     setCreating(true);
     setError('');
     try {
@@ -846,7 +875,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
       setShowCreationForm(false);
       setCreationMaterialReferences([]);
       setCreationMaterialError('');
-      setWorldCreationDraftGoal('');
+      setWorldCreationDraftGoal(firstChapterGoal);
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建灵感模板失败');
     } finally {
@@ -979,11 +1008,20 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
     });
   }
 
-  function launchWorldCreationDraftChapter() {
-    if (!world || !worldCreationDraftGoal || resumeActiveChapterIfPresent()) return;
-    const executionContext = withActiveStyleHandbook(buildWorldCreationDraftExecutionContext(world, worldCreationDraftGoal));
+  function launchFirstChapterQuickStart() {
+    if (!world || resumeActiveChapterIfPresent()) return;
+    const hasWorldCreationDraftGoal = Boolean(worldCreationDraftGoal);
+    const goal = worldCreationDraftGoal || buildFirstChapterQuickStartGoal(world);
+    const executionContext = withActiveStyleHandbook(
+      hasWorldCreationDraftGoal
+        ? buildWorldCreationDraftExecutionContext(world, goal)
+        : {
+            ...buildManualExecutionContext(world, goal),
+            source_signals: ['first_chapter_quick_start'],
+          },
+    );
     onEnterStudio(world, {
-      initialChapterGoal: executionContext.goal,
+      initialChapterGoal: goal,
       executionContext,
       autoDraftFirstChapter: true,
     });
@@ -1026,6 +1064,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
     ? (world.story_arc.find((chapter) => chapter.chapter_number === world.approved_chapter_count + 1) ?? world.story_arc[0] ?? null)
     : null;
   const isArchivedWorld = world?.status === 'archived';
+  const firstChapterQuickStartGoal = world
+    ? worldCreationDraftGoal || buildFirstChapterQuickStartGoal(world)
+    : '';
   const shouldShowFirstChapterOnboarding = Boolean(world && !isArchivedWorld && world.approved_chapter_count === 0 && world.story_arc.length === 0);
 
   if (loading)
@@ -1181,12 +1222,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
                   <h2 className="mt-2 text-2xl font-black text-[#34210f]">生成第一章草稿并进入 Studio</h2>
                   <p className="manuscript mt-2 text-sm text-[#5e3b1c]">第一章目标：{worldCreationDraftGoal}</p>
                   <p className="manuscript mt-2 text-sm font-bold text-[#5e3b1c]">只会在 Studio 创建章节草稿与审批预览；确认前不会写入正史或推进世界进度。</p>
-                  <button className="primary-button mt-4" type="button" onClick={launchWorldCreationDraftChapter}>生成第一章草稿并进入 Studio</button>
+                  <button className="primary-button mt-4" type="button" onClick={launchFirstChapterQuickStart}>生成第一章草稿并进入 Studio</button>
                 </article>
               )}
               {shouldShowFirstChapterOnboarding && !worldCreationDraftGoal && !activeChapterSession?.chapter && (
                 <FirstChapterOnboardingCard
                   arcLoading={arcLoading}
+                  quickStartGoal={firstChapterQuickStartGoal}
+                  onQuickStart={launchFirstChapterQuickStart}
                   onGenerateArc={runStoryArcPlanner}
                   onOpenWriteTab={() => setTab('write')}
                 />
@@ -1264,6 +1307,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
               arcLoading={arcLoading}
               onGenerateArc={runStoryArcPlanner}
               onLaunchChapter={launchStoryArcChapter}
+              quickStartGoal={firstChapterQuickStartGoal}
+              onQuickStart={launchFirstChapterQuickStart}
             />
             <SerialPlanPanel
               serialPlan={serialPlan}

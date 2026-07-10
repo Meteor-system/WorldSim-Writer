@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { StyleHandbookReference, WorldCreateRequest, WorldCreationMaterialReference, WorldSeedSummary } from '../api/types';
 import { WorldCreationForm } from './WorldCreationForm';
+import { GENRE_PRESETS, starterGuidanceFromPayload } from './genrePresets';
 
 afterEach(() => cleanup());
 
@@ -85,14 +86,40 @@ describe('WorldCreationForm', () => {
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
 
     expect(onCreate).toHaveBeenCalledOnce();
-    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
+    const [submittedPayload, submittedContext] = onCreate.mock.calls[0];
+    expect(submittedPayload).toEqual(expect.objectContaining({
       title: '自定义群星边境',
       starter_assets: expect.objectContaining({
         characters: expect.arrayContaining([expect.objectContaining({ name: expect.any(String), role_type: expect.any(String) })]),
         relations: expect.arrayContaining([expect.objectContaining({ source_index: 0, target_index: 1 })]),
         foreshadows: expect.arrayContaining([expect.objectContaining({ status: 'planted', urgency_level: expect.any(Number) })]),
       }),
-    }), { firstChapterGoal: undefined });
+    }));
+    expect(submittedContext).toEqual({
+      firstChapterGoal: starterGuidanceFromPayload(submittedPayload).first_chapter_goal,
+    });
+    expect(submittedContext.firstChapterGoal).toContain('艾琳·雾冠');
+    expect(submittedContext.firstChapterGoal).toContain('查明古塔失衡真相');
+  });
+
+  it('derives the selected preset goal from the current form instead of a stale preset', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /Sci-Fi/ }));
+    await user.clear(screen.getByLabelText('世界标题'));
+    await user.type(screen.getByLabelText('世界标题'), '修改后的群星边境');
+    await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
+
+    const [submittedPayload, submittedContext] = onCreate.mock.calls[0];
+    expect(submittedPayload.title).toBe('修改后的群星边境');
+    expect(submittedContext).toEqual({
+      firstChapterGoal: starterGuidanceFromPayload(submittedPayload).first_chapter_goal,
+    });
+    expect(submittedContext.firstChapterGoal).toContain('许砚');
+    expect(submittedContext.firstChapterGoal).toContain('黑匣子脉冲');
+    expect(submittedContext.firstChapterGoal).not.toBe(starterGuidanceFromPayload(GENRE_PRESETS[0]).first_chapter_goal);
   });
 
   it('calls the sample world shortcut without submitting the custom form', async () => {
@@ -318,7 +345,65 @@ describe('WorldCreationForm', () => {
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
 
     expect(screen.getByLabelText('世界标题')).toHaveValue('无日城');
-    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ title: '无日城', genre_template: 'weird_fantasy' }), { firstChapterGoal: undefined });
+    const [submittedPayload, submittedContext] = onCreate.mock.calls[0];
+    expect(submittedPayload).toEqual(expect.objectContaining({ title: '无日城', genre_template: 'weird_fantasy' }));
+    expect(submittedContext).toEqual({
+      firstChapterGoal: starterGuidanceFromPayload(submittedPayload).first_chapter_goal,
+    });
+    expect(submittedContext.firstChapterGoal).toBe('让沈昼围绕“空白日晷”展开第一次主动行动，并推进目标：查明钟声。');
+  });
+
+  it('keeps seed cards scoped while applying Seed A then creating Seed B from the current key', async () => {
+    const user = userEvent.setup();
+    const seedB: WorldSeedSummary = {
+      ...seedSummary,
+      key: 'ember-station',
+      label: '余烬站',
+      genre_template: 'sci_fi',
+      hook: '一座失联空间站正在向过去发送求救讯号。',
+      starter_summary: { character_count: 1, relation_count: 0, foreshadow_count: 1, character_names: ['乔岚'], foreshadow_titles: ['回声舱门'] },
+      starter_guidance: {
+        first_chapter_goal: '让乔岚在回声舱门前截获第一段来自过去的求救讯号。',
+        protagonist_relationships: ['乔岚 ↔ 舰桥 AI：互相试探。'],
+        foreshadow_pressure: ['回声舱门在开篇就要产生倒计时压力。'],
+        story_health_hints: ['确认前不写入正史。'],
+      },
+    };
+    const seedBPayload: WorldCreateRequest = {
+      ...seedPayload,
+      title: '余烬站',
+      genre_template: 'sci_fi',
+      truth_canon: '余烬站被困在重复的一小时里。',
+      starter_assets: {
+        characters: [{ name: '乔岚', role_type: 'protagonist', current_goals: ['截获过去的求救讯号'] }],
+        relations: [],
+        foreshadows: [{ title: '回声舱门', description: '舱门在每小时归零时开启。', foreshadow_type: 'signal_clue', status: 'planted', urgency_level: 5, related_character_indexes: [0] }],
+      },
+    };
+    const onLoadSeed = vi.fn().mockImplementation(async (key: string) => ({ payload: key === seedSummary.key ? seedPayload : seedBPayload }));
+    const onCreateSeed = vi.fn().mockResolvedValue(undefined);
+    render(
+      <WorldCreationForm
+        creating={false}
+        onCreate={vi.fn()}
+        onCreateSample={vi.fn()}
+        seeds={[seedSummary, seedB]}
+        selectedSeedKey={null}
+        onLoadSeed={onLoadSeed}
+        onCreateSeed={onCreateSeed}
+      />,
+    );
+
+    const seedACard = screen.getByRole('heading', { name: '无日城' }).closest('article');
+    const seedBCard = screen.getByRole('heading', { name: '余烬站' }).closest('article');
+    expect(seedACard).not.toBeNull();
+    expect(seedBCard).not.toBeNull();
+
+    await user.click(within(seedACard!).getByRole('button', { name: '套用到表单' }));
+    expect(onLoadSeed).toHaveBeenCalledWith('forgotten-sun-city');
+    await user.click(within(seedBCard!).getByRole('button', { name: '直接创建此模板' }));
+
+    expect(onCreateSeed).toHaveBeenCalledWith('ember-station');
   });
 
   it('calls direct seed creation callback from the seed library', async () => {

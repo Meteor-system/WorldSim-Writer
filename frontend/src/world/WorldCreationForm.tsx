@@ -359,7 +359,8 @@ export function WorldCreationForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    await onCreate(form, { firstChapterGoal: draftMeta?.first_chapter_goal });
+    const firstChapterGoal = draftMeta?.first_chapter_goal ?? starterGuidanceFromPayload(form).first_chapter_goal;
+    await onCreate(form, { firstChapterGoal });
   }
 
   return (
