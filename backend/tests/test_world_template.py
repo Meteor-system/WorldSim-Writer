@@ -417,6 +417,12 @@ def test_create_custom_world_rejects_missing_characters(client):
     response = client.post('/worlds', headers=auth(token), json=payload)
 
     assert response.status_code == 422
+    assert any(
+        error['type'] == 'too_short'
+        and error['loc'] == ['body', 'starter_assets', 'characters']
+        and error['msg'].startswith('List should have at least 1 item')
+        for error in response.json()['detail']
+    )
     list_response = client.get('/worlds', headers=auth(token))
     assert list_response.json() == []
 
