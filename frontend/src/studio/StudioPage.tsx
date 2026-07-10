@@ -145,6 +145,9 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [consistencySummary, setConsistencySummary] = useState<ConsistencySummary | null>(null);
   const [consistencyWarnings, setConsistencyWarnings] = useState<ConsistencyWarning[]>([]);
   const [approvalReadiness, setApprovalReadiness] = useState<ApprovalReadinessResponse | null>(null);
+  const [reviewPanelsLoading, setReviewPanelsLoading] = useState(Boolean(resumedDraft));
+  const [consistencyChecking, setConsistencyChecking] = useState(false);
+  const [consistencyValidated, setConsistencyValidated] = useState(false);
   const [critique, setCritique] = useState<CriticReportResponse | null>(null);
   const [characterArcReport, setCharacterArcReport] = useState<CharacterArcReportResponse | null>(null);
   const [settlement, setSettlement] = useState<WorldSettlement | null>(null);
@@ -161,6 +164,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const draftTitleRef = useRef<HTMLHeadingElement>(null);
   const autoDraftStartedRef = useRef(false);
   const resumedDraftPanelsLoadedRef = useRef(false);
+  const reviewPanelsRequestRef = useRef(0);
+  const consistencyRequestRef = useRef(0);
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -230,11 +235,13 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   function clearApprovalConsistency() {
     setConsistencySummary(null);
     setConsistencyWarnings([]);
+    setConsistencyValidated(false);
   }
 
   function setPreviewConsistency(preview: ApprovalPreviewResponse) {
     setConsistencySummary(preview.consistency_summary);
     setConsistencyWarnings(preview.consistency_warnings);
+    setConsistencyValidated(true);
   }
 
   function consistencyLabel(summary: ConsistencySummary): string {
@@ -243,46 +250,75 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     return '一致性检查通过';
   }
 
-  async function refreshApprovalConsistency(characterIndexes: number[], foreshadowIndexes: number[]) {
-    if (!draft) return;
-    const result = await checkApprovalConsistency(draft.chapter_id, {
-      draft_version: resolveDraftVersion(draft),
-      selected_character_change_indexes: characterIndexes,
-      selected_foreshadow_change_indexes: foreshadowIndexes,
-    });
-    setConsistencySummary(result.consistency_summary);
-    setConsistencyWarnings(result.consistency_warnings);
+  async function refreshApprovalConsistency(nextDraft: DraftResponse, characterIndexes: number[], foreshadowIndexes: number[]) {
+    const requestId = ++consistencyRequestRef.current;
+    setConsistencyChecking(true);
+    setConsistencyValidated(false);
+    try {
+      const result = await checkApprovalConsistency(nextDraft.chapter_id, {
+        draft_version: resolveDraftVersion(nextDraft),
+        selected_character_change_indexes: characterIndexes,
+        selected_foreshadow_change_indexes: foreshadowIndexes,
+      });
+      if (consistencyRequestRef.current !== requestId) return;
+      setConsistencySummary(result.consistency_summary);
+      setConsistencyWarnings(result.consistency_warnings);
+      setConsistencyValidated(true);
+    } catch (err) {
+      if (consistencyRequestRef.current === requestId) {
+        clearApprovalConsistency();
+        throw err;
+      }
+    } finally {
+      if (consistencyRequestRef.current === requestId) setConsistencyChecking(false);
+    }
   }
 
   async function refreshReviewStudioPanels(nextDraft: DraftResponse) {
+    const requestId = ++reviewPanelsRequestRef.current;
+    consistencyRequestRef.current += 1;
+    setConsistencyChecking(false);
+    setReviewPanelsLoading(true);
     const version = resolveDraftVersion(nextDraft);
     const knownVersions = [version];
     if (nextDraft.parent_draft_version) knownVersions.push(nextDraft.parent_draft_version);
     setDraftVersions((versions) => Array.from(new Set([...versions, ...knownVersions])).sort((a, b) => a - b));
     setLatestDraftVersion((current) => Math.max(current ?? version, version));
     try {
-      const preview = await getApprovalPreview(nextDraft.chapter_id);
-      setApprovalPreview(preview);
-      initializeApprovalSelection(preview);
-      setPreviewConsistency(preview);
-    } catch {
-      setApprovalPreview(null);
-      clearApprovalSelection();
-      clearApprovalConsistency();
-    }
-    try {
-      setApprovalReadiness(await getApprovalReadiness(nextDraft.chapter_id));
-    } catch {
-      setApprovalReadiness(null);
-    }
-    if (nextDraft.parent_draft_version) {
       try {
-        setDraftDiff(await getDraftDiff(nextDraft.chapter_id, nextDraft.parent_draft_version, nextDraft.draft_version));
+        const preview = await getApprovalPreview(nextDraft.chapter_id);
+        if (reviewPanelsRequestRef.current !== requestId) return;
+        setApprovalPreview(preview);
+        initializeApprovalSelection(preview);
+        setPreviewConsistency(preview);
       } catch {
+        if (reviewPanelsRequestRef.current !== requestId) return;
+        setApprovalPreview(null);
+        clearApprovalSelection();
+        clearApprovalConsistency();
+      }
+      try {
+        const readiness = await getApprovalReadiness(nextDraft.chapter_id);
+        if (reviewPanelsRequestRef.current !== requestId) return;
+        setApprovalReadiness(readiness);
+      } catch {
+        if (reviewPanelsRequestRef.current !== requestId) return;
+        setApprovalReadiness(null);
+      }
+      if (nextDraft.parent_draft_version) {
+        try {
+          const diff = await getDraftDiff(nextDraft.chapter_id, nextDraft.parent_draft_version, nextDraft.draft_version);
+          if (reviewPanelsRequestRef.current !== requestId) return;
+          setDraftDiff(diff);
+        } catch {
+          if (reviewPanelsRequestRef.current !== requestId) return;
+          setDraftDiff(null);
+        }
+      } else {
         setDraftDiff(null);
       }
-    } else {
-      setDraftDiff(null);
+    } finally {
+      if (reviewPanelsRequestRef.current === requestId) setReviewPanelsLoading(false);
     }
   }
 
@@ -513,7 +549,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     const nextCharacterIndexes = toggleIndex(selectedCharacterChangeIndexes, changeIndex);
     setSelectedCharacterChangeIndexes(nextCharacterIndexes);
     try {
-      await refreshApprovalConsistency(nextCharacterIndexes, selectedForeshadowChangeIndexes);
+      if (!draft) return;
+      await refreshApprovalConsistency(draft, nextCharacterIndexes, selectedForeshadowChangeIndexes);
     } catch (err) {
       setError(err instanceof Error ? err.message : '刷新一致性检查失败');
     }
@@ -524,14 +561,15 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     const nextForeshadowIndexes = toggleIndex(selectedForeshadowChangeIndexes, changeIndex);
     setSelectedForeshadowChangeIndexes(nextForeshadowIndexes);
     try {
-      await refreshApprovalConsistency(selectedCharacterChangeIndexes, nextForeshadowIndexes);
+      if (!draft) return;
+      await refreshApprovalConsistency(draft, selectedCharacterChangeIndexes, nextForeshadowIndexes);
     } catch (err) {
       setError(err instanceof Error ? err.message : '刷新一致性检查失败');
     }
   }
 
   async function approveDraft() {
-    if (!draft || !isViewingLatestDraft()) return;
+    if (!draft || !approvalPreview || reviewPanelsLoading || consistencyChecking || !consistencyValidated || consistencySummary?.status === 'blocked' || !isViewingLatestDraft()) return;
     setWorking(true);
     setOperationHint('正在写入正史…');
     setError('');
@@ -726,21 +764,31 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setError('');
     try {
       const selectedDraft = normalizeDraft(await getDraftVersion(draft.chapter_id, selected));
+      reviewPanelsRequestRef.current += 1;
+      consistencyRequestRef.current += 1;
+      setReviewPanelsLoading(false);
+      setConsistencyChecking(false);
       setDraft(selectedDraft);
-      if (selectedDraft.parent_draft_version) {
+      setApprovalPreview(null);
+      clearApprovalSelection();
+      clearApprovalConsistency();
+      setApprovalReadiness(null);
+      setCritique(null);
+      setCharacterArcReport(null);
+      if (latestDraftVersion === null || selectedDraft.draft_version === latestDraftVersion) {
+        await refreshReviewStudioPanels(selectedDraft);
+      } else if (selectedDraft.parent_draft_version) {
         try {
           setDraftDiff(await getDraftDiff(selectedDraft.chapter_id, selectedDraft.parent_draft_version, selectedDraft.draft_version));
         } catch {
           setDraftDiff(null);
         }
-      } else if (latestDraftVersion && selectedDraft.draft_version !== latestDraftVersion) {
+      } else {
         try {
           setDraftDiff(await getDraftDiff(selectedDraft.chapter_id, selectedDraft.draft_version, latestDraftVersion));
         } catch {
           setDraftDiff(null);
         }
-      } else {
-        setDraftDiff(null);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '切换草稿版本失败');
@@ -1089,12 +1137,12 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           )}
 
           {characterArcReport && (
-            <CharacterArcPanel report={characterArcReport} working={working} onUseHintAsGoal={useHintAsGoal} />
+            <CharacterArcPanel report={characterArcReport} working={working || !isViewingLatestDraft()} onUseHintAsGoal={isViewingLatestDraft() ? useHintAsGoal : undefined} />
           )}
 
           {draft && (
             <div className="flex flex-wrap gap-3">
-              <button className="primary-button" disabled={working || !isViewingLatestDraft() || approvalBlockedByConsistency} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '写入正史并更新世界'}</button>
+              <button className="primary-button" disabled={working || reviewPanelsLoading || consistencyChecking || !consistencyValidated || !approvalPreview || !isViewingLatestDraft() || approvalBlockedByConsistency} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '写入正史并更新世界'}</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={rejectDraft}>驳回</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={startEdit}>编辑正文</button>
             </div>
