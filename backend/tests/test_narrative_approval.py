@@ -1,6 +1,8 @@
 from sqlalchemy import func, select
 
+from app.character.models import Character
 from app.event.models import EventLog
+from app.foreshadow.models import Foreshadow, ForeshadowEvent
 from app.llm.schemas import BeatCard, ChapterGeneration, ChapterOutline, ProposedCharacterChange, ProposedForeshadowChange
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter, ChapterDraft
@@ -239,6 +241,49 @@ def test_approve_chapter_updates_world_character_foreshadow_and_events(client, m
     assert overview['recent_events'][0]['event_type'] == 'chapter_approved'
     assert overview['recent_events'][0]['world_version_before'] == 1
     assert overview['recent_events'][0]['world_version_after'] == 2
+
+
+def test_approve_chapter_rejects_second_commit_without_duplicate_side_effects(client, monkeypatch, db_session):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+    headers = {'Authorization': f'Bearer {token}'}
+
+    first = client.post(f"/chapters/{draft['chapter_id']}/approve", headers=headers)
+    assert first.status_code == 200
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    character = db_session.get(Character, 1)
+    foreshadow = db_session.get(Foreshadow, 1)
+    before_world_version = world.world_version
+    before_approved_version = chapter.approved_version
+    before_character_goals = list(character.current_goals)
+    before_foreshadow_status = foreshadow.status
+    before_description = foreshadow.description
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id))
+    before_foreshadow_events = db_session.scalar(
+        select(func.count()).select_from(ForeshadowEvent).where(ForeshadowEvent.chapter_id == draft['chapter_id'])
+    )
+
+    second = client.post(f"/chapters/{draft['chapter_id']}/approve", headers=headers)
+
+    assert second.status_code == 409
+    assert second.json()['detail'] == 'ALREADY_APPROVED'
+    db_session.expire_all()
+    assert db_session.get(World, world_id).world_version == before_world_version == 2
+    assert db_session.get(Chapter, draft['chapter_id']).approved_version == before_approved_version == draft['draft_version']
+    assert db_session.get(Character, 1).current_goals == before_character_goals == ['追查城主府叛乱']
+    assert db_session.get(Foreshadow, 1).status == before_foreshadow_status == 'advanced'
+    assert db_session.get(Foreshadow, 1).description == before_description
+    assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id)) == before_events
+    assert db_session.scalar(
+        select(func.count()).select_from(ForeshadowEvent).where(ForeshadowEvent.chapter_id == draft['chapter_id'])
+    ) == before_foreshadow_events
 
 
 def test_approve_chapter_rejects_extra_fields_without_side_effects(client, monkeypatch, db_session):

@@ -1682,12 +1682,11 @@ def approve_chapter(db: Session, user: User, chapter_id: int, selection=None) ->
         chapter = db.get(Chapter, chapter_id)
         if chapter is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
-        world = db.scalar(select(World).where(World.id == chapter.world_id).with_for_update())
-        if world is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
-        if world.owner_id != user.id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='FORBIDDEN')
+        world = _require_locked_owned_world(db, user, chapter.world_id)
         _ensure_world_is_active(world)
+        db.refresh(chapter)
+        if chapter.status == 'approved':
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
         draft = _latest_draft(db, chapter)
         if draft is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
