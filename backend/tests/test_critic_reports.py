@@ -291,6 +291,34 @@ def test_get_critic_report_returns_saved_report_and_marks_stale_after_draft_vers
     assert stale_payload['is_stale'] is True
 
 
+def test_get_critic_report_still_allows_read_after_chapter_abandon(client, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    post_response = client.post(
+        f"/chapters/{draft['chapter_id']}/critic-report",
+        json={},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert post_response.status_code == 200
+    created_report = post_response.json()
+
+    abandon_response = client.post(
+        f"/chapters/{draft['chapter_id']}/abandon",
+        json={},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert abandon_response.status_code == 200
+    assert abandon_response.json()['status'] == 'abandoned'
+
+    get_response = client.get(
+        f"/chapters/{draft['chapter_id']}/critic-report",
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert get_response.status_code == 200
+    assert get_response.json() == created_report
+
+
 def test_get_critic_report_returns_404_when_report_is_missing(client, monkeypatch):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)
@@ -369,19 +397,49 @@ def test_late_critic_report_rejects_world_version_change_without_overwriting_rep
     assert db_session.get(Chapter, draft['chapter_id']).critique_report == {'existing': 'keep'}
 
 
-def test_late_critic_report_rejects_chapter_status_change_without_overwriting_report(client, db_session, monkeypatch):
+def test_post_critic_report_rejects_abandoned_chapter_without_calling_llm(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    llm_client = CriticReportLLMClient()
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch, llm_client)
+    assert llm_client.critic_report_calls == 0
+
+    abandon_response = client.post(
+        f"/chapters/{draft['chapter_id']}/abandon",
+        json={},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert abandon_response.status_code == 200
+    assert abandon_response.json()['status'] == 'abandoned'
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/critic-report",
+        json={},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 409
+    assert response.json()['detail'] == 'CHAPTER_ABANDONED'
+    assert llm_client.critic_report_calls == 0
+    db_session.expire_all()
+    assert db_session.get(Chapter, draft['chapter_id']).critique_report == {}
+
+
+def test_late_critic_report_rejects_abandoned_chapter_without_overwriting_report(client, db_session, monkeypatch):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)
     user = db_session.get(World, world_id).owner
     chapter = db_session.get(Chapter, draft['chapter_id'])
     chapter.critique_report = {'existing': 'keep'}
     db_session.commit()
+    before_world_version = db_session.get(World, world_id).world_version
+    before_draft_version = chapter.draft_version
+    before_event_count = db_session.scalar(select(func.count()).select_from(EventLog))
 
-    class RejectingCriticLLM(CriticReportLLMClient):
+    class AbandoningCriticLLM(CriticReportLLMClient):
         def generate_critic_report(self, messages):
             report = super().generate_critic_report(messages)
-            rejected = narrative_service.reject_chapter(db_session, user, draft['chapter_id'], '继续修改')
-            assert rejected['status'] == 'rejected'
+            abandoned = narrative_service.abandon_chapter(db_session, user, draft['chapter_id'])
+            assert abandoned.status == 'abandoned'
             return report
 
     with pytest.raises(HTTPException) as exc_info:
@@ -389,15 +447,18 @@ def test_late_critic_report_rejects_chapter_status_change_without_overwriting_re
             db_session,
             user,
             draft['chapter_id'],
-            llm_client=RejectingCriticLLM(),
+            llm_client=AbandoningCriticLLM(),
         )
 
     assert exc_info.value.status_code == 409
-    assert exc_info.value.detail == 'CHAPTER_STATUS_MISMATCH'
+    assert exc_info.value.detail == 'CHAPTER_ABANDONED'
     db_session.expire_all()
     chapter = db_session.get(Chapter, draft['chapter_id'])
-    assert chapter.status == 'rejected'
+    assert chapter.status == 'abandoned'
     assert chapter.critique_report == {'existing': 'keep'}
+    assert chapter.draft_version == before_draft_version
+    assert db_session.get(World, world_id).world_version == before_world_version
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_event_count
 
 
 def test_late_critic_report_cannot_overwrite_competing_report(client, db_session, monkeypatch):

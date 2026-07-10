@@ -530,6 +530,13 @@ export function createChapter(worldId: number, data: { chapter_goal: string; tit
   });
 }
 
+export function abandonChapter(chapterId: number) {
+  return apiRequest<ChapterPipelineResponse>(`/chapters/${chapterId}/abandon`, {
+    method: 'POST',
+    body: '{}',
+  });
+}
+
 export function generateOutline(chapterId: number, data: { chapter_context?: string } = {}) {
   return apiRequest<OutlineResponse>(`/chapters/${chapterId}/outline`, {
     method: 'POST',

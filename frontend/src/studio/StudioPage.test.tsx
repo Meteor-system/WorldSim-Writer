@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, editDraft, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalPreview, getApprovalReadiness, getChapterHistoryDetail, getDraftVersion, rejectDraft, reviseDraft, reviseParagraph, stashDraft, writeChapter } from '../api/client';
+import { abandonChapter, apiRequest, approveChapter, checkApprovalConsistency, createChapter, editDraft, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalPreview, getApprovalReadiness, getChapterHistoryDetail, getDraftVersion, rejectDraft, reviseDraft, reviseParagraph, stashDraft, writeChapter } from '../api/client';
 import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -43,6 +43,21 @@ const draftResponse: DraftResponse = {
 
 vi.mock('../api/client', () => ({
   apiRequest: vi.fn(async () => world),
+  abandonChapter: vi.fn(async () => ({
+    id: 11,
+    world_id: 7,
+    title: '第一章 雨巷密谈',
+    status: 'abandoned',
+    draft_version: 1,
+    approved_version: null,
+    base_world_version: 1,
+    approved_content: null,
+    chapter_goal: '推进雨巷密谈',
+    outline_beats: [],
+    outline_context: {},
+    critique_report: {},
+    execution_context: executionContext,
+  })),
   approveChapter: vi.fn(async () => ({ status: 'approved' })),
   exportWorldArchiveMarkdown: vi.fn(async () => ({
     world_id: 7,
@@ -301,7 +316,11 @@ const approvedWorld: WorldOverview = {
   ],
 };
 
-function renderResumedStudio(resumedDraft: DraftResponse = draftResponse, draftVersions: number[] = [resumedDraft.draft_version]) {
+function renderResumedStudio(
+  resumedDraft: DraftResponse = draftResponse,
+  draftVersions: number[] = [resumedDraft.draft_version],
+  callbacks: { onBack?: () => void; onAbandoned?: (worldId: number) => void } = {},
+) {
   return render(
     <StudioPage
       world={world}
@@ -326,8 +345,9 @@ function renderResumedStudio(resumedDraft: DraftResponse = draftResponse, draftV
           draft_versions: draftVersions,
         },
       }}
-      onBack={vi.fn()}
+      onBack={callbacks.onBack ?? vi.fn()}
       onApproved={vi.fn()}
+      onAbandoned={callbacks.onAbandoned}
     />,
   );
 }
@@ -335,6 +355,22 @@ function renderResumedStudio(resumedDraft: DraftResponse = draftResponse, draftV
 afterEach(() => {
   cleanup();
   vi.mocked(apiRequest).mockClear();
+  vi.mocked(abandonChapter).mockReset();
+  vi.mocked(abandonChapter).mockResolvedValue({
+    id: 11,
+    world_id: 7,
+    title: '第一章 雨巷密谈',
+    status: 'abandoned',
+    draft_version: 1,
+    approved_version: null,
+    base_world_version: 1,
+    approved_content: null,
+    chapter_goal: '推进雨巷密谈',
+    outline_beats: [],
+    outline_context: {},
+    critique_report: {},
+    execution_context: executionContext,
+  });
   vi.mocked(approveChapter).mockClear();
   vi.mocked(checkApprovalConsistency).mockClear();
   vi.mocked(createChapter).mockClear();
@@ -355,6 +391,127 @@ afterEach(() => {
 });
 
 describe('StudioPage Review Studio 2.0 controls', () => {
+  it('requires explicit confirmation before abandoning and keeps the chapter when cancelled', async () => {
+    const user = userEvent.setup();
+    renderResumedStudio();
+
+    await user.click(screen.getByRole('button', { name: '放弃当前章节' }));
+
+    const dialog = screen.getByRole('dialog', { name: '放弃当前章节？' });
+    expect(dialog).toHaveTextContent('章节、草稿版本和已生成报告都会保留');
+    expect(dialog).toHaveTextContent('不会写入正史');
+    expect(dialog).toHaveTextContent('不可恢复');
+    expect(abandonChapter).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '继续创作' }));
+
+    expect(screen.queryByRole('dialog', { name: '放弃当前章节？' })).not.toBeInTheDocument();
+    expect(abandonChapter).not.toHaveBeenCalled();
+  });
+
+  it('exits only after the server confirms the abandoned terminal state', async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    const onAbandoned = vi.fn();
+    renderResumedStudio(draftResponse, [1], { onBack, onAbandoned });
+
+    await user.click(screen.getByRole('button', { name: '放弃当前章节' }));
+    await user.click(screen.getByRole('button', { name: '确认放弃并结束创作' }));
+
+    await waitFor(() => expect(onAbandoned).toHaveBeenCalledWith(7));
+    expect(abandonChapter).toHaveBeenCalledWith(11);
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it('stays in Studio when the server does not confirm the abandoned state', async () => {
+    const user = userEvent.setup();
+    const onAbandoned = vi.fn();
+    vi.mocked(abandonChapter).mockResolvedValueOnce({
+      id: 11,
+      world_id: 7,
+      title: '第一章 雨巷密谈',
+      status: 'reviewing',
+      draft_version: 1,
+      approved_version: null,
+      base_world_version: 1,
+      approved_content: null,
+      chapter_goal: '推进雨巷密谈',
+      outline_beats: [],
+      outline_context: {},
+      critique_report: {},
+      execution_context: executionContext,
+    });
+    renderResumedStudio(draftResponse, [1], { onAbandoned });
+
+    await user.click(screen.getByRole('button', { name: '放弃当前章节' }));
+    await user.click(screen.getByRole('button', { name: '确认放弃并结束创作' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('服务器未返回 abandoned 状态');
+    expect(screen.getByRole('dialog', { name: '放弃当前章节？' })).toBeInTheDocument();
+    expect(onAbandoned).not.toHaveBeenCalled();
+  });
+
+  it('closes the confirmation with Escape and restores focus to the danger trigger', async () => {
+    const user = userEvent.setup();
+    renderResumedStudio();
+    const trigger = screen.getByRole('button', { name: '放弃当前章节' });
+
+    await user.click(trigger);
+    expect(await screen.findByRole('dialog', { name: '放弃当前章节？' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '继续创作' })).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('dialog', { name: '放弃当前章节？' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('stays in Studio and shows the server error when abandoning fails', async () => {
+    const user = userEvent.setup();
+    const onAbandoned = vi.fn();
+    vi.mocked(abandonChapter).mockRejectedValueOnce(new Error('放弃请求暂不可用'));
+    renderResumedStudio(draftResponse, [1], { onAbandoned });
+
+    await user.click(screen.getByRole('button', { name: '放弃当前章节' }));
+    await user.click(screen.getByRole('button', { name: '确认放弃并结束创作' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('放弃请求暂不可用');
+    expect(screen.getByRole('dialog', { name: '放弃当前章节？' })).toBeInTheDocument();
+    expect(onAbandoned).not.toHaveBeenCalled();
+  });
+
+  it('locks the confirmation controls while the abandon request is pending', async () => {
+    const user = userEvent.setup();
+    const onAbandoned = vi.fn();
+    let resolveAbandon!: (value: Awaited<ReturnType<typeof abandonChapter>>) => void;
+    vi.mocked(abandonChapter).mockReturnValueOnce(new Promise((resolve) => { resolveAbandon = resolve; }));
+    renderResumedStudio(draftResponse, [1], { onAbandoned });
+
+    await user.click(screen.getByRole('button', { name: '放弃当前章节' }));
+    await user.click(screen.getByRole('button', { name: '确认放弃并结束创作' }));
+
+    expect(screen.getByRole('button', { name: '继续创作' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '正在放弃…' })).toBeDisabled();
+    expect(abandonChapter).toHaveBeenCalledTimes(1);
+
+    resolveAbandon({
+      id: 11,
+      world_id: 7,
+      title: '第一章 雨巷密谈',
+      status: 'abandoned',
+      draft_version: 1,
+      approved_version: null,
+      base_world_version: 1,
+      approved_content: null,
+      chapter_goal: '推进雨巷密谈',
+      outline_beats: [],
+      outline_context: {},
+      critique_report: {},
+      execution_context: executionContext,
+    });
+    await waitFor(() => expect(onAbandoned).toHaveBeenCalledWith(7));
+  });
+
   it('initializes the chapter goal from initialChapterGoal and keeps it editable', async () => {
     const user = userEvent.setup();
     render(

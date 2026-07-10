@@ -57,7 +57,13 @@ import { WorldTagsPanel } from './WorldTagsPanel';
 import { WorldTimelinePanel } from './WorldTimelinePanel';
 import { labelGenre, labelStatus, labelWorldVersion } from './displayLabels';
 
-type Props = { onEnterStudio: (world: WorldOverview, context?: StudioLaunchContext) => void; autoFocusTitle?: boolean };
+type WorldRefreshKey = { worldId: number; token: number };
+
+type Props = {
+  onEnterStudio: (world: WorldOverview, context?: StudioLaunchContext) => void;
+  autoFocusTitle?: boolean;
+  refreshKey?: WorldRefreshKey | null;
+};
 
 type Tab = 'overview' | 'write' | 'characters' | 'relations' | 'foreshadows' | 'analysis' | 'archive';
 
@@ -556,7 +562,7 @@ function FirstChapterOnboardingCard({ arcLoading, onGenerateArc, onOpenWriteTab 
   );
 }
 
-export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
+export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = null }: Props) {
   const [world, setWorld] = useState<WorldOverview | null>(null);
   const [worlds, setWorlds] = useState<WorldSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -759,15 +765,20 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     setTab('overview');
   }
 
-  async function loadWorld() {
+  async function loadWorld(preferredWorldId?: number) {
     setError('');
     try {
       const loadedWorlds = await apiRequest<WorldSummary[]>('/worlds');
       setWorlds(loadedWorlds);
+      const preferredWorld = preferredWorldId === undefined
+        ? undefined
+        : loadedWorlds.find((item) => item.id === preferredWorldId);
       if (loadedWorlds.length === 0) {
         setWorld(null);
         setShowCreationForm(true);
         void loadSeedLibrary();
+      } else if (preferredWorld) {
+        await openWorld(preferredWorld.id);
       } else if (loadedWorlds.length === 1 && loadedWorlds[0].status !== 'archived') {
         await openWorld(loadedWorlds[0].id);
       } else {
@@ -995,8 +1006,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   }
 
   useEffect(() => {
-    void loadWorld();
-  }, []);
+    void loadWorld(refreshKey?.worldId);
+  }, [refreshKey?.token, refreshKey?.worldId]);
 
   useEffect(() => {
     if (!loading && autoFocusTitle) titleRef.current?.focus();

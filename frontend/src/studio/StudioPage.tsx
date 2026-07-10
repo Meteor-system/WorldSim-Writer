@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   apiRequest,
+  abandonChapter,
   approveChapter,
   checkApprovalConsistency,
   createChapter as createChapterRequest,
@@ -27,7 +28,15 @@ import { ApprovalReadinessPanel } from './ApprovalReadinessPanel';
 import { CharacterArcPanel } from './CharacterArcPanel';
 import { CriticReportPanel } from './CriticReportPanel';
 
-type Props = { world: WorldOverview; launchContext?: StudioLaunchContext; onBack: () => void; onApproved: (world: WorldOverview) => void };
+type Props = {
+  world: WorldOverview;
+  launchContext?: StudioLaunchContext;
+  onBack: () => void;
+  onApproved: (world: WorldOverview) => void;
+  onAbandoned?: (worldId: number) => void;
+};
+
+type AbandonConfirmState = 'idle' | 'confirming' | 'submitting';
 
 type WorldSettlement = {
   worldBefore: number;
@@ -135,7 +144,7 @@ function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionConte
   );
 }
 
-export function StudioPage({ world, launchContext, onBack, onApproved }: Props) {
+export function StudioPage({ world, launchContext, onBack, onApproved, onAbandoned = onBack }: Props) {
   const resumedChapter = launchContext?.resumeSession?.chapter ?? null;
   const resumedDraft = launchContext?.resumeSession?.draft ?? null;
   const recentApproval = launchContext?.recentApproval ?? null;
@@ -178,10 +187,14 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [operationHint, setOperationHint] = useState('');
   const [suggestingGoal, setSuggestingGoal] = useState(false);
   const [error, setError] = useState('');
+  const [abandonConfirmState, setAbandonConfirmState] = useState<AbandonConfirmState>('idle');
   const [editMode, setEditMode] = useState(false);
   const [editContent, setEditContent] = useState('');
   const titleRef = useRef<HTMLHeadingElement>(null);
   const draftTitleRef = useRef<HTMLHeadingElement>(null);
+  const abandonTriggerRef = useRef<HTMLButtonElement>(null);
+  const abandonCancelRef = useRef<HTMLButtonElement>(null);
+  const abandonConfirmRef = useRef<HTMLButtonElement>(null);
   const autoDraftStartedRef = useRef(false);
   const resumedDraftPanelsLoadedRef = useRef(false);
   const reviewPanelsRequestRef = useRef(0);
@@ -206,6 +219,10 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   useEffect(() => {
     if (draft) draftTitleRef.current?.focus();
   }, [draft]);
+
+  useEffect(() => {
+    if (abandonConfirmState === 'confirming') abandonCancelRef.current?.focus();
+  }, [abandonConfirmState]);
 
   useEffect(() => {
     if (!resumedDraft || resumedDraftPanelsLoadedRef.current) return;
@@ -600,6 +617,29 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       : undefined;
   }
 
+  async function submitAbandonChapter() {
+    if (!chapter || abandonConfirmState === 'submitting') return;
+    setAbandonConfirmState('submitting');
+    setWorking(true);
+    setOperationHint('正在结束当前创作…');
+    setError('');
+    try {
+      const abandoned = await abandonChapter(chapter.id);
+      if (abandoned.status === 'abandoned') {
+        onAbandoned(abandoned.world_id);
+        return;
+      }
+      setAbandonConfirmState('confirming');
+      setError('放弃章节尚未完成：服务器未返回 abandoned 状态，仍停留在 Studio。');
+    } catch (err) {
+      setAbandonConfirmState('confirming');
+      setError(err instanceof Error ? err.message : '放弃章节失败');
+    } finally {
+      setWorking(false);
+      setOperationHint('');
+    }
+  }
+
   async function loadApprovalSettlement() {
     if (!draft || !approvalPreview) return;
     setWorking(true);
@@ -902,6 +942,20 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       <div className="book-spread grid gap-8 p-6 md:grid-cols-[300px_1fr] md:p-8">
         <aside className="space-y-6 md:border-r md:border-amber-900/15 md:pr-8">
           <button className="ghost-button -ml-4" onClick={onBack}>← 返回世界页</button>
+          {chapter && !settlementOnly && (
+            <button
+              ref={abandonTriggerRef}
+              type="button"
+              className="ghost-button -ml-4 text-red-800"
+              disabled={working || approvalResultLocked || abandonConfirmState === 'submitting'}
+              onClick={() => {
+                setError('');
+                setAbandonConfirmState('confirming');
+              }}
+            >
+              放弃当前章节
+            </button>
+          )}
           <div>
             <p className="chapter-kicker">Writing Desk</p>
             <h1 ref={titleRef} tabIndex={-1} className="mt-3 text-3xl font-black text-[#34210f]">创作台</h1>
@@ -956,7 +1010,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           </div>
           )}
 
-          {error && (
+          {error && abandonConfirmState === 'idle' && (
             <div className="paper-error flex flex-wrap items-center justify-between gap-3" role="alert">
               <p>{error}</p>
               {launchContext?.autoDraftFirstChapter && !draft && error !== ACTIVE_CHAPTER_RECOVERY_MESSAGE && (
@@ -1275,6 +1329,68 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           )}
         </div>
       </div>
+      {abandonConfirmState !== 'idle' && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#2b1708]/55 p-4"
+          role="presentation"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && abandonConfirmState !== 'submitting') {
+              setAbandonConfirmState('idle');
+              abandonTriggerRef.current?.focus();
+              return;
+            }
+            if (event.key !== 'Tab' || abandonConfirmState === 'submitting') return;
+            const firstControl = abandonCancelRef.current;
+            const lastControl = abandonConfirmRef.current;
+            if (!firstControl || !lastControl) return;
+            if (event.shiftKey && document.activeElement === firstControl) {
+              event.preventDefault();
+              lastControl.focus();
+            } else if (!event.shiftKey && document.activeElement === lastControl) {
+              event.preventDefault();
+              firstControl.focus();
+            }
+          }}
+        >
+          <section
+            className="w-full max-w-lg rounded-3xl border-2 border-red-800/30 bg-[#fff8e8] p-6 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="abandon-chapter-title"
+            aria-describedby="abandon-chapter-description"
+          >
+            <p className="chapter-kicker text-red-800">不可恢复操作</p>
+            <h2 id="abandon-chapter-title" className="mt-2 text-2xl font-black text-red-950">放弃当前章节？</h2>
+            <p id="abandon-chapter-description" className="manuscript mt-3 text-red-950">
+              章节、草稿版本和已生成报告都会保留，但当前创作会立即结束。内容不会写入正史，也不会推进世界、角色或伏笔；章节将进入不可恢复的 abandoned 终态。
+            </p>
+            {error && <p className="paper-error mt-4" role="alert">{error}</p>}
+            <div className="mt-6 flex flex-wrap justify-end gap-3">
+              <button
+                ref={abandonCancelRef}
+                type="button"
+                className="secondary-button"
+                disabled={abandonConfirmState === 'submitting'}
+                onClick={() => {
+                  setAbandonConfirmState('idle');
+                  abandonTriggerRef.current?.focus();
+                }}
+              >
+                继续创作
+              </button>
+              <button
+                ref={abandonConfirmRef}
+                type="button"
+                className="rounded-full border border-red-900 bg-red-800 px-5 py-2 font-bold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={abandonConfirmState === 'submitting'}
+                onClick={() => void submitAbandonChapter()}
+              >
+                {abandonConfirmState === 'submitting' ? '正在放弃…' : '确认放弃并结束创作'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   );
 }

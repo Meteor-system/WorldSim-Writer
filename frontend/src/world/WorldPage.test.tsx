@@ -782,6 +782,55 @@ describe('WorldPage world creation', () => {
     });
   });
 
+  it('reloads the selected world and releases the stale active-session CTA when refreshKey changes', async () => {
+    const activeSession = {
+      chapter: {
+        id: 11,
+        world_id: 7,
+        title: '第二章 保留中的章节',
+        status: 'reviewing',
+        draft_version: 1,
+        approved_version: null,
+        base_world_version: 2,
+        approved_content: null,
+        chapter_goal: '继续追查湿信来源',
+        outline_beats: [],
+        outline_context: {},
+        critique_report: {},
+        execution_context: null,
+      },
+      draft: null,
+      draft_versions: [],
+      recent_approval: null,
+    };
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(world)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(world);
+    vi.mocked(getActiveChapterSession)
+      .mockReset()
+      .mockResolvedValueOnce(activeSession)
+      .mockResolvedValueOnce({ chapter: null, draft: null, draft_versions: [], recent_approval: null });
+
+    const { rerender } = render(
+      <WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} refreshKey={{ worldId: 7, token: 1 }} />,
+    );
+
+    expect(await screen.findByLabelText('进行中章节入口')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '继续进行中的章节' })).toBeInTheDocument();
+
+    rerender(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} refreshKey={{ worldId: 7, token: 2 }} />);
+
+    await waitFor(() => expect(screen.queryByLabelText('进行中章节入口')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: '继续下一章' })).toBeInTheDocument();
+    expect(getActiveChapterSession).toHaveBeenCalledTimes(2);
+    expect(getActiveChapterSession).toHaveBeenNthCalledWith(1, 7);
+    expect(getActiveChapterSession).toHaveBeenNthCalledWith(2, 7);
+    expect(vi.mocked(apiRequest).mock.calls.filter(([path]) => path === '/worlds/7/overview')).toHaveLength(2);
+  });
+
   it('routes dashboard and story-arc chapter launches back to the same active Studio session', async () => {
     const user = userEvent.setup();
     const onEnterStudio = vi.fn();

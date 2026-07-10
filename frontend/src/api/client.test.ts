@@ -13,6 +13,7 @@ import type {
   WorldCreationMaterialReference,
 } from './types';
 import {
+  abandonChapter,
   approveChapter,
   checkApprovalConsistency,
   compareWorldSnapshots,
@@ -1662,6 +1663,18 @@ describe('draft versioning API helpers', () => {
       expect(body.raw_text).toBeUndefined();
       expect(body.internal_score).toBeUndefined();
     }
+  });
+
+  it('calls the abandon endpoint with an empty request body', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(jsonResponse({ id: 11, status: 'abandoned' }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await abandonChapter(11);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:8000/chapters/11/abandon',
+      expect.objectContaining({ method: 'POST', body: '{}' }),
+    );
   });
 
   it('calls draft stash, paragraph revision, full revision, exact version, diff, approval preview, approval consistency, and approve endpoints', async () => {

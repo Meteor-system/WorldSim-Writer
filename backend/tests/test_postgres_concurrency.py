@@ -16,7 +16,7 @@ from app.auth.models import User
 from app.core.database import Base, import_models
 from app.event.models import EventLog
 from app.narrative.models import Chapter, ChapterDraft
-from app.narrative.service import _locked_world_query, approve_chapter, create_chapter_session
+from app.narrative.service import ACTIVE_CHAPTER_STATUSES, _locked_world_query, abandon_chapter, approve_chapter, create_chapter_session
 from app.world.models import World
 
 LOCK_TIMEOUT_MS = 4000
@@ -192,7 +192,7 @@ def _active_chapter_count(db: Session, world_id: int) -> int:
             select(func.count())
             .select_from(Chapter)
             .where(Chapter.world_id == world_id)
-            .where(Chapter.status != 'approved')
+            .where(Chapter.status.in_(ACTIVE_CHAPTER_STATUSES))
         )
         or 0
     )
@@ -317,6 +317,200 @@ def test_approve_chapter_serializes_on_world_lock() -> None:
             )
             assert event_counts.get('chapter_approved') == 1
             assert event_counts.get('world_version_increment') == 1
+
+
+@pytest.mark.postgres
+@pytest.mark.concurrency
+def test_abandon_then_blocked_approve_returns_chapter_abandoned_without_approval_side_effects() -> None:
+    with postgres_test_harness() as (admin_engine, _test_engine, session_factory, _schema_name):
+        with session_factory() as seed_db:
+            user, world = _seed_user_and_world(seed_db)
+            chapter = _seed_reviewing_chapter(seed_db, world)
+            user_id = user.id
+            world_id = world.id
+            chapter_id = chapter.id
+
+        blocked_pid_future: Future[int] = Future()
+
+        def run_blocked_approve() -> tuple[str, int, str]:
+            db = session_factory()
+            try:
+                user = db.get(User, user_id)
+                assert user is not None
+                blocked_pid_future.set_result(_backend_pid(db))
+                approved = approve_chapter(db, user, chapter_id)
+                return ('ok', approved.id, approved.status)
+            except HTTPException as exc:
+                return ('http', exc.status_code, str(exc.detail))
+            finally:
+                db.rollback()
+                db.close()
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            session_a = session_factory()
+            try:
+                user_a = session_a.get(User, user_id)
+                assert user_a is not None
+                assert session_a.scalar(_locked_world_query(world_id)) is not None
+                holder_pid = _backend_pid(session_a)
+                blocked_future = executor.submit(run_blocked_approve)
+                blocked_pid = blocked_pid_future.result(timeout=THREAD_TIMEOUT_SECONDS)
+                assert holder_pid != blocked_pid
+                _wait_for_lock_wait(admin_engine, blocked_pid, holder_pid)
+                assert not blocked_future.done()
+
+                abandoned = abandon_chapter(session_a, user_a, chapter_id)
+                assert abandoned.status == 'abandoned'
+                blocked_result = blocked_future.result(timeout=THREAD_TIMEOUT_SECONDS)
+            finally:
+                session_a.rollback()
+                session_a.close()
+
+        assert blocked_result == ('http', 409, 'CHAPTER_ABANDONED')
+        with session_factory() as verify_db:
+            world = verify_db.get(World, world_id)
+            chapter = verify_db.get(Chapter, chapter_id)
+            assert world is not None
+            assert chapter is not None
+            assert world.world_version == 1
+            assert chapter.status == 'abandoned'
+            assert chapter.approved_version is None
+            event_counts = dict(
+                verify_db.execute(
+                    select(EventLog.event_type, func.count())
+                    .where(EventLog.chapter_id == chapter_id)
+                    .group_by(EventLog.event_type)
+                ).all()
+            )
+            assert event_counts.get('chapter_approved') is None
+            assert event_counts.get('world_version_increment') is None
+
+
+@pytest.mark.postgres
+@pytest.mark.concurrency
+def test_approve_then_blocked_abandon_returns_already_approved_with_single_approval_side_effects() -> None:
+    with postgres_test_harness() as (admin_engine, _test_engine, session_factory, _schema_name):
+        with session_factory() as seed_db:
+            user, world = _seed_user_and_world(seed_db)
+            chapter = _seed_reviewing_chapter(seed_db, world)
+            user_id = user.id
+            world_id = world.id
+            chapter_id = chapter.id
+
+        blocked_pid_future: Future[int] = Future()
+
+        def run_blocked_abandon() -> tuple[str, int, str]:
+            db = session_factory()
+            try:
+                user = db.get(User, user_id)
+                assert user is not None
+                blocked_pid_future.set_result(_backend_pid(db))
+                abandoned = abandon_chapter(db, user, chapter_id)
+                return ('ok', abandoned.id, abandoned.status)
+            except HTTPException as exc:
+                return ('http', exc.status_code, str(exc.detail))
+            finally:
+                db.rollback()
+                db.close()
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            session_a = session_factory()
+            try:
+                user_a = session_a.get(User, user_id)
+                assert user_a is not None
+                assert session_a.scalar(_locked_world_query(world_id)) is not None
+                holder_pid = _backend_pid(session_a)
+                blocked_future = executor.submit(run_blocked_abandon)
+                blocked_pid = blocked_pid_future.result(timeout=THREAD_TIMEOUT_SECONDS)
+                assert holder_pid != blocked_pid
+                _wait_for_lock_wait(admin_engine, blocked_pid, holder_pid)
+                assert not blocked_future.done()
+
+                approved = approve_chapter(session_a, user_a, chapter_id)
+                assert approved.status == 'approved'
+                assert approved.approved_version == 1
+                blocked_result = blocked_future.result(timeout=THREAD_TIMEOUT_SECONDS)
+            finally:
+                session_a.rollback()
+                session_a.close()
+
+        assert blocked_result == ('http', 409, 'ALREADY_APPROVED')
+        with session_factory() as verify_db:
+            world = verify_db.get(World, world_id)
+            chapter = verify_db.get(Chapter, chapter_id)
+            assert world is not None
+            assert chapter is not None
+            assert world.world_version == 2
+            assert chapter.status == 'approved'
+            assert chapter.approved_version == 1
+            event_counts = dict(
+                verify_db.execute(
+                    select(EventLog.event_type, func.count())
+                    .where(EventLog.chapter_id == chapter_id)
+                    .group_by(EventLog.event_type)
+                ).all()
+            )
+            assert event_counts.get('chapter_approved') == 1
+            assert event_counts.get('world_version_increment') == 1
+
+
+@pytest.mark.postgres
+@pytest.mark.concurrency
+def test_abandon_then_blocked_create_next_succeeds_with_new_single_active_chapter() -> None:
+    with postgres_test_harness() as (admin_engine, _test_engine, session_factory, _schema_name):
+        with session_factory() as seed_db:
+            user, world = _seed_user_and_world(seed_db)
+            chapter = _seed_reviewing_chapter(seed_db, world)
+            user_id = user.id
+            world_id = world.id
+            chapter_id = chapter.id
+
+        blocked_pid_future: Future[int] = Future()
+
+        def run_blocked_create() -> tuple[str, int, str]:
+            db = session_factory()
+            try:
+                user = db.get(User, user_id)
+                assert user is not None
+                blocked_pid_future.set_result(_backend_pid(db))
+                chapter = create_chapter_session(db, user, world_id, 'next goal')
+                return ('ok', chapter.id, chapter.status)
+            except HTTPException as exc:
+                return ('http', exc.status_code, str(exc.detail))
+            finally:
+                db.rollback()
+                db.close()
+
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            session_a = session_factory()
+            try:
+                user_a = session_a.get(User, user_id)
+                assert user_a is not None
+                assert session_a.scalar(_locked_world_query(world_id)) is not None
+                holder_pid = _backend_pid(session_a)
+                blocked_future = executor.submit(run_blocked_create)
+                blocked_pid = blocked_pid_future.result(timeout=THREAD_TIMEOUT_SECONDS)
+                assert holder_pid != blocked_pid
+                _wait_for_lock_wait(admin_engine, blocked_pid, holder_pid)
+                assert not blocked_future.done()
+
+                abandoned = abandon_chapter(session_a, user_a, chapter_id)
+                assert abandoned.status == 'abandoned'
+                blocked_result = blocked_future.result(timeout=THREAD_TIMEOUT_SECONDS)
+            finally:
+                session_a.rollback()
+                session_a.close()
+
+        assert blocked_result[0] == 'ok'
+        assert blocked_result[2] == 'drafting'
+        with session_factory() as verify_db:
+            chapters = list(verify_db.scalars(select(Chapter).where(Chapter.world_id == world_id).order_by(Chapter.id)))
+            assert len(chapters) == 2
+            assert chapters[0].id == chapter_id
+            assert chapters[0].status == 'abandoned'
+            assert chapters[1].id == blocked_result[1]
+            assert chapters[1].status in ACTIVE_CHAPTER_STATUSES
+            assert _active_chapter_count(verify_db, world_id) == 1
 
 
 def test_postgres_concurrency_tests_require_explicit_enable_flag(monkeypatch: pytest.MonkeyPatch) -> None:

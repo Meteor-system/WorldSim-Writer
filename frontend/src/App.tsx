@@ -4,11 +4,17 @@ import { AuthPage } from './auth/AuthPage';
 import { StudioPage } from './studio/StudioPage';
 import { WorldPage } from './world/WorldPage';
 
+type WorldRefreshKey = {
+  worldId: number;
+  token: number;
+};
+
 export function App() {
   const [userEmail, setUserEmail] = useState(localStorage.getItem('worldsim_token') ? '已登录用户' : '');
   const [studioWorld, setStudioWorld] = useState<WorldOverview | null>(null);
   const [studioLaunchContext, setStudioLaunchContext] = useState<StudioLaunchContext>({});
   const [approvedWorld, setApprovedWorld] = useState<WorldOverview | null>(null);
+  const [worldRefreshKey, setWorldRefreshKey] = useState<WorldRefreshKey | null>(null);
   const successRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -20,6 +26,10 @@ export function App() {
     setStudioLaunchContext(context);
   }
 
+  function refreshWorld(worldId: number) {
+    setWorldRefreshKey((current) => ({ worldId, token: (current?.token ?? 0) + 1 }));
+  }
+
   if (!userEmail) return <AuthPage onAuth={setUserEmail} />;
 
   if (studioWorld) {
@@ -29,11 +39,19 @@ export function App() {
           world={studioWorld}
           launchContext={studioLaunchContext}
           onBack={() => {
+            refreshWorld(studioWorld.id);
             setStudioWorld(null);
             setStudioLaunchContext({});
           }}
           onApproved={(world) => {
             setApprovedWorld(world);
+            refreshWorld(world.id);
+            setStudioWorld(null);
+            setStudioLaunchContext({});
+          }}
+          onAbandoned={(worldId) => {
+            setApprovedWorld(null);
+            refreshWorld(worldId);
             setStudioWorld(null);
             setStudioLaunchContext({});
           }}
@@ -50,7 +68,7 @@ export function App() {
           <span>{userEmail}</span>
         </header>
         {approvedWorld && <div ref={successRef} tabIndex={-1} className="paper-success px-6 py-3" role="status" aria-live="polite">章节已通过，世界版本更新为 {approvedWorld.world_version}</div>}
-        <WorldPage onEnterStudio={enterStudio} autoFocusTitle={!approvedWorld} />
+        <WorldPage onEnterStudio={enterStudio} autoFocusTitle={!approvedWorld} refreshKey={worldRefreshKey} />
       </div>
     </main>
   );

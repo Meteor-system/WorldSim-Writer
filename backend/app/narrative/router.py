@@ -28,6 +28,7 @@ from app.narrative.schemas import (
     WriteRequest,
 )
 from app.narrative.service import (
+    abandon_chapter,
     approve_chapter,
     create_chapter_draft,
     create_chapter_session,
@@ -155,6 +156,16 @@ def read_character_arc_report(
     db: Session = Depends(get_db),
 ) -> CharacterArcReportResponse:
     return CharacterArcReportResponse.model_validate(get_character_arc_report(db, current_user, chapter_id))
+
+
+@router.post('/chapters/{chapter_id}/abandon', response_model=ChapterResponse)
+def abandon(
+    chapter_id: int,
+    _payload: EmptyNarrativeMutationRequest | None = None,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> ChapterResponse:
+    return ChapterResponse.model_validate(abandon_chapter(db, current_user, chapter_id))
 
 
 @router.post('/chapters/{chapter_id}/approve', response_model=ChapterResponse)

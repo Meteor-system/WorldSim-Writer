@@ -299,6 +299,36 @@ def test_late_outline_cannot_restore_approved_chapter_to_outlined(client, db_ses
     assert db_session.query(EventLog).filter_by(world_id=world_id, event_type='chapter_approved').count() == 1
 
 
+def test_late_outline_cannot_restore_abandoned_chapter_to_outlined(client, db_session):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    user = db_session.get(World, world_id).owner
+    before_events = db_session.query(EventLog).filter_by(world_id=world_id).count()
+
+    class AbandoningOutlineLLM(PipelineLLMClient):
+        def generate_outline(self, messages):
+            outline = super().generate_outline(messages)
+            abandoned = narrative_service.abandon_chapter(db_session, user, chapter_id)
+            assert abandoned.status == 'abandoned'
+            return outline
+
+    try:
+        narrative_service.generate_chapter_outline(db_session, user, chapter_id, llm_client=AbandoningOutlineLLM())
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 409
+        assert getattr(error, 'detail', None) == 'CHAPTER_ABANDONED'
+    else:
+        raise AssertionError('expected CHAPTER_ABANDONED')
+
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, chapter_id)
+    assert chapter.status == 'abandoned'
+    assert chapter.outline_beats == []
+    assert chapter.outline_context == {}
+    assert db_session.get(World, world_id).world_version == 1
+    assert db_session.query(EventLog).filter_by(world_id=world_id).count() == before_events
+
+
 def test_late_outline_rejects_world_version_change_without_overwriting_chapter(client, db_session):
     token, world_id = register_and_create_world(client)
     chapter_id = create_chapter(client, token, world_id).json()['id']
@@ -399,6 +429,34 @@ def test_late_outline_rejects_draft_version_change_without_overwriting_new_draft
     assert drafts[0].content == drafts[1].content == draft['content']
     assert db_session.get(World, world_id).world_version == 1
     assert db_session.query(EventLog).filter_by(world_id=world_id).count() == before_events
+
+
+def test_abandoned_chapter_rejects_outline_write_and_critique_before_model_calls(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    llm_client = CountingPipelineLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm_client)
+    abandoned = client.post(f'/chapters/{chapter_id}/abandon', headers=auth(token), json={})
+    assert abandoned.status_code == 200
+
+    responses = [
+        client.post(f'/chapters/{chapter_id}/outline', headers=auth(token), json={}),
+        client.post(f'/chapters/{chapter_id}/write', headers=auth(token), json={}),
+        client.post(f'/chapters/{chapter_id}/critique', headers=auth(token), json={}),
+    ]
+
+    for response in responses:
+        assert response.status_code == 409
+        assert response.json()['detail'] == 'CHAPTER_ABANDONED'
+    assert llm_client.outline_calls == 0
+    assert llm_client.generation_calls == 0
+    assert llm_client.critique_calls == 0
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, chapter_id)
+    assert chapter.status == 'abandoned'
+    assert chapter.outline_beats == []
+    assert db_session.query(ChapterDraft).filter_by(chapter_id=chapter_id).count() == 0
+    assert db_session.get(World, world_id).world_version == 1
 
 
 def test_outline_rejects_extra_body_fields_without_side_effects(client, db_session, monkeypatch):

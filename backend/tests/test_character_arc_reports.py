@@ -205,6 +205,34 @@ def test_get_character_arc_report_marks_stale_after_draft_version_changes(client
     assert stale_payload['is_stale'] is True
 
 
+def test_get_character_arc_report_still_allows_read_after_chapter_abandon(client, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    post_response = client.post(
+        f"/chapters/{draft['chapter_id']}/character-arc-report",
+        json={},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert post_response.status_code == 200
+    created_report = post_response.json()
+
+    abandon_response = client.post(
+        f"/chapters/{draft['chapter_id']}/abandon",
+        json={},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert abandon_response.status_code == 200
+    assert abandon_response.json()['status'] == 'abandoned'
+
+    get_response = client.get(
+        f"/chapters/{draft['chapter_id']}/character-arc-report",
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert get_response.status_code == 200
+    assert get_response.json() == created_report
+
+
 def test_get_character_arc_report_returns_404_when_report_is_missing(client, monkeypatch):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)
@@ -235,19 +263,49 @@ def test_character_arc_report_rejects_unknown_character_ids(client, db_session, 
     assert db_session.get(Chapter, draft['chapter_id']).character_arc_report == {}
 
 
-def test_late_character_arc_report_cannot_write_after_chapter_approval(client, db_session, monkeypatch):
+def test_post_character_arc_report_rejects_abandoned_chapter_without_calling_llm(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    llm_client = CharacterArcReportLLMClient()
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch, llm_client)
+    assert llm_client.character_arc_report_calls == 0
+
+    abandon_response = client.post(
+        f"/chapters/{draft['chapter_id']}/abandon",
+        json={},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert abandon_response.status_code == 200
+    assert abandon_response.json()['status'] == 'abandoned'
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/character-arc-report",
+        json={},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 409
+    assert response.json()['detail'] == 'CHAPTER_ABANDONED'
+    assert llm_client.character_arc_report_calls == 0
+    db_session.expire_all()
+    assert db_session.get(Chapter, draft['chapter_id']).character_arc_report == {}
+
+
+def test_late_character_arc_report_rejects_abandoned_chapter_without_overwriting_report(client, db_session, monkeypatch):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)
     user = db_session.get(World, world_id).owner
     chapter = db_session.get(Chapter, draft['chapter_id'])
     chapter.character_arc_report = {'existing': 'keep'}
     db_session.commit()
+    before_world_version = db_session.get(World, world_id).world_version
+    before_draft_version = chapter.draft_version
+    before_event_count = db_session.scalar(select(func.count()).select_from(EventLog))
 
-    class ApprovingCharacterArcLLM(CharacterArcReportLLMClient):
+    class AbandoningCharacterArcLLM(CharacterArcReportLLMClient):
         def generate_character_arc_report(self, messages):
             report = super().generate_character_arc_report(messages)
-            approved = narrative_service.approve_chapter(db_session, user, draft['chapter_id'])
-            assert approved.status == 'approved'
+            abandoned = narrative_service.abandon_chapter(db_session, user, draft['chapter_id'])
+            assert abandoned.status == 'abandoned'
             return report
 
     with pytest.raises(HTTPException) as exc_info:
@@ -255,21 +313,18 @@ def test_late_character_arc_report_cannot_write_after_chapter_approval(client, d
             db_session,
             user,
             draft['chapter_id'],
-            llm_client=ApprovingCharacterArcLLM(),
+            llm_client=AbandoningCharacterArcLLM(),
         )
 
     assert exc_info.value.status_code == 409
-    assert exc_info.value.detail == 'ALREADY_APPROVED'
+    assert exc_info.value.detail == 'CHAPTER_ABANDONED'
     db_session.expire_all()
     chapter = db_session.get(Chapter, draft['chapter_id'])
-    assert chapter.status == 'approved'
+    assert chapter.status == 'abandoned'
     assert chapter.character_arc_report == {'existing': 'keep'}
-    assert db_session.get(World, world_id).world_version == 2
-    assert db_session.scalar(
-        select(func.count()).select_from(EventLog).where(EventLog.chapter_id == draft['chapter_id']).where(
-            EventLog.event_type == 'chapter_approved'
-        )
-    ) == 1
+    assert chapter.draft_version == before_draft_version
+    assert db_session.get(World, world_id).world_version == before_world_version
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_event_count
 
 
 def test_late_character_arc_report_cannot_overwrite_stashed_draft_report(client, db_session, monkeypatch):

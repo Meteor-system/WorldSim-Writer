@@ -286,6 +286,48 @@ def test_approve_chapter_rejects_second_commit_without_duplicate_side_effects(cl
     ) == before_foreshadow_events
 
 
+def test_abandon_endpoint_rejects_unauthorized_forbidden_extra_body_and_approved_chapter(client, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进玉佩线索'},
+        headers={'Authorization': f'Bearer {token}'},
+    ).json()
+    headers = {'Authorization': f'Bearer {token}'}
+
+    unauthorized = client.post(f"/chapters/{draft['chapter_id']}/abandon")
+    assert unauthorized.status_code == 401
+
+    other_token = client.post(
+        '/auth/register',
+        json={'email': 'abandon-other@example.com', 'password': 'strongpass123'},
+    ).json()['access_token']
+    forbidden = client.post(
+        f"/chapters/{draft['chapter_id']}/abandon",
+        headers={'Authorization': f'Bearer {other_token}'},
+        json={},
+    )
+    assert forbidden.status_code == 403
+    assert forbidden.json()['detail'] == 'FORBIDDEN'
+
+    extra_body = client.post(
+        f"/chapters/{draft['chapter_id']}/abandon",
+        headers=headers,
+        json={'raw_text': '废弃请求不能夹带正文'},
+    )
+    assert extra_body.status_code == 422
+    assert any(
+        error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text']
+        for error in extra_body.json()['detail']
+    )
+
+    approve_response = client.post(f"/chapters/{draft['chapter_id']}/approve", headers=headers)
+    assert approve_response.status_code == 200
+
+    approved_abandon = client.post(f"/chapters/{draft['chapter_id']}/abandon", headers=headers, json={})
+    assert approved_abandon.status_code == 409
+    assert approved_abandon.json()['detail'] == 'ALREADY_APPROVED'
 def test_approve_chapter_rejects_extra_fields_without_side_effects(client, monkeypatch, db_session):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())

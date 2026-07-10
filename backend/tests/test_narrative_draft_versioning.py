@@ -1,6 +1,10 @@
+from copy import deepcopy
+
 from sqlalchemy import select
 
+from app.character.models import Character
 from app.event.models import EventLog
+from app.foreshadow.models import Foreshadow, ForeshadowEvent
 from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter, ChapterDraft
@@ -338,6 +342,149 @@ def test_draft_lifecycle_rejects_extra_body_fields_without_side_effects(client, 
         assert fake_client.paragraph_calls == 0
 
 
+def test_abandon_releases_active_session_preserves_draft_history_and_blocks_chapter_writes(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    headers = {'Authorization': f'Bearer {token}'}
+
+    edited_content = '第一段：林砚停在雨巷口，掌心的玉佩微微发烫。\n\n第二段：沈微霜递来一封湿透的信。\n\n第三段：远处城主府钟声响起。'
+    edit_response = client.put(
+        f"/chapters/{draft['chapter_id']}/draft",
+        json={'content': edited_content, 'change_summary': '强化第一段玉佩反应'},
+        headers=headers,
+    )
+    assert edit_response.status_code == 200
+
+    before_world = db_session.get(World, world_id)
+    before_character = db_session.get(Character, 1)
+    before_foreshadow = db_session.get(Foreshadow, 1)
+    before_event_count = db_session.query(EventLog).filter_by(world_id=world_id).count()
+    before_foreshadow_event_count = db_session.query(ForeshadowEvent).count()
+    before_world_projection = {
+        'world_version': before_world.world_version,
+        'truth_canon': before_world.truth_canon,
+        'truth_canon_version': before_world.truth_canon_version,
+        'current_characters': deepcopy(before_world.current_characters),
+        'current_foreshadows': deepcopy(before_world.current_foreshadows),
+        'current_relations': deepcopy(before_world.current_relations),
+    }
+    before_character_state = (before_character.status, deepcopy(before_character.current_goals))
+    before_foreshadow_state = (before_foreshadow.status, before_foreshadow.description)
+
+    active_before = client.get(f'/worlds/{world_id}/chapters/active', headers=headers)
+    assert active_before.status_code == 200
+    assert active_before.json()['chapter']['id'] == draft['chapter_id']
+    assert active_before.json()['draft_versions'] == [1, 2]
+
+    first_abandon = client.post(f"/chapters/{draft['chapter_id']}/abandon", headers=headers, json={})
+    second_abandon = client.post(f"/chapters/{draft['chapter_id']}/abandon", headers=headers, json={})
+
+    for response in (first_abandon, second_abandon):
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload['id'] == draft['chapter_id']
+        assert payload['status'] == 'abandoned'
+        assert payload['draft_version'] == 2
+        assert payload['approved_version'] is None
+        assert payload['approved_content'] is None
+
+    read_v1 = client.get(f"/chapters/{draft['chapter_id']}/drafts/1", headers=headers)
+    read_v2 = client.get(f"/chapters/{draft['chapter_id']}/drafts/2", headers=headers)
+    diff_response = client.get(f"/chapters/{draft['chapter_id']}/drafts/diff?from=1&to=2", headers=headers)
+
+    assert read_v1.status_code == 200
+    assert read_v1.json()['content'] == draft['content']
+    assert read_v1.json()['draft_version'] == 1
+    assert read_v2.status_code == 200
+    assert read_v2.json()['content'] == edited_content
+    assert read_v2.json()['draft_version'] == 2
+    assert diff_response.status_code == 200
+    assert diff_response.json()['from_content'] == draft['content']
+    assert diff_response.json()['to_content'] == edited_content
+    assert {'type': 'removed', 'text': '第一段：林砚停在雨巷口。'} in diff_response.json()['diff_lines']
+    assert {'type': 'added', 'text': '第一段：林砚停在雨巷口，掌心的玉佩微微发烫。'} in diff_response.json()['diff_lines']
+
+    blocked_responses = [
+        client.get(f"/chapters/{draft['chapter_id']}/approval-preview", headers=headers),
+        client.get(f"/chapters/{draft['chapter_id']}/approval-readiness", headers=headers),
+        client.post(
+            f"/chapters/{draft['chapter_id']}/approval-consistency",
+            json={'draft_version': 2},
+            headers=headers,
+        ),
+        client.post(f"/chapters/{draft['chapter_id']}/approve", headers=headers, json={}),
+        client.post(
+            f"/chapters/{draft['chapter_id']}/reject",
+            json={'feedback': '废弃后不应驳回'},
+            headers=headers,
+        ),
+        client.put(
+            f"/chapters/{draft['chapter_id']}/draft",
+            json={'content': edited_content + '\n\n尾声：这次编辑不应保存。', 'change_summary': '废弃后编辑'},
+            headers=headers,
+        ),
+        client.post(
+            f"/chapters/{draft['chapter_id']}/draft/stash",
+            json={'note': '废弃后暂存'},
+            headers=headers,
+        ),
+        client.post(
+            f"/chapters/{draft['chapter_id']}/draft/revise",
+            json={'instruction': '废弃后不应继续修订'},
+            headers=headers,
+        ),
+        client.post(
+            f"/chapters/{draft['chapter_id']}/draft/paragraph",
+            json={'paragraph_index': 1, 'mode': 'rewrite', 'instruction': '废弃后不应段落改写'},
+            headers=headers,
+        ),
+    ]
+    for response in blocked_responses:
+        assert response.status_code == 409
+        assert response.json()['detail'] == 'CHAPTER_ABANDONED'
+
+    active_after = client.get(f'/worlds/{world_id}/chapters/active', headers=headers)
+    assert active_after.status_code == 200
+    assert active_after.json() == {'chapter': None, 'draft': None, 'draft_versions': [], 'recent_approval': None}
+
+    new_draft_response = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '废弃旧章后创建新章'},
+        headers=headers,
+    )
+    assert new_draft_response.status_code == 200
+    assert new_draft_response.json()['chapter_id'] != draft['chapter_id']
+
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    drafts = get_drafts_for_chapter(db_session, draft['chapter_id'])
+    new_chapter = db_session.get(Chapter, new_draft_response.json()['chapter_id'])
+    character = db_session.get(Character, 1)
+    foreshadow = db_session.get(Foreshadow, 1)
+
+    assert chapter.status == 'abandoned'
+    assert chapter.draft_version == 2
+    assert chapter.approved_version is None
+    assert chapter.approved_content is None
+    assert [item.draft_version for item in drafts] == [1, 2]
+    assert [item.content for item in drafts] == [draft['content'], edited_content]
+    assert world.world_version == before_world_projection['world_version']
+    assert world.truth_canon == before_world_projection['truth_canon']
+    assert world.truth_canon_version == before_world_projection['truth_canon_version']
+    assert world.current_characters == before_world_projection['current_characters']
+    assert world.current_foreshadows == before_world_projection['current_foreshadows']
+    assert world.current_relations == before_world_projection['current_relations']
+    assert (character.status, character.current_goals) == before_character_state
+    assert (foreshadow.status, foreshadow.description) == before_foreshadow_state
+    assert db_session.query(EventLog).filter_by(world_id=world_id).count() == before_event_count
+    assert db_session.query(ForeshadowEvent).count() == before_foreshadow_event_count
+    assert db_session.query(EventLog).filter_by(world_id=world_id, event_type='chapter_approved').count() == 0
+    assert db_session.query(EventLog).filter_by(world_id=world_id, event_type='foreshadow_advanced').count() == 0
+    assert db_session.query(EventLog).filter_by(world_id=world_id, event_type='foreshadow_resolved').count() == 0
+    assert db_session.query(EventLog).filter_by(world_id=world_id, event_type='foreshadow_expired').count() == 0
+    assert new_chapter is not None
+    assert new_chapter.status == 'reviewing'
 def test_draft_diff_endpoint_returns_line_changes_between_versions(client, monkeypatch):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)
