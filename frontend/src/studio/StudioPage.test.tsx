@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, editDraft, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalPreview, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
+import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, editDraft, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalPreview, getApprovalReadiness, getDraftVersion, rejectDraft, reviseDraft, reviseParagraph, stashDraft, writeChapter } from '../api/client';
 import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -96,6 +96,7 @@ vi.mock('../api/client', () => ({
   })),
   writeChapter: vi.fn(async () => draftResponse),
   editDraft: vi.fn(async () => draftResponse),
+  rejectDraft: vi.fn(async () => ({ ...draftResponse, status: 'rejected' })),
   critiqueChapter: vi.fn(),
   generateCriticReport: vi.fn(async () => ({
     chapter_id: 11,
@@ -299,8 +300,13 @@ afterEach(() => {
   vi.mocked(generateOutline).mockClear();
   vi.mocked(getApprovalPreview).mockClear();
   vi.mocked(generateCriticReport).mockClear();
+  vi.mocked(generateCharacterArcReport).mockClear();
   vi.mocked(getApprovalReadiness).mockClear();
+  vi.mocked(editDraft).mockClear();
+  vi.mocked(rejectDraft).mockClear();
+  vi.mocked(stashDraft).mockClear();
   vi.mocked(reviseDraft).mockClear();
+  vi.mocked(reviseParagraph).mockClear();
   vi.mocked(getDraftVersion).mockClear();
 });
 
@@ -947,13 +953,75 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
     await user.type(await screen.findByLabelText('修订指令'), '补足林砚试探沈微霜的过程');
     await user.click(screen.getByRole('button', { name: '生成修订版' }));
+    await user.click(screen.getByRole('button', { name: '生成 Critic 报告' }));
 
-    await user.selectOptions(await screen.findByLabelText('草稿版本'), '1');
+    const versionSelect = await screen.findByLabelText('草稿版本');
+    await user.selectOptions(versionSelect, '1');
 
     expect(getDraftVersion).toHaveBeenCalledWith(11, 1);
     expect(await screen.findByText('第一段：林砚停在雨巷口。')).toBeInTheDocument();
     expect(screen.getByText('正在查看历史版本，切回最新版本后才能批准。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '生成大纲' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '基于大纲生成正文' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '生成 Critic 报告' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '生成角色弧线报告' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '暂存当前草稿' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '生成修订版' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '编辑正文' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '驳回' })).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: '重写本段' })[0]).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: '润色本段' })[0]).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: '重写相关段落' })[0]).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: '润色相关段落' })[0]).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: /角色：林砚/ })).toBeDisabled();
+    expect(screen.getByRole('checkbox', { name: /伏笔：裂纹玉佩/ })).toBeDisabled();
     expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeDisabled();
+
+    vi.mocked(generateOutline).mockClear();
+    vi.mocked(writeChapter).mockClear();
+    vi.mocked(generateCriticReport).mockClear();
+    vi.mocked(generateCharacterArcReport).mockClear();
+    vi.mocked(checkApprovalConsistency).mockClear();
+    vi.mocked(stashDraft).mockClear();
+    vi.mocked(reviseDraft).mockClear();
+    vi.mocked(reviseParagraph).mockClear();
+    await user.click(screen.getByRole('button', { name: '生成大纲' }));
+    await user.click(screen.getByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(screen.getByRole('button', { name: '生成 Critic 报告' }));
+    await user.click(screen.getByRole('button', { name: '生成角色弧线报告' }));
+    await user.click(screen.getByRole('button', { name: '暂存当前草稿' }));
+    await user.click(screen.getByRole('button', { name: '生成修订版' }));
+    await user.click(screen.getByRole('checkbox', { name: /角色：林砚/ }));
+    await user.click(screen.getAllByRole('button', { name: '重写相关段落' })[0]);
+
+    expect(generateOutline).not.toHaveBeenCalled();
+    expect(writeChapter).not.toHaveBeenCalled();
+    expect(generateCriticReport).not.toHaveBeenCalled();
+    expect(generateCharacterArcReport).not.toHaveBeenCalled();
+    expect(checkApprovalConsistency).not.toHaveBeenCalled();
+    expect(stashDraft).not.toHaveBeenCalled();
+    expect(reviseDraft).not.toHaveBeenCalled();
+    expect(reviseParagraph).not.toHaveBeenCalled();
+    expect(editDraft).not.toHaveBeenCalled();
+    expect(rejectDraft).not.toHaveBeenCalled();
+    expect(approveChapter).not.toHaveBeenCalled();
+
+    await user.selectOptions(versionSelect, '2');
+
+    await waitFor(() => expect(versionSelect).toHaveValue('2'));
+    expect(screen.getByRole('button', { name: '生成大纲' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '基于大纲生成正文' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '生成 Critic 报告' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '生成角色弧线报告' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '暂存当前草稿' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '生成修订版' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '编辑正文' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '驳回' })).toBeEnabled();
+    expect(screen.getByRole('checkbox', { name: /角色：林砚/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: '生成 Critic 报告' }));
+    expect(generateCriticReport).toHaveBeenCalledWith(11);
   });
 
   it('renders approval preview changes as selected checkboxes by default', async () => {

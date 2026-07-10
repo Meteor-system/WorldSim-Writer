@@ -399,7 +399,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function runOutliner() {
-    if (!chapter) return;
+    if (!chapter || (draft && !isViewingLatestDraft())) return;
     setWorking(true);
     setOperationHint('编剧室正在排布章节骨架…');
     setError('');
@@ -429,7 +429,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function runWriter() {
-    if (!chapter) return;
+    if (!chapter || (draft && !isViewingLatestDraft())) return;
     setWorking(true);
     setOperationHint('导演正在拆场景…');
     setError('');
@@ -460,7 +460,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function runCritic() {
-    if (!chapter || !draft) return;
+    if (!chapter || !draft || !isViewingLatestDraft()) return;
     setWorking(true);
     setOperationHint('评论席正在检查节奏与设定…');
     setError('');
@@ -482,7 +482,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function runCharacterArcReport() {
-    if (!chapter || !draft) return;
+    if (!chapter || !draft || !isViewingLatestDraft()) return;
     setWorking(true);
     setError('');
     try {
@@ -509,6 +509,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function toggleCharacterSelection(changeIndex: number) {
+    if (!isViewingLatestDraft()) return;
     const nextCharacterIndexes = toggleIndex(selectedCharacterChangeIndexes, changeIndex);
     setSelectedCharacterChangeIndexes(nextCharacterIndexes);
     try {
@@ -519,6 +520,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function toggleForeshadowSelection(changeIndex: number) {
+    if (!isViewingLatestDraft()) return;
     const nextForeshadowIndexes = toggleIndex(selectedForeshadowChangeIndexes, changeIndex);
     setSelectedForeshadowChangeIndexes(nextForeshadowIndexes);
     try {
@@ -529,7 +531,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function approveDraft() {
-    if (!draft) return;
+    if (!draft || !isViewingLatestDraft()) return;
     setWorking(true);
     setOperationHint('正在写入正史…');
     setError('');
@@ -602,7 +604,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function rejectDraft() {
-    if (!draft) return;
+    if (!draft || !isViewingLatestDraft()) return;
     const feedback = prompt('请输入驳回反馈（修改建议）：');
     if (!feedback || feedback.trim().length === 0) return;
     setWorking(true);
@@ -619,7 +621,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   function startEdit() {
-    if (!draft) return;
+    if (!draft || !isViewingLatestDraft()) return;
     setEditMode(true);
     setEditContent(draft.content);
   }
@@ -658,7 +660,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function saveStash() {
-    if (!draft) return;
+    if (!draft || !isViewingLatestDraft()) return;
     setWorking(true);
     setError('');
     try {
@@ -675,7 +677,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function reviseDraftParagraph(index: number, mode: 'rewrite' | 'polish') {
-    if (!draft) return;
+    if (!draft || !isViewingLatestDraft()) return;
     setWorking(true);
     setError('');
     try {
@@ -692,7 +694,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function runFullDraftRevision() {
-    if (!draft) return;
+    if (!draft || !isViewingLatestDraft()) return;
     const instruction = revisionInstruction.trim();
     if (instruction.length < 3) {
       setError('修订指令至少需要3个字符');
@@ -799,10 +801,10 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
             <textarea id="chapter-goal" className="paper-input min-h-28" value={goal} onChange={(event) => setGoal(event.target.value)} aria-label="章节目标" disabled={Boolean(chapter)} placeholder="输入本章要讲什么故事……或者点击「✨ 自动生成」让 AI 帮你写" />
             <div className="mt-4 flex flex-wrap gap-3">
               <button className="primary-button" disabled={working || Boolean(chapter)} onClick={createChapterSession}>{chapter ? '章节已创建' : '创建章节'}</button>
-              <button className="secondary-button" disabled={working || !chapter} onClick={runOutliner}>{operationHint === '编剧室正在排布章节骨架…' ? operationHint : '生成大纲'}</button>
-              <button className="secondary-button" disabled={working || !chapter || outlineBeats.length === 0} onClick={runWriter}>{operationHint === '导演正在拆场景…' ? operationHint : '基于大纲生成正文'}</button>
-              <button className="secondary-button" disabled={working || !draft} onClick={runCritic}>{operationHint === '评论席正在检查节奏与设定…' ? operationHint : '生成 Critic 报告'}</button>
-              <button className="secondary-button" disabled={working || !draft} onClick={runCharacterArcReport}>生成角色弧线报告</button>
+              <button className="secondary-button" disabled={working || !chapter || Boolean(draft && !isViewingLatestDraft())} onClick={runOutliner}>{operationHint === '编剧室正在排布章节骨架…' ? operationHint : '生成大纲'}</button>
+              <button className="secondary-button" disabled={working || !chapter || outlineBeats.length === 0 || Boolean(draft && !isViewingLatestDraft())} onClick={runWriter}>{operationHint === '导演正在拆场景…' ? operationHint : '基于大纲生成正文'}</button>
+              <button className="secondary-button" disabled={working || !draft || !isViewingLatestDraft()} onClick={runCritic}>{operationHint === '评论席正在检查节奏与设定…' ? operationHint : '生成 Critic 报告'}</button>
+              <button className="secondary-button" disabled={working || !draft || !isViewingLatestDraft()} onClick={runCharacterArcReport}>生成角色弧线报告</button>
             </div>
           </div>
 
@@ -1016,6 +1018,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                           type="checkbox"
                           className="mt-1 accent-amber-800"
                           checked={selectedCharacterChangeIndexes.includes(changeIndex)}
+                          disabled={!isViewingLatestDraft()}
                           onChange={() => void toggleCharacterSelection(changeIndex)}
                         />
                         <span>角色：{change.name} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</span>
@@ -1030,6 +1033,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                           type="checkbox"
                           className="mt-1 accent-amber-800"
                           checked={selectedForeshadowChangeIndexes.includes(changeIndex)}
+                          disabled={!isViewingLatestDraft()}
                           onChange={() => void toggleForeshadowSelection(changeIndex)}
                         />
                         <span>伏笔：{change.title} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</span>
@@ -1081,7 +1085,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           )}
 
           {critique && (
-            <CriticReportPanel report={critique} working={working} onReviseParagraph={reviseDraftParagraph} />
+            <CriticReportPanel report={critique} working={working || !isViewingLatestDraft()} onReviseParagraph={reviseDraftParagraph} />
           )}
 
           {characterArcReport && (
