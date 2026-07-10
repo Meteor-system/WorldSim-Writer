@@ -267,10 +267,21 @@ class ChapterPipelineResponse(BaseModel):
     model_config = {'from_attributes': True}
 
 
+class RecentApprovalResponse(BaseModel):
+    chapter_id: int
+    title: str
+    approved_version: int
+    world_version_before: int
+    world_version_after: int
+    character_change_count: int
+    foreshadow_change_count: int
+
+
 class ActiveChapterSessionResponse(BaseModel):
     chapter: ChapterPipelineResponse | None = None
     draft: DraftResponse | None = None
     draft_versions: list[int] = Field(default_factory=list)
+    recent_approval: RecentApprovalResponse | None = None
 
 
 class OutlineResponse(BaseModel):

@@ -131,6 +131,7 @@ function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionConte
 export function StudioPage({ world, launchContext, onBack, onApproved }: Props) {
   const resumedChapter = launchContext?.resumeSession?.chapter ?? null;
   const resumedDraft = launchContext?.resumeSession?.draft ?? null;
+  const recentApproval = launchContext?.recentApproval ?? null;
   const [localWorld, setLocalWorld] = useState(world);
   const [goal, setGoal] = useState(launchContext?.initialChapterGoal ?? resumedChapter?.chapter_goal ?? '');
   const [executionContext] = useState(launchContext?.executionContext ?? resumedChapter?.execution_context ?? undefined);
@@ -152,7 +153,15 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [consistencyValidated, setConsistencyValidated] = useState(false);
   const [critique, setCritique] = useState<CriticReportResponse | null>(null);
   const [characterArcReport, setCharacterArcReport] = useState<CharacterArcReportResponse | null>(null);
-  const [settlement, setSettlement] = useState<WorldSettlement | null>(null);
+  const [settlement, setSettlement] = useState<WorldSettlement | null>(recentApproval ? {
+    worldBefore: recentApproval.world_version_before,
+    worldAfter: recentApproval.world_version_after,
+    approvedChapterCount: world.approved_chapter_count,
+    characterChangeCount: recentApproval.character_change_count,
+    foreshadowChangeCount: recentApproval.foreshadow_change_count,
+    hasChapterApprovedEvent: true,
+    overview: world,
+  } : null);
   const [approvalCommitState, setApprovalCommitState] = useState<'idle' | 'unknown' | 'committed'>('idle');
   const [settlementSyncError, setSettlementSyncError] = useState('');
   const [latestDraftVersion, setLatestDraftVersion] = useState<number | null>(resumedDraft?.draft_version ?? null);
@@ -879,6 +888,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const approvalBlockedByConsistency = consistencySummary?.status === 'blocked';
   const approvalBlockedByReview = !approvalPreview || !approvalReadiness || Boolean(reviewPanelsError) || approvalPreview.version_conflict || approvalReadiness.status === 'blocked';
   const approvalResultLocked = approvalCommitState !== 'idle';
+  const settlementOnly = Boolean(recentApproval && settlement);
 
   return (
     <section className="mx-auto max-w-6xl">
@@ -889,22 +899,24 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
             <p className="chapter-kicker">Writing Desk</p>
             <h1 ref={titleRef} tabIndex={-1} className="mt-3 text-3xl font-black text-[#34210f]">创作台</h1>
           </div>
-          <div className="book-card p-5">
-            <h2 className="font-black text-[#3b2511]">创作流程</h2>
-            <ol className="mt-3 space-y-2 text-sm ink-muted">
-              <li className={chapter ? 'font-bold text-[#3b2511]' : ''}>1. 创建章节</li>
-              <li className={outlineBeats.length ? 'font-bold text-[#3b2511]' : ''}>2. Outliner 大纲</li>
-              <li className={draft ? 'font-bold text-[#3b2511]' : ''}>3. Writer 正文</li>
-              <li className={critique ? 'font-bold text-[#3b2511]' : ''}>4. Critic 审核</li>
-            </ol>
-          </div>
+          {!settlementOnly && (
+            <div className="book-card p-5">
+              <h2 className="font-black text-[#3b2511]">创作流程</h2>
+              <ol className="mt-3 space-y-2 text-sm ink-muted">
+                <li className={chapter ? 'font-bold text-[#3b2511]' : ''}>1. 创建章节</li>
+                <li className={outlineBeats.length ? 'font-bold text-[#3b2511]' : ''}>2. Outliner 大纲</li>
+                <li className={draft ? 'font-bold text-[#3b2511]' : ''}>3. Writer 正文</li>
+                <li className={critique ? 'font-bold text-[#3b2511]' : ''}>4. Critic 审核</li>
+              </ol>
+            </div>
+          )}
           <div className="book-card p-5">
             <h2 className="font-black text-[#3b2511]">当前上下文</h2>
             <p className="mt-3 ink-muted">世界进度：{localWorld.world_version}</p>
             <p className="mt-2 ink-muted">POV：{localWorld.characters[0]?.name ?? '未设置'}</p>
             <p className="mt-2 ink-muted">故事大纲进度：下一章第 {localWorld.approved_chapter_count + 1} 章</p>
           </div>
-          <ExecutionContextSummary context={chapter?.execution_context ?? executionContext} frozen={Boolean(chapter?.execution_context)} />
+          {!settlementOnly && <ExecutionContextSummary context={chapter?.execution_context ?? executionContext} frozen={Boolean(chapter?.execution_context)} />}
           <div className="book-card p-5">
             <h3 className="font-black text-[#3b2511]">紧迫伏笔</h3>
             <div className="mt-3 space-y-2">
@@ -913,6 +925,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           </div>
         </aside>
         <div className="space-y-5">
+          {!settlementOnly && (
           <div className="book-card p-5">
             <div className="mb-2 flex items-center justify-between">
               <label className="text-sm font-bold text-[#5e3b1c]" htmlFor="chapter-goal">章节目标</label>
@@ -934,6 +947,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
               <button className="secondary-button" disabled={working || approvalResultLocked || !draft || !isViewingLatestDraft()} onClick={runCharacterArcReport}>生成角色弧线报告</button>
             </div>
           </div>
+          )}
 
           {error && (
             <div className="paper-error flex flex-wrap items-center justify-between gap-3" role="alert">

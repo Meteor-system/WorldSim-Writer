@@ -1496,6 +1496,66 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(approveChapter).toHaveBeenCalledTimes(1);
   });
 
+  it('renders a recovered approval settlement as read-only without calling approval or review APIs', async () => {
+    render(
+      <StudioPage
+        world={approvedWorld}
+        launchContext={{
+          recentApproval: {
+            chapter_id: 11,
+            title: '第一章 雨巷密谈',
+            approved_version: 1,
+            world_version_before: 1,
+            world_version_after: 2,
+            character_change_count: 1,
+            foreshadow_change_count: 1,
+          },
+        }}
+        onBack={vi.fn()}
+        onApproved={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('世界推进结算')).toBeInTheDocument();
+    expect(screen.getByText('世界进度第 1 版 → 第 2 版')).toBeInTheDocument();
+    expect(screen.queryByLabelText('章节目标')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建章节' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '写入正史并更新世界' })).not.toBeInTheDocument();
+    expect(approveChapter).not.toHaveBeenCalled();
+    expect(getApprovalPreview).not.toHaveBeenCalled();
+    expect(getApprovalReadiness).not.toHaveBeenCalled();
+    expect(apiRequest).not.toHaveBeenCalled();
+  });
+
+  it('opens a fresh chapter workspace only after continuing from a recovered settlement', async () => {
+    const user = userEvent.setup();
+    render(
+      <StudioPage
+        world={approvedWorld}
+        launchContext={{
+          recentApproval: {
+            chapter_id: 11,
+            title: '第一章 雨巷密谈',
+            approved_version: 1,
+            world_version_before: 1,
+            world_version_after: 2,
+            character_change_count: 1,
+            foreshadow_change_count: 1,
+          },
+        }}
+        onBack={vi.fn()}
+        onApproved={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: '继续下一章' }));
+
+    expect(screen.queryByText('世界推进结算')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('章节目标')).toHaveValue('');
+    expect(screen.getByRole('button', { name: '创建章节' })).toBeEnabled();
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
   it('shows world progression settlement after approval before returning to overview', async () => {
     const user = userEvent.setup();
     const onApproved = vi.fn();

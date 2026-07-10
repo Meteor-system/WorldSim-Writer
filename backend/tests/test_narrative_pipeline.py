@@ -173,7 +173,7 @@ def test_active_chapter_session_restores_latest_unapproved_progress_without_side
     reviewing_response = client.get(f'/worlds/{world_id}/chapters/active', headers=auth(token))
 
     assert empty_response.status_code == 200
-    assert empty_response.json() == {'chapter': None, 'draft': None, 'draft_versions': []}
+    assert empty_response.json() == {'chapter': None, 'draft': None, 'draft_versions': [], 'recent_approval': None}
     assert forbidden_response.status_code == 403
     assert forbidden_response.json()['detail'] == 'FORBIDDEN'
     assert drafting_response.status_code == 200
@@ -194,6 +194,44 @@ def test_active_chapter_session_restores_latest_unapproved_progress_without_side
     world = db_session.get(World, world_id)
     assert world.world_version == 1
     assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id)) == before_events
+
+
+def test_active_chapter_session_returns_recent_approval_without_side_effects_and_prefers_new_work(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: PipelineLLMClient())
+    client.post(f'/chapters/{chapter_id}/outline', headers=auth(token), json={})
+    client.post(f'/chapters/{chapter_id}/write', headers=auth(token), json={})
+    client.post(f'/chapters/{chapter_id}/approve', headers=auth(token))
+    before_event_count = db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id))
+
+    approval_response = client.get(f'/worlds/{world_id}/chapters/active', headers=auth(token))
+
+    assert approval_response.status_code == 200
+    assert approval_response.json() == {
+        'chapter': None,
+        'draft': None,
+        'draft_versions': [],
+        'recent_approval': {
+            'chapter_id': chapter_id,
+            'title': '第一章 暗井回声',
+            'approved_version': 1,
+            'world_version_before': 1,
+            'world_version_after': 2,
+            'character_change_count': 1,
+            'foreshadow_change_count': 1,
+        },
+    }
+    db_session.expire_all()
+    assert db_session.get(World, world_id).world_version == 2
+    assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id)) == before_event_count
+
+    new_chapter_id = create_chapter(client, token, world_id, '继续追查暗井密道').json()['id']
+    active_response = client.get(f'/worlds/{world_id}/chapters/active', headers=auth(token))
+
+    assert active_response.status_code == 200
+    assert active_response.json()['chapter']['id'] == new_chapter_id
+    assert active_response.json()['recent_approval'] is None
 
 
 def test_outline_generates_and_persists_beat_cards(client, db_session, monkeypatch):

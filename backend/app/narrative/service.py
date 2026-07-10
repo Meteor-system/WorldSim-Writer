@@ -550,20 +550,51 @@ def get_active_chapter_session(db: Session, user: User, world_id: int) -> dict:
         .where(Chapter.status != 'approved')
         .order_by(Chapter.id.desc())
     )
-    if chapter is None:
-        return {'chapter': None, 'draft': None, 'draft_versions': []}
-    draft = _latest_draft(db, chapter)
-    draft_versions = list(
-        db.scalars(
-            select(ChapterDraft.draft_version)
-            .where(ChapterDraft.chapter_id == chapter.id)
-            .order_by(ChapterDraft.draft_version)
+    if chapter is not None:
+        draft = _latest_draft(db, chapter)
+        draft_versions = list(
+            db.scalars(
+                select(ChapterDraft.draft_version)
+                .where(ChapterDraft.chapter_id == chapter.id)
+                .order_by(ChapterDraft.draft_version)
+            )
         )
+        return {
+            'chapter': chapter,
+            'draft': _draft_payload(chapter, draft) if draft is not None else None,
+            'draft_versions': draft_versions,
+            'recent_approval': None,
+        }
+
+    approval_event = db.scalar(
+        select(EventLog)
+        .where(EventLog.world_id == world.id)
+        .where(EventLog.event_type == 'chapter_approved')
+        .order_by(EventLog.id.desc())
     )
+    if approval_event is None:
+        return {'chapter': None, 'draft': None, 'draft_versions': [], 'recent_approval': None}
+    payload = approval_event.payload or {}
+    approved_chapter = db.get(Chapter, approval_event.chapter_id) if approval_event.chapter_id is not None else None
+    chapter_id = approval_event.chapter_id or payload.get('chapter_id')
+    title = payload.get('chapter_title') or (approved_chapter.title if approved_chapter is not None else None)
+    approved_version = payload.get('approved_version') or (approved_chapter.approved_version if approved_chapter is not None else None)
+    if chapter_id is None or title is None or approved_version is None:
+        return {'chapter': None, 'draft': None, 'draft_versions': [], 'recent_approval': None}
+    applied_changes = payload.get('applied_changes') or {}
     return {
-        'chapter': chapter,
-        'draft': _draft_payload(chapter, draft) if draft is not None else None,
-        'draft_versions': draft_versions,
+        'chapter': None,
+        'draft': None,
+        'draft_versions': [],
+        'recent_approval': {
+            'chapter_id': chapter_id,
+            'title': title,
+            'approved_version': approved_version,
+            'world_version_before': approval_event.world_version_before,
+            'world_version_after': approval_event.world_version_after,
+            'character_change_count': len(applied_changes.get('characters') or []),
+            'foreshadow_change_count': len(applied_changes.get('foreshadows') or []),
+        },
     }
 
 

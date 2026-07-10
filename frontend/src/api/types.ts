@@ -614,6 +614,7 @@ export type StudioLaunchContext = {
   executionContext?: ChapterExecutionContext;
   autoDraftFirstChapter?: boolean;
   resumeSession?: ActiveChapterSessionResponse;
+  recentApproval?: RecentApproval;
 };
 
 export type ChapterPipelineResponse = {
@@ -632,10 +633,21 @@ export type ChapterPipelineResponse = {
   execution_context: ChapterExecutionContext | null;
 };
 
+export type RecentApproval = {
+  chapter_id: number;
+  title: string;
+  approved_version: number;
+  world_version_before: number;
+  world_version_after: number;
+  character_change_count: number;
+  foreshadow_change_count: number;
+};
+
 export type ActiveChapterSessionResponse = {
   chapter: ChapterPipelineResponse | null;
   draft: DraftResponse | null;
   draft_versions: number[];
+  recent_approval?: RecentApproval | null;
 };
 
 export type OutlineResponse = {

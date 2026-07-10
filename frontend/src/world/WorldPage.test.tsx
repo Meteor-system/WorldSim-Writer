@@ -782,6 +782,36 @@ describe('WorldPage world creation', () => {
     });
   });
 
+  it('restores the latest approval settlement after reopening without exposing another approval action', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    const recentApproval = {
+      chapter_id: 11,
+      title: '第一章 雨巷密谈',
+      approved_version: 1,
+      world_version_before: 1,
+      world_version_after: 2,
+      character_change_count: 1,
+      foreshadow_change_count: 1,
+    };
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockResolvedValueOnce([newWorld]).mockResolvedValueOnce(newWorld);
+    vi.mocked(getActiveChapterSession).mockResolvedValueOnce({
+      chapter: null,
+      draft: null,
+      draft_versions: [],
+      recent_approval: recentApproval,
+    });
+
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    expect(await screen.findByLabelText('最近世界推进结算入口')).toHaveTextContent('本章已写入正史并推进到第 2 版');
+    expect(screen.queryByLabelText('进行中章节入口')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '查看最近世界推进结算' }));
+
+    expect(onEnterStudio).toHaveBeenCalledWith(newWorld, { recentApproval });
+  });
+
   it('does not open a world or new chapter entry when active-session recovery fails', async () => {
     vi.mocked(apiRequest).mockReset();
     vi.mocked(apiRequest).mockResolvedValueOnce([newWorld]).mockResolvedValueOnce(newWorld);

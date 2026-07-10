@@ -740,7 +740,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     ]);
     resetNarrativeData();
     setWorld(overview);
-    setActiveChapterSession(activeSession?.chapter ? activeSession : null);
+    setActiveChapterSession(activeSession?.chapter || activeSession?.recent_approval ? activeSession : null);
     setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
     setShowCreationForm(false);
     setSelectedExecutionContext(null);
@@ -974,6 +974,11 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     });
   }
 
+  function viewRecentApprovalSettlement() {
+    if (!world || !activeChapterSession?.recent_approval) return;
+    onEnterStudio(world, { recentApproval: activeChapterSession.recent_approval });
+  }
+
   useEffect(() => {
     void loadWorld();
   }, []);
@@ -1134,6 +1139,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   <h2 className="mt-2 text-2xl font-black text-[#34210f]">继续{activeChapterSession.draft ? '审阅' : '生成'}「{activeChapterSession.chapter.title}」</h2>
                   <p className="manuscript mt-2 text-sm text-[#5e3b1c]">已恢复到 {activeChapterSession.chapter.status} 阶段；不会创建重复章节，也不会自动写入正史或推进世界进度。</p>
                   <button className="primary-button mt-4" type="button" onClick={resumeActiveChapter}>继续进入 Studio</button>
+                </article>
+              )}
+              {activeChapterSession?.recent_approval && !activeChapterSession.chapter && (
+                <article className="mt-6 rounded-3xl border-2 border-emerald-700/20 bg-emerald-50/80 p-5 shadow-sm" aria-label="最近世界推进结算入口">
+                  <p className="chapter-kicker">最近正史结算</p>
+                  <h2 className="mt-2 text-2xl font-black text-[#203b20]">查看「{activeChapterSession.recent_approval.title}」的世界推进结算</h2>
+                  <p className="manuscript mt-2 text-sm text-emerald-950">本章已写入正史并推进到第 {activeChapterSession.recent_approval.world_version_after} 版。这里只恢复只读结算，不会再次批准或写入任何世界变化。</p>
+                  <button className="primary-button mt-4" type="button" onClick={viewRecentApprovalSettlement}>查看最近世界推进结算</button>
                 </article>
               )}
               {worldCreationDraftGoal && !activeChapterSession?.chapter && !isArchivedWorld && (
