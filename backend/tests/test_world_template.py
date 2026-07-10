@@ -346,6 +346,12 @@ def test_create_custom_world_rejects_invalid_relation_intensity(client):
     response = client.post('/worlds', headers=auth(token), json=payload)
 
     assert response.status_code == 422
+    assert any(
+        error['type'] == 'less_than_equal'
+        and error['loc'] == ['body', 'starter_assets', 'relations', 0, 'intensity']
+        and error['msg'].endswith('less than or equal to 5')
+        for error in response.json()['detail']
+    )
     assert client.get('/worlds', headers=auth(token)).json() == []
 
 
@@ -369,6 +375,12 @@ def test_create_custom_world_rejects_invalid_foreshadow_urgency(client):
     response = client.post('/worlds', headers=auth(token), json=payload)
 
     assert response.status_code == 422
+    assert any(
+        error['type'] == 'less_than_equal'
+        and error['loc'] == ['body', 'starter_assets', 'foreshadows', 0, 'urgency_level']
+        and error['msg'].endswith('less than or equal to 5')
+        for error in response.json()['detail']
+    )
     assert client.get('/worlds', headers=auth(token)).json() == []
 
 
