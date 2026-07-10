@@ -139,6 +139,13 @@ function materialReferencesFromImportBatches(batches: ImportBatchWithAssetsRespo
   })));
 }
 
+function worldLoadFailureMessage(error: unknown): string {
+  if (error instanceof Error && error.message === 'MULTIPLE_ACTIVE_CHAPTERS') {
+    return '检测到多个未完成章节，已停止自动恢复和新建章节。请先由管理员核对并保留正确的 Studio 草稿。';
+  }
+  return error instanceof Error ? error.message : '加载世界失败';
+}
+
 function dashboardActions(world: WorldOverview, isArchivedWorld: boolean, hasActiveChapter: boolean): Array<{ label: string; detail: string; primary?: boolean }> {
   const urgentForeshadow = openForeshadows(world)[0];
   const needsFirstChapterOnboarding = !isArchivedWorld && world.approved_chapter_count === 0 && world.story_arc.length === 0;
@@ -768,7 +775,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
         setShowCreationForm(false);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载世界失败');
+      setError(worldLoadFailureMessage(err));
     } finally {
       setLoading(false);
     }

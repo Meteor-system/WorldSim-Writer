@@ -912,6 +912,19 @@ describe('WorldPage world creation', () => {
     expect(onEnterStudio).toHaveBeenCalledWith(newWorld, { recentApproval });
   });
 
+  it('explains multiple unfinished chapters and keeps all new chapter entries closed', async () => {
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockResolvedValueOnce([newWorld]).mockResolvedValueOnce(newWorld);
+    vi.mocked(getActiveChapterSession).mockRejectedValueOnce(new Error('MULTIPLE_ACTIVE_CHAPTERS'));
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('检测到多个未完成章节，已停止自动恢复和新建章节');
+    expect(screen.queryByText('世界正史档案')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '继续下一章' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '生成第一章草稿并进入 Studio' })).not.toBeInTheDocument();
+  });
+
   it('does not open a world or new chapter entry when active-session recovery fails', async () => {
     vi.mocked(apiRequest).mockReset();
     vi.mocked(apiRequest).mockResolvedValueOnce([newWorld]).mockResolvedValueOnce(newWorld);

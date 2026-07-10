@@ -544,12 +544,18 @@ def validate_generation_ids(generation: ChapterGeneration, characters: list[Char
 
 def get_active_chapter_session(db: Session, user: User, world_id: int) -> dict:
     world = require_owned_world(db, user, world_id)
-    chapter = db.scalar(
-        select(Chapter)
-        .where(Chapter.world_id == world.id)
-        .where(Chapter.status != 'approved')
-        .order_by(Chapter.id.desc())
+    active_chapters = list(
+        db.scalars(
+            select(Chapter)
+            .where(Chapter.world_id == world.id)
+            .where(Chapter.status != 'approved')
+            .order_by(Chapter.id.desc())
+            .limit(2)
+        )
     )
+    if len(active_chapters) > 1:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='MULTIPLE_ACTIVE_CHAPTERS')
+    chapter = active_chapters[0] if active_chapters else None
     if chapter is not None:
         draft = _latest_draft(db, chapter)
         draft_versions = list(
@@ -609,6 +615,19 @@ def _ensure_no_active_chapter(db: Session, world: World) -> None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ACTIVE_CHAPTER_EXISTS')
 
 
+def _locked_world_query(world_id: int):
+    return select(World).where(World.id == world_id).with_for_update().execution_options(populate_existing=True)
+
+
+def _require_locked_owned_world(db: Session, user: User, world_id: int) -> World:
+    world = db.scalar(_locked_world_query(world_id))
+    if world is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    if world.owner_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail='FORBIDDEN')
+    return world
+
+
 def create_chapter_session(
     db: Session,
     user: User,
@@ -617,7 +636,7 @@ def create_chapter_session(
     title: str | None = None,
     execution_context=None,
 ) -> Chapter:
-    world = require_owned_world(db, user, world_id)
+    world = _require_locked_owned_world(db, user, world_id)
     _ensure_world_is_active(world)
     _ensure_no_active_chapter(db, world)
     characters, _ = _load_world_context(db, world)
@@ -693,6 +712,7 @@ def create_chapter_draft(
     world = require_owned_world(db, user, world_id)
     _ensure_world_is_active(world)
     _ensure_no_active_chapter(db, world)
+    source_world_version = world.world_version
     characters, foreshadows = _load_world_context(db, world)
     context = normalize_execution_context(db, world, chapter_goal, execution_context)
     client = _model_client(llm_client)
@@ -703,6 +723,16 @@ def create_chapter_draft(
     except (TimeoutError, ValueError, RuntimeError) as exc:
         raise _map_model_error(exc) from exc
     validate_generation_ids(generation, characters, foreshadows)
+
+    db.expire_all()
+    world = _require_locked_owned_world(db, user, world_id)
+    _ensure_world_is_active(world)
+    if world.world_version != source_world_version:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
+    _ensure_no_active_chapter(db, world)
+    characters, foreshadows = _load_world_context(db, world)
+    validate_generation_ids(generation, characters, foreshadows)
+    context = normalize_execution_context(db, world, chapter_goal, execution_context)
 
     chapter = Chapter(
         world_id=world.id,

@@ -1,4 +1,5 @@
 from sqlalchemy import func, inspect, select
+from sqlalchemy.dialects import postgresql
 
 from app.event.models import EventLog
 from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
@@ -191,6 +192,101 @@ def test_create_chapter_freezes_execution_context_without_mutating_world(client,
     assert chapter.execution_context['goal'] == context['goal']
     assert world.world_version == 1
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
+
+
+def test_active_chapter_creation_lock_compiles_to_postgresql_for_update():
+    sql = str(
+        narrative_service._locked_world_query(7).compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={'literal_binds': True},
+        )
+    )
+
+    assert 'WHERE worlds.id = 7' in sql
+    assert 'FOR UPDATE' in sql
+    assert narrative_service._locked_world_query(7).get_execution_options()['populate_existing'] is True
+
+
+def test_generated_draft_rechecks_world_version_after_model_generation(client, db_session):
+    token, world_id = register_and_create_world(client, 'draft-lock-version-recheck@example.com')
+    headers = {'Authorization': f'Bearer {token}'}
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id))
+
+    class AdvancingWorldLLM(CapturingLLMClient):
+        def generate_chapter(self, messages):
+            generation = super().generate_chapter(messages)
+            world = db_session.get(World, world_id)
+            world.world_version += 1
+            db_session.commit()
+            return generation
+
+    response = narrative_service.create_chapter_draft
+    try:
+        response(
+            db_session,
+            db_session.get(World, world_id).owner,
+            world_id,
+            '模型生成期间世界被推进',
+            llm_client=AdvancingWorldLLM(),
+        )
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 409
+        assert getattr(error, 'detail', None) == 'WORLD_VERSION_MISMATCH'
+    else:
+        raise AssertionError('expected WORLD_VERSION_MISMATCH')
+
+    db_session.expire_all()
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == 0
+    assert db_session.scalar(
+        select(func.count()).select_from(ChapterDraft).join(Chapter).where(Chapter.world_id == world_id)
+    ) == 0
+    assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id)) == before_events
+    assert db_session.get(World, world_id).world_version == 2
+
+
+def test_active_chapter_recovery_rejects_multiple_unapproved_chapters_without_side_effects(client, db_session):
+    token, world_id = register_and_create_world(client, 'multiple-active-chapters@example.com')
+    headers = {'Authorization': f'Bearer {token}'}
+    first = client.post(
+        f'/worlds/{world_id}/chapters',
+        json={'chapter_goal': '第一个历史草稿', 'title': '第一个历史草稿'},
+        headers=headers,
+    )
+    assert first.status_code == 200
+    db_session.add(
+        Chapter(
+            world_id=world_id,
+            title='第二个历史草稿',
+            status='reviewing',
+            draft_version=1,
+            base_world_version=1,
+            chapter_goal='第二个历史草稿',
+            outline_beats=[],
+            outline_context={},
+            critique_report={},
+            character_arc_report={},
+            execution_context={},
+        )
+    )
+    db_session.commit()
+    before_chapters = db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id))
+    before_drafts = db_session.scalar(
+        select(func.count()).select_from(ChapterDraft).join(Chapter).where(Chapter.world_id == world_id)
+    )
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id))
+    before_world_version = db_session.get(World, world_id).world_version
+
+    response = client.get(f'/worlds/{world_id}/chapters/active', headers=headers)
+
+    assert response.status_code == 409
+    assert response.json()['detail'] == 'MULTIPLE_ACTIVE_CHAPTERS'
+    db_session.expire_all()
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
+    assert db_session.scalar(
+        select(func.count()).select_from(ChapterDraft).join(Chapter).where(Chapter.world_id == world_id)
+    ) == before_drafts
+    assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id)) == before_events
+    assert db_session.get(World, world_id).world_version == before_world_version
 
 
 def test_active_chapter_guard_blocks_duplicate_create_paths_without_side_effects(client, db_session, monkeypatch):
