@@ -11,7 +11,7 @@ conda activate worldsim
 cd backend
 cp .env.example .env
 pip install -e '.[dev]'
-alembic upgrade head
+python scripts/run_migrations.py
 uvicorn app.main:app --reload
 ```
 
@@ -24,6 +24,12 @@ npm run dev
 ```
 
 Set `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` in `backend/.env` before generating a chapter draft. For fast local smoke E2E, start the backend with `LLM_MOCK=true` so chapter generation is deterministic and does not call a real model.
+
+## Release migrations
+
+Run `python scripts/run_migrations.py` once as a dedicated, serialized pre-deploy job before starting or rolling API workers. The job runs `alembic upgrade head`, then independently verifies that the database heads match the repository heads. It exits nonzero with a stable error code when upgrade or verification fails and does not print the database URL or underlying exception details.
+
+Do not run migrations from FastAPI startup or from every API worker. The release platform must allow only one migration job at a time; API readiness remains the traffic gate until the schema is current.
 
 ## Verification
 
