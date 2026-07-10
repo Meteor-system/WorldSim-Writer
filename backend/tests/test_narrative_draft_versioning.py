@@ -117,6 +117,45 @@ def test_manual_edit_creates_new_draft_version_without_mutating_world(client, db
     assert drafts[1].content == edited_content
 
 
+def test_active_session_restores_complete_draft_version_history_without_mutating_world(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    headers = {'Authorization': f'Bearer {token}'}
+    before_event_count = db_session.query(EventLog).filter_by(world_id=world_id).count()
+
+    edited_content = '第一段：林砚停在雨巷口，玉佩发烫。\n\n第二段：沈微霜递来湿信。\n\n第三段：钟声响起。'
+    edit_response = client.put(
+        f"/chapters/{draft['chapter_id']}/draft",
+        json={'content': edited_content, 'change_summary': '形成第二版'},
+        headers=headers,
+    )
+    assert edit_response.status_code == 200
+    stash_response = client.post(
+        f"/chapters/{draft['chapter_id']}/draft/stash",
+        json={'note': '形成第三版快照'},
+        headers=headers,
+    )
+    assert stash_response.status_code == 200
+
+    response = client.get(f'/worlds/{world_id}/chapters/active', headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['chapter']['id'] == draft['chapter_id']
+    assert payload['chapter']['draft_version'] == 3
+    assert payload['draft']['draft_version'] == 3
+    assert payload['draft']['content'] == edited_content
+    assert payload['draft_versions'] == [1, 2, 3]
+
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    assert world.world_version == 1
+    assert chapter.status == 'reviewing'
+    assert chapter.approved_version is None
+    assert db_session.query(EventLog).filter_by(world_id=world_id).count() == before_event_count
+
+
 def test_stash_creates_snapshot_version_with_same_content(client, db_session, monkeypatch):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)

@@ -635,6 +635,7 @@ export type ChapterPipelineResponse = {
 export type ActiveChapterSessionResponse = {
   chapter: ChapterPipelineResponse | null;
   draft: DraftResponse | null;
+  draft_versions: number[];
 };
 
 export type OutlineResponse = {

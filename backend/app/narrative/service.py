@@ -551,11 +551,19 @@ def get_active_chapter_session(db: Session, user: User, world_id: int) -> dict:
         .order_by(Chapter.id.desc())
     )
     if chapter is None:
-        return {'chapter': None, 'draft': None}
+        return {'chapter': None, 'draft': None, 'draft_versions': []}
     draft = _latest_draft(db, chapter)
+    draft_versions = list(
+        db.scalars(
+            select(ChapterDraft.draft_version)
+            .where(ChapterDraft.chapter_id == chapter.id)
+            .order_by(ChapterDraft.draft_version)
+        )
+    )
     return {
         'chapter': chapter,
         'draft': _draft_payload(chapter, draft) if draft is not None else None,
+        'draft_versions': draft_versions,
     }
 
 

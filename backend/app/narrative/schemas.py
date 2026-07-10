@@ -270,6 +270,7 @@ class ChapterPipelineResponse(BaseModel):
 class ActiveChapterSessionResponse(BaseModel):
     chapter: ChapterPipelineResponse | None = None
     draft: DraftResponse | None = None
+    draft_versions: list[int] = Field(default_factory=list)
 
 
 class OutlineResponse(BaseModel):

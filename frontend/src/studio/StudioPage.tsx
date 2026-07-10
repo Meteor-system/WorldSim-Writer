@@ -137,7 +137,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [outlineBeats, setOutlineBeats] = useState<BeatCard[]>(resumedChapter?.outline_beats ?? []);
   const [outlineContext, setOutlineContext] = useState<Record<string, unknown>>(resumedChapter?.outline_context ?? {});
   const [draft, setDraft] = useState<DraftResponse | null>(resumedDraft);
-  const [draftVersions, setDraftVersions] = useState<number[]>(resumedDraft ? [resumedDraft.draft_version] : []);
+  const [draftVersions, setDraftVersions] = useState<number[]>(launchContext?.resumeSession?.draft_versions ?? (resumedDraft ? [resumedDraft.draft_version] : []));
   const [draftDiff, setDraftDiff] = useState<DraftDiffResponse | null>(null);
   const [approvalPreview, setApprovalPreview] = useState<ApprovalPreviewResponse | null>(null);
   const [selectedCharacterChangeIndexes, setSelectedCharacterChangeIndexes] = useState<number[]>([]);
@@ -630,7 +630,13 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function saveEdit() {
-    if (!draft || editContent.length < 10) {
+    if (!draft || !isViewingLatestDraft()) {
+      setError('历史版本仅供查看，请切回最新版本后再编辑。');
+      setEditMode(false);
+      setEditContent('');
+      return;
+    }
+    if (editContent.length < 10) {
       setError('内容至少需要10个字符');
       return;
     }
@@ -712,6 +718,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     if (!draft) return;
     const selected = Number(value);
     if (!Number.isFinite(selected) || selected === resolveDraftVersion(draft)) return;
+    setEditMode(false);
+    setEditContent('');
     setWorking(true);
     setError('');
     try {
@@ -894,7 +902,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                 <div className="mt-4 flex flex-wrap items-end gap-3">
                   <label className="block">
                     <span className="text-sm font-bold text-[#5e3b1c]">草稿版本</span>
-                    <select className="paper-input mt-1" aria-label="草稿版本" value={resolveDraftVersion(draft)} onChange={(event) => void switchDraftVersion(event.target.value)}>
+                    <select className="paper-input mt-1" aria-label="草稿版本" value={resolveDraftVersion(draft)} disabled={working || editMode} onChange={(event) => void switchDraftVersion(event.target.value)}>
                       {draftVersions.map((version) => <option key={`draft-version-${version}`} value={version}>v{version}</option>)}
                     </select>
                   </label>
@@ -934,7 +942,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                 <div className="space-y-3">
                   <textarea className="paper-input min-h-64" value={editContent} onChange={(event) => setEditContent(event.target.value)} aria-label="编辑草稿内容" />
                   <div className="flex gap-3">
-                    <button className="primary-button" disabled={working} onClick={saveEdit}>保存修改</button>
+                    <button className="primary-button" disabled={working || !isViewingLatestDraft()} onClick={saveEdit}>保存修改</button>
                     <button className="ghost-button" disabled={working} onClick={cancelEdit}>取消</button>
                   </div>
                 </div>

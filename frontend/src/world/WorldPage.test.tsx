@@ -161,7 +161,7 @@ beforeEach(() => {
   vi.mocked(exportWorldArchiveMarkdown).mockReset();
   vi.mocked(generateStoryArc).mockReset();
   vi.mocked(getActiveChapterSession).mockReset();
-  vi.mocked(getActiveChapterSession).mockResolvedValue({ chapter: null, draft: null });
+  vi.mocked(getActiveChapterSession).mockResolvedValue({ chapter: null, draft: null, draft_versions: [] });
   vi.mocked(getChapterHistory).mockReset();
   vi.mocked(getChapterHistoryDetail).mockReset();
   vi.mocked(getNextChapterPrep).mockReset();
@@ -762,6 +762,7 @@ describe('WorldPage world creation', () => {
         execution_context: null,
       },
       draft: null,
+      draft_versions: [],
     };
     vi.mocked(apiRequest).mockReset();
     vi.mocked(apiRequest).mockResolvedValueOnce([newWorld]).mockResolvedValueOnce(newWorld);

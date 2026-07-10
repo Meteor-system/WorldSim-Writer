@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalPreview, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
+import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, editDraft, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalPreview, getApprovalReadiness, getDraftVersion, reviseDraft, writeChapter } from '../api/client';
 import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -95,6 +95,7 @@ vi.mock('../api/client', () => ({
     status: 'outlined',
   })),
   writeChapter: vi.fn(async () => draftResponse),
+  editDraft: vi.fn(async () => draftResponse),
   critiqueChapter: vi.fn(),
   generateCriticReport: vi.fn(async () => ({
     chapter_id: 11,
@@ -348,6 +349,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
               execution_context: executionContext,
             },
             draft: null,
+            draft_versions: [],
           },
         }}
         onBack={vi.fn()}
@@ -362,7 +364,17 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(approveChapter).not.toHaveBeenCalled();
   });
 
-  it('restores an existing reviewing draft without regenerating or approving it', async () => {
+  it('restores complete draft version history without regenerating or approving it', async () => {
+    const user = userEvent.setup();
+    const resumedDraft = {
+      ...draftResponse,
+      draft_id: 103,
+      draft_version: 3,
+      content: '第三版正文：林砚在雨巷口重新核对湿信。',
+      change_type: 'stash',
+      change_summary: '第三版快照',
+      parent_draft_version: 2,
+    };
     render(
       <StudioPage
         world={world}
@@ -374,7 +386,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
               world_id: 7,
               title: draftResponse.title,
               status: 'reviewing',
-              draft_version: 1,
+              draft_version: 3,
               approved_version: null,
               base_world_version: 1,
               approved_content: null,
@@ -384,7 +396,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
               critique_report: {},
               execution_context: executionContext,
             },
-            draft: draftResponse,
+            draft: resumedDraft,
+            draft_versions: [1, 2, 3],
           },
         }}
         onBack={vi.fn()}
@@ -395,9 +408,30 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByText('Writer Draft')).toBeInTheDocument();
     await waitFor(() => expect(getApprovalPreview).toHaveBeenCalledWith(11));
     expect(getApprovalReadiness).toHaveBeenCalledWith(11);
+    const versionSelect = screen.getByLabelText('草稿版本');
+    expect(versionSelect).toHaveValue('3');
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['v1', 'v2', 'v3']);
+
+    await user.click(screen.getByRole('button', { name: '编辑正文' }));
+    expect(versionSelect).toBeDisabled();
+    expect(screen.getByRole('button', { name: '保存修改' })).toBeEnabled();
+    await user.selectOptions(versionSelect, '1');
+    expect(versionSelect).toHaveValue('3');
+    expect(getDraftVersion).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '取消' }));
+    await user.selectOptions(versionSelect, '1');
+
+    await waitFor(() => expect(getDraftVersion).toHaveBeenCalledWith(11, 1));
+    expect(versionSelect).toHaveValue('1');
+    expect(screen.getByText('第一段：林砚停在雨巷口。')).toBeInTheDocument();
+    expect(screen.queryByLabelText('编辑草稿内容')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '保存修改' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '编辑正文' })).toBeDisabled();
     expect(createChapter).not.toHaveBeenCalled();
     expect(generateOutline).not.toHaveBeenCalled();
     expect(writeChapter).not.toHaveBeenCalled();
+    expect(editDraft).not.toHaveBeenCalled();
     expect(approveChapter).not.toHaveBeenCalled();
   });
 

@@ -173,19 +173,22 @@ def test_active_chapter_session_restores_latest_unapproved_progress_without_side
     reviewing_response = client.get(f'/worlds/{world_id}/chapters/active', headers=auth(token))
 
     assert empty_response.status_code == 200
-    assert empty_response.json() == {'chapter': None, 'draft': None}
+    assert empty_response.json() == {'chapter': None, 'draft': None, 'draft_versions': []}
     assert forbidden_response.status_code == 403
     assert forbidden_response.json()['detail'] == 'FORBIDDEN'
     assert drafting_response.status_code == 200
     assert drafting_response.json()['chapter']['id'] == chapter_id
     assert drafting_response.json()['chapter']['status'] == 'drafting'
     assert drafting_response.json()['draft'] is None
+    assert drafting_response.json()['draft_versions'] == []
     assert outlined_response.json()['chapter']['status'] == 'outlined'
     assert outlined_response.json()['chapter']['outline_beats'][0]['beat_id'] == 'beat-1'
     assert outlined_response.json()['draft'] is None
+    assert outlined_response.json()['draft_versions'] == []
     assert reviewing_response.json()['chapter']['status'] == 'reviewing'
     assert reviewing_response.json()['draft']['chapter_id'] == chapter_id
     assert reviewing_response.json()['draft']['content'].startswith('林砚在暗井旁')
+    assert reviewing_response.json()['draft_versions'] == [1]
 
     db_session.expire_all()
     world = db_session.get(World, world_id)
