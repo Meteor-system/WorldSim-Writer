@@ -662,6 +662,40 @@ def _revalidate_outline_after_model(
         raise
 
 
+def _revalidate_write_after_model(
+    db: Session,
+    user: User,
+    world_id: int,
+    chapter_id: int,
+    source_world_version: int,
+    source_chapter_status: str,
+    source_draft_version: int,
+    source_draft_id: int | None,
+) -> tuple[World, Chapter, ChapterDraft | None]:
+    db.expire_all()
+    try:
+        world = _require_locked_owned_world(db, user, world_id)
+        _ensure_world_is_active(world)
+        chapter = db.scalar(_locked_chapter_query(chapter_id))
+        if chapter is None or chapter.world_id != world.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+        if chapter.status == 'approved':
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
+        if world.world_version != source_world_version:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
+        if chapter.status != source_chapter_status:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='CHAPTER_STATUS_MISMATCH')
+        if chapter.draft_version != source_draft_version:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_VERSION_MISMATCH')
+        draft = _latest_draft(db, chapter)
+        if (draft.id if draft is not None else None) != source_draft_id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_VERSION_MISMATCH')
+        return world, chapter, draft
+    except Exception:
+        db.rollback()
+        raise
+
+
 def _revalidate_draft_after_model(
     db: Session,
     user: User,
@@ -860,10 +894,14 @@ def write_chapter_from_outline(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
     world = _world_for_chapter(db, chapter)
     _ensure_world_is_active(world)
-    if outline_beats is not None:
-        chapter.outline_beats = [beat.model_dump() for beat in outline_beats]
-    if not chapter.outline_beats:
+    effective_outline_beats = [beat.model_dump() for beat in outline_beats] if outline_beats is not None else chapter.outline_beats
+    if not effective_outline_beats:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='OUTLINE_REQUIRED')
+    source_world_version = world.world_version
+    source_chapter_status = chapter.status
+    source_draft_version = chapter.draft_version
+    source_draft = _latest_draft(db, chapter)
+    source_draft_id = source_draft.id if source_draft is not None else None
     characters, foreshadows = _load_world_context(db, world)
     client = _model_client(llm_client)
     try:
@@ -873,7 +911,7 @@ def write_chapter_from_outline(
                 characters,
                 foreshadows,
                 chapter.chapter_goal or chapter.title,
-                chapter.outline_beats,
+                effective_outline_beats,
                 chapter.outline_context,
                 chapter.execution_context,
             )
@@ -882,34 +920,51 @@ def write_chapter_from_outline(
         raise _map_model_error(exc) from exc
     validate_generation_ids(generation, characters, foreshadows)
 
-    chapter.title = generation.title
-    chapter.status = 'reviewing'
-    proposed_changes = {
-        'characters': [change.model_dump(exclude_none=True) for change in generation.proposed_character_changes],
-        'foreshadows': [change.model_dump(exclude_none=True) for change in generation.proposed_foreshadow_changes],
-    }
-    draft = _latest_draft(db, chapter)
-    if draft is None:
-        draft = ChapterDraft(
-            chapter_id=chapter.id,
-            draft_version=chapter.draft_version,
-            content='',
-            context_summary='',
-            source_world_version=world.world_version,
-            execution_context=chapter.execution_context,
+    try:
+        world, chapter, draft = _revalidate_write_after_model(
+            db,
+            user,
+            world.id,
+            chapter.id,
+            source_world_version,
+            source_chapter_status,
+            source_draft_version,
+            source_draft_id,
         )
-        db.add(draft)
-    draft.content = generation.draft_content
-    draft.context_summary = generation.context_summary
-    draft.review_hints = generation.review_hints
-    draft.proposed_changes = proposed_changes
-    draft.source_world_version = world.world_version
-    draft.execution_context = chapter.execution_context
-    draft.rejection_feedback = None
-    db.commit()
-    db.refresh(chapter)
-    db.refresh(draft)
-    return _draft_payload(chapter, draft)
+        characters, foreshadows = _load_world_context(db, world)
+        validate_generation_ids(generation, characters, foreshadows)
+        if outline_beats is not None:
+            chapter.outline_beats = effective_outline_beats
+        chapter.title = generation.title
+        chapter.status = 'reviewing'
+        proposed_changes = {
+            'characters': [change.model_dump(exclude_none=True) for change in generation.proposed_character_changes],
+            'foreshadows': [change.model_dump(exclude_none=True) for change in generation.proposed_foreshadow_changes],
+        }
+        if draft is None:
+            draft = ChapterDraft(
+                chapter_id=chapter.id,
+                draft_version=chapter.draft_version,
+                content='',
+                context_summary='',
+                source_world_version=world.world_version,
+                execution_context=chapter.execution_context,
+            )
+            db.add(draft)
+        draft.content = generation.draft_content
+        draft.context_summary = generation.context_summary
+        draft.review_hints = generation.review_hints
+        draft.proposed_changes = proposed_changes
+        draft.source_world_version = world.world_version
+        draft.execution_context = chapter.execution_context
+        draft.rejection_feedback = None
+        db.commit()
+        db.refresh(chapter)
+        db.refresh(draft)
+        return _draft_payload(chapter, draft)
+    except Exception:
+        db.rollback()
+        raise
 
 
 def critique_chapter(db: Session, user: User, chapter_id: int, llm_client: LLMClient | None = None) -> dict:

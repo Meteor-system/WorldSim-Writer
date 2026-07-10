@@ -1,5 +1,6 @@
 from sqlalchemy import func, select
 
+from app.character.models import Character
 from app.event.models import EventLog
 from app.llm.schemas import (
     BeatCard,
@@ -75,6 +76,19 @@ def fake_generation() -> ChapterGeneration:
         proposed_character_changes=[ProposedCharacterChange(character_id=1, current_goals=['追查城主府叛乱'])],
         proposed_foreshadow_changes=[
             ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='玉佩线索被推进')
+        ],
+    )
+
+
+def late_generation() -> ChapterGeneration:
+    return ChapterGeneration(
+        title='迟到生成标题',
+        draft_content='这段迟到正文绝不能覆盖并发请求已经提交的结果。',
+        context_summary='迟到正文摘要。',
+        review_hints=['迟到结果不应落库'],
+        proposed_character_changes=[ProposedCharacterChange(character_id=1, current_goals=['迟到目标'])],
+        proposed_foreshadow_changes=[
+            ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='迟到伏笔变化')
         ],
     )
 
@@ -493,6 +507,246 @@ def test_write_uses_edited_beats_and_creates_draft(client, db_session, monkeypat
     assert chapter.status == 'reviewing'
     assert chapter.outline_beats[0]['summary'] == '编辑后的节拍：林砚直接逼问沈微霜。'
     assert draft.source_world_version == 1
+
+
+def test_late_write_cannot_overwrite_approved_chapter(client, db_session):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    user = db_session.get(World, world_id).owner
+    narrative_service.generate_chapter_outline(db_session, user, chapter_id, llm_client=PipelineLLMClient())
+    original = narrative_service.write_chapter_from_outline(db_session, user, chapter_id, llm_client=PipelineLLMClient())
+
+    class ApprovingWriteLLM(PipelineLLMClient):
+        def generate_chapter(self, messages):
+            approved = narrative_service.approve_chapter(db_session, user, chapter_id)
+            assert approved.status == 'approved'
+            return late_generation()
+
+    try:
+        narrative_service.write_chapter_from_outline(db_session, user, chapter_id, llm_client=ApprovingWriteLLM())
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 409
+        assert getattr(error, 'detail', None) == 'ALREADY_APPROVED'
+    else:
+        raise AssertionError('expected ALREADY_APPROVED')
+
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, chapter_id)
+    drafts = list(db_session.scalars(select(ChapterDraft).where(ChapterDraft.chapter_id == chapter_id)))
+    assert chapter.status == 'approved'
+    assert chapter.title == original['title']
+    assert chapter.approved_content == original['content']
+    assert len(drafts) == 1
+    assert drafts[0].content == original['content']
+    assert drafts[0].content != late_generation().draft_content
+    assert db_session.get(World, world_id).world_version == 2
+    assert db_session.query(EventLog).filter_by(world_id=world_id, event_type='chapter_approved').count() == 1
+
+
+def test_late_write_rejects_world_version_change_without_creating_draft(client, db_session):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    user = db_session.get(World, world_id).owner
+    narrative_service.generate_chapter_outline(db_session, user, chapter_id, llm_client=PipelineLLMClient())
+    before_events = db_session.query(EventLog).filter_by(world_id=world_id).count()
+    original_title = db_session.get(Chapter, chapter_id).title
+
+    class AdvancingWorldWriteLLM(PipelineLLMClient):
+        def generate_chapter(self, messages):
+            world = db_session.get(World, world_id)
+            world.world_version += 1
+            db_session.commit()
+            return late_generation()
+
+    try:
+        narrative_service.write_chapter_from_outline(db_session, user, chapter_id, llm_client=AdvancingWorldWriteLLM())
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 409
+        assert getattr(error, 'detail', None) == 'WORLD_VERSION_MISMATCH'
+    else:
+        raise AssertionError('expected WORLD_VERSION_MISMATCH')
+
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, chapter_id)
+    assert chapter.status == 'outlined'
+    assert chapter.title == original_title
+    assert db_session.query(ChapterDraft).filter_by(chapter_id=chapter_id).count() == 0
+    assert db_session.get(World, world_id).world_version == 2
+    assert db_session.query(EventLog).filter_by(world_id=world_id).count() == before_events
+
+
+def test_late_write_rejects_status_change_without_persisting_edited_beats(client, db_session):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    user = db_session.get(World, world_id).owner
+    narrative_service.generate_chapter_outline(db_session, user, chapter_id, llm_client=PipelineLLMClient())
+    original_beats = list(db_session.get(Chapter, chapter_id).outline_beats)
+    edited_beats = [
+        BeatCard(
+            beat_id='late-edit',
+            summary='这组编辑节拍在冲突时不得提前提交。',
+            pov_character='林砚',
+            location='暗井',
+            emotional_arc='警惕 -> 决断',
+            key_dialogue_hints=['不能提前提交。'],
+        )
+    ]
+
+    class RejectingWriteLLM(PipelineLLMClient):
+        def generate_chapter(self, messages):
+            chapter = db_session.get(Chapter, chapter_id)
+            chapter.status = 'rejected'
+            db_session.commit()
+            return late_generation()
+
+    try:
+        narrative_service.write_chapter_from_outline(
+            db_session,
+            user,
+            chapter_id,
+            outline_beats=edited_beats,
+            llm_client=RejectingWriteLLM(),
+        )
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 409
+        assert getattr(error, 'detail', None) == 'CHAPTER_STATUS_MISMATCH'
+    else:
+        raise AssertionError('expected CHAPTER_STATUS_MISMATCH')
+
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, chapter_id)
+    assert chapter.status == 'rejected'
+    assert chapter.outline_beats == original_beats
+    assert chapter.outline_beats != [beat.model_dump() for beat in edited_beats]
+    assert db_session.query(ChapterDraft).filter_by(chapter_id=chapter_id).count() == 0
+    assert db_session.get(World, world_id).world_version == 1
+
+
+def test_write_rolls_back_after_revalidated_model_ids_become_invalid(client, db_session):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    user = db_session.get(World, world_id).owner
+    narrative_service.generate_chapter_outline(db_session, user, chapter_id, llm_client=PipelineLLMClient())
+    original_beats = list(db_session.get(Chapter, chapter_id).outline_beats)
+    edited_beats = [
+        BeatCard(
+            beat_id='invalid-id-edit',
+            summary='二次 ID 校验失败时不得提交。',
+            pov_character='林砚',
+            location='暗井',
+            emotional_arc='迟疑 -> 停止',
+            key_dialogue_hints=['停止写入。'],
+        )
+    ]
+
+    class RemovingCharacterWriteLLM(PipelineLLMClient):
+        def generate_chapter(self, messages):
+            generation = late_generation()
+            character = db_session.get(Character, 1)
+            db_session.delete(character)
+            db_session.commit()
+            return generation
+
+    try:
+        narrative_service.write_chapter_from_outline(
+            db_session,
+            user,
+            chapter_id,
+            outline_beats=edited_beats,
+            llm_client=RemovingCharacterWriteLLM(),
+        )
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 502
+        assert getattr(error, 'detail', None) == 'MODEL_RESPONSE_INVALID'
+    else:
+        raise AssertionError('expected MODEL_RESPONSE_INVALID')
+
+    chapter = db_session.get(Chapter, chapter_id)
+    assert chapter.status == 'outlined'
+    assert chapter.outline_beats == original_beats
+    assert db_session.query(ChapterDraft).filter_by(chapter_id=chapter_id).count() == 0
+    assert db_session.get(World, world_id).world_version == 1
+
+
+def test_late_first_write_cannot_overwrite_competing_draft(client, db_session):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    user = db_session.get(World, world_id).owner
+    narrative_service.generate_chapter_outline(db_session, user, chapter_id, llm_client=PipelineLLMClient())
+    concurrent_content = '另一请求已经完成的正文。'
+
+    class CompetingDraftWriteLLM(PipelineLLMClient):
+        def generate_chapter(self, messages):
+            chapter = db_session.get(Chapter, chapter_id)
+            db_session.add(
+                ChapterDraft(
+                    chapter_id=chapter_id,
+                    draft_version=chapter.draft_version,
+                    content=concurrent_content,
+                    context_summary='并发请求摘要。',
+                    review_hints=[],
+                    proposed_changes={},
+                    source_world_version=1,
+                    execution_context=chapter.execution_context,
+                )
+            )
+            db_session.commit()
+            return late_generation()
+
+    try:
+        narrative_service.write_chapter_from_outline(db_session, user, chapter_id, llm_client=CompetingDraftWriteLLM())
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 409
+        assert getattr(error, 'detail', None) == 'DRAFT_VERSION_MISMATCH'
+    else:
+        raise AssertionError('expected DRAFT_VERSION_MISMATCH')
+
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, chapter_id)
+    drafts = list(db_session.scalars(select(ChapterDraft).where(ChapterDraft.chapter_id == chapter_id)))
+    assert chapter.status == 'outlined'
+    assert chapter.title == '第一章 暗井回声'
+    assert len(drafts) == 1
+    assert drafts[0].content == concurrent_content
+    assert drafts[0].content != late_generation().draft_content
+    assert db_session.get(World, world_id).world_version == 1
+
+
+def test_late_rewrite_cannot_overwrite_stashed_draft(client, db_session):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    user = db_session.get(World, world_id).owner
+    narrative_service.generate_chapter_outline(db_session, user, chapter_id, llm_client=PipelineLLMClient())
+    original = narrative_service.write_chapter_from_outline(db_session, user, chapter_id, llm_client=PipelineLLMClient())
+
+    class StashingWriteLLM(PipelineLLMClient):
+        def generate_chapter(self, messages):
+            stashed = narrative_service.stash_chapter_draft(db_session, user, chapter_id, '正文生成期间暂存')
+            assert stashed['draft_version'] == 2
+            return late_generation()
+
+    try:
+        narrative_service.write_chapter_from_outline(db_session, user, chapter_id, llm_client=StashingWriteLLM())
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 409
+        assert getattr(error, 'detail', None) == 'DRAFT_VERSION_MISMATCH'
+    else:
+        raise AssertionError('expected DRAFT_VERSION_MISMATCH')
+
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, chapter_id)
+    drafts = list(
+        db_session.scalars(
+            select(ChapterDraft).where(ChapterDraft.chapter_id == chapter_id).order_by(ChapterDraft.draft_version)
+        )
+    )
+    assert chapter.status == 'reviewing'
+    assert chapter.draft_version == 2
+    assert chapter.title == original['title']
+    assert [draft.draft_version for draft in drafts] == [1, 2]
+    assert drafts[0].content == drafts[1].content == original['content']
+    assert all(draft.content != late_generation().draft_content for draft in drafts)
+    assert db_session.get(World, world_id).world_version == 1
 
 
 def test_critique_requires_draft_and_persists_report(client, db_session, monkeypatch):
