@@ -216,8 +216,26 @@ def test_relation_create_rejects_blank_type_and_bad_intensity(client):
     )
 
     assert blank_response.status_code == 422
+    assert any(
+        error['type'] == 'value_error'
+        and error['loc'] == ['body', 'relation_type']
+        and error['msg'].endswith('must not be blank')
+        for error in blank_response.json()['detail']
+    )
     assert low_intensity_response.status_code == 422
+    assert any(
+        error['type'] == 'greater_than_equal'
+        and error['loc'] == ['body', 'intensity']
+        and error['msg'].endswith('greater than or equal to 1')
+        for error in low_intensity_response.json()['detail']
+    )
     assert high_intensity_response.status_code == 422
+    assert any(
+        error['type'] == 'less_than_equal'
+        and error['loc'] == ['body', 'intensity']
+        and error['msg'].endswith('less than or equal to 5')
+        for error in high_intensity_response.json()['detail']
+    )
 
 
 def test_relation_create_rejects_extra_fields_without_side_effects(client, db_session):
