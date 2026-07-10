@@ -1,3 +1,5 @@
+import pytest
+from fastapi import HTTPException
 from sqlalchemy import func, select
 
 from app.event.models import EventLog
@@ -300,3 +302,206 @@ def test_get_critic_report_returns_404_when_report_is_missing(client, monkeypatc
 
     assert response.status_code == 404
     assert response.json()['detail'] == 'NOT_FOUND'
+
+
+def test_late_critique_cannot_write_after_chapter_approval(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    user = db_session.get(World, world_id).owner
+
+    class ApprovingCritiqueLLM(CriticReportLLMClient):
+        def critique_chapter(self, messages):
+            report = super().critique_chapter(messages)
+            approved = narrative_service.approve_chapter(db_session, user, draft['chapter_id'])
+            assert approved.status == 'approved'
+            return report
+
+    with pytest.raises(HTTPException) as exc_info:
+        narrative_service.critique_chapter(
+            db_session,
+            user,
+            draft['chapter_id'],
+            llm_client=ApprovingCritiqueLLM(),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == 'ALREADY_APPROVED'
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    assert chapter.status == 'approved'
+    assert chapter.critique_report == {}
+    assert db_session.get(World, world_id).world_version == 2
+    assert db_session.scalar(
+        select(func.count()).select_from(EventLog).where(EventLog.chapter_id == draft['chapter_id']).where(
+            EventLog.event_type == 'chapter_approved'
+        )
+    ) == 1
+
+
+def test_late_critic_report_rejects_world_version_change_without_overwriting_report(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    user = db_session.get(World, world_id).owner
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    chapter.critique_report = {'existing': 'keep'}
+    db_session.commit()
+
+    class AdvancingWorldCriticLLM(CriticReportLLMClient):
+        def generate_critic_report(self, messages):
+            report = super().generate_critic_report(messages)
+            world = db_session.get(World, world_id)
+            world.world_version += 1
+            db_session.commit()
+            return report
+
+    with pytest.raises(HTTPException) as exc_info:
+        narrative_service.generate_critic_report(
+            db_session,
+            user,
+            draft['chapter_id'],
+            llm_client=AdvancingWorldCriticLLM(),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == 'WORLD_VERSION_MISMATCH'
+    db_session.expire_all()
+    assert db_session.get(World, world_id).world_version == 2
+    assert db_session.get(Chapter, draft['chapter_id']).critique_report == {'existing': 'keep'}
+
+
+def test_late_critic_report_rejects_chapter_status_change_without_overwriting_report(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    user = db_session.get(World, world_id).owner
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    chapter.critique_report = {'existing': 'keep'}
+    db_session.commit()
+
+    class RejectingCriticLLM(CriticReportLLMClient):
+        def generate_critic_report(self, messages):
+            report = super().generate_critic_report(messages)
+            rejected = narrative_service.reject_chapter(db_session, user, draft['chapter_id'], '继续修改')
+            assert rejected['status'] == 'rejected'
+            return report
+
+    with pytest.raises(HTTPException) as exc_info:
+        narrative_service.generate_critic_report(
+            db_session,
+            user,
+            draft['chapter_id'],
+            llm_client=RejectingCriticLLM(),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == 'CHAPTER_STATUS_MISMATCH'
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    assert chapter.status == 'rejected'
+    assert chapter.critique_report == {'existing': 'keep'}
+
+
+def test_late_critic_report_cannot_overwrite_competing_report(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    user = db_session.get(World, world_id).owner
+    competing_report = {'source': 'competing-request'}
+
+    class CompetingCriticLLM(CriticReportLLMClient):
+        def generate_critic_report(self, messages):
+            report = super().generate_critic_report(messages)
+            chapter = db_session.get(Chapter, draft['chapter_id'])
+            chapter.critique_report = competing_report
+            db_session.commit()
+            return report
+
+    with pytest.raises(HTTPException) as exc_info:
+        narrative_service.generate_critic_report(
+            db_session,
+            user,
+            draft['chapter_id'],
+            llm_client=CompetingCriticLLM(),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == 'REPORT_VERSION_MISMATCH'
+    db_session.expire_all()
+    assert db_session.get(Chapter, draft['chapter_id']).critique_report == competing_report
+
+
+def test_critic_report_rolls_back_after_locked_model_validation_failure(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+
+    class MissingDimensionCriticLLM(CriticReportLLMClient):
+        def generate_critic_report(self, messages):
+            report = super().generate_critic_report(messages)
+            report['dimensions'].pop('readability')
+            return report
+
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch, MissingDimensionCriticLLM())
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/critic-report",
+        json={},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 502
+    assert response.json()['detail'] == 'MODEL_RESPONSE_INVALID'
+    assert not db_session.in_transaction()
+    db_session.expire_all()
+    assert db_session.get(Chapter, draft['chapter_id']).critique_report == {}
+
+
+def test_critique_rolls_back_when_commit_fails(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    user = db_session.get(World, world_id).owner
+
+    def failing_commit():
+        db_session.flush()
+        raise RuntimeError('commit failed')
+
+    monkeypatch.setattr(db_session, 'commit', failing_commit)
+    with pytest.raises(RuntimeError, match='commit failed'):
+        narrative_service.critique_chapter(
+            db_session,
+            user,
+            draft['chapter_id'],
+            llm_client=CriticReportLLMClient(),
+        )
+
+    assert not db_session.in_transaction()
+    db_session.expire_all()
+    assert db_session.get(Chapter, draft['chapter_id']).critique_report == {}
+
+
+def test_critic_report_allows_sequential_regeneration(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    user = db_session.get(World, world_id).owner
+
+    first_report = narrative_service.generate_critic_report(
+        db_session,
+        user,
+        draft['chapter_id'],
+        llm_client=CriticReportLLMClient(),
+    )
+
+    class RevisedCriticLLM(CriticReportLLMClient):
+        def generate_critic_report(self, messages):
+            report = super().generate_critic_report(messages)
+            report['overall_score'] = 84
+            report['summary'] = '顺序重生成后的新版报告。'
+            return report
+
+    second_report = narrative_service.generate_critic_report(
+        db_session,
+        user,
+        draft['chapter_id'],
+        llm_client=RevisedCriticLLM(),
+    )
+
+    assert first_report['overall_score'] == 78
+    assert second_report['overall_score'] == 84
+    assert second_report['summary'] == '顺序重生成后的新版报告。'
+    db_session.expire_all()
+    assert db_session.get(Chapter, draft['chapter_id']).critique_report['overall_score'] == 84

@@ -1,3 +1,5 @@
+import pytest
+from fastapi import HTTPException
 from sqlalchemy import func, select
 
 from app.event.models import EventLog
@@ -216,7 +218,7 @@ def test_get_character_arc_report_returns_404_when_report_is_missing(client, mon
     assert response.json()['detail'] == 'NOT_FOUND'
 
 
-def test_character_arc_report_rejects_unknown_character_ids(client, monkeypatch):
+def test_character_arc_report_rejects_unknown_character_ids(client, db_session, monkeypatch):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch, InvalidCharacterArcReportLLMClient())
 
@@ -228,3 +230,104 @@ def test_character_arc_report_rejects_unknown_character_ids(client, monkeypatch)
 
     assert response.status_code == 502
     assert response.json()['detail'] == 'MODEL_RESPONSE_INVALID'
+    assert not db_session.in_transaction()
+    db_session.expire_all()
+    assert db_session.get(Chapter, draft['chapter_id']).character_arc_report == {}
+
+
+def test_late_character_arc_report_cannot_write_after_chapter_approval(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    user = db_session.get(World, world_id).owner
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    chapter.character_arc_report = {'existing': 'keep'}
+    db_session.commit()
+
+    class ApprovingCharacterArcLLM(CharacterArcReportLLMClient):
+        def generate_character_arc_report(self, messages):
+            report = super().generate_character_arc_report(messages)
+            approved = narrative_service.approve_chapter(db_session, user, draft['chapter_id'])
+            assert approved.status == 'approved'
+            return report
+
+    with pytest.raises(HTTPException) as exc_info:
+        narrative_service.generate_character_arc_report(
+            db_session,
+            user,
+            draft['chapter_id'],
+            llm_client=ApprovingCharacterArcLLM(),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == 'ALREADY_APPROVED'
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    assert chapter.status == 'approved'
+    assert chapter.character_arc_report == {'existing': 'keep'}
+    assert db_session.get(World, world_id).world_version == 2
+    assert db_session.scalar(
+        select(func.count()).select_from(EventLog).where(EventLog.chapter_id == draft['chapter_id']).where(
+            EventLog.event_type == 'chapter_approved'
+        )
+    ) == 1
+
+
+def test_late_character_arc_report_cannot_overwrite_stashed_draft_report(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    user = db_session.get(World, world_id).owner
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    chapter.character_arc_report = {'existing': 'keep'}
+    db_session.commit()
+
+    class StashingCharacterArcLLM(CharacterArcReportLLMClient):
+        def generate_character_arc_report(self, messages):
+            report = super().generate_character_arc_report(messages)
+            stashed = narrative_service.stash_chapter_draft(db_session, user, draft['chapter_id'], '报告生成期间暂存')
+            assert stashed['draft_version'] == 2
+            return report
+
+    with pytest.raises(HTTPException) as exc_info:
+        narrative_service.generate_character_arc_report(
+            db_session,
+            user,
+            draft['chapter_id'],
+            llm_client=StashingCharacterArcLLM(),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == 'DRAFT_VERSION_MISMATCH'
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    assert chapter.status == 'reviewing'
+    assert chapter.draft_version == 2
+    assert chapter.character_arc_report == {'existing': 'keep'}
+    assert db_session.get(World, world_id).world_version == 1
+
+
+def test_late_character_arc_report_cannot_overwrite_competing_report(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    user = db_session.get(World, world_id).owner
+    competing_report = {'source': 'competing-request'}
+
+    class CompetingCharacterArcLLM(CharacterArcReportLLMClient):
+        def generate_character_arc_report(self, messages):
+            report = super().generate_character_arc_report(messages)
+            chapter = db_session.get(Chapter, draft['chapter_id'])
+            chapter.character_arc_report = competing_report
+            db_session.commit()
+            return report
+
+    with pytest.raises(HTTPException) as exc_info:
+        narrative_service.generate_character_arc_report(
+            db_session,
+            user,
+            draft['chapter_id'],
+            llm_client=CompetingCharacterArcLLM(),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail == 'REPORT_VERSION_MISMATCH'
+    db_session.expire_all()
+    assert db_session.get(Chapter, draft['chapter_id']).character_arc_report == competing_report

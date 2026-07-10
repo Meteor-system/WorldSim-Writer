@@ -1,4 +1,5 @@
 import difflib
+from copy import deepcopy
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -704,6 +705,7 @@ def _revalidate_draft_after_model(
     source_world_version: int,
     source_draft_id: int,
     source_draft_version: int,
+    source_chapter_status: str | None = None,
 ) -> tuple[World, Chapter, ChapterDraft]:
     db.expire_all()
     try:
@@ -716,6 +718,8 @@ def _revalidate_draft_after_model(
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
         if world.world_version != source_world_version:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
+        if source_chapter_status is not None and chapter.status != source_chapter_status:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='CHAPTER_STATUS_MISMATCH')
         if chapter.draft_version != source_draft_version:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_VERSION_MISMATCH')
         draft = _latest_draft(db, chapter)
@@ -725,6 +729,34 @@ def _revalidate_draft_after_model(
     except Exception:
         db.rollback()
         raise
+
+
+def _revalidate_report_after_model(
+    db: Session,
+    user: User,
+    world_id: int,
+    chapter_id: int,
+    source_world_version: int,
+    source_draft_id: int,
+    source_draft_version: int,
+    source_chapter_status: str,
+    report_field: str,
+    source_report: dict,
+) -> tuple[World, Chapter, ChapterDraft]:
+    world, chapter, draft = _revalidate_draft_after_model(
+        db,
+        user,
+        world_id,
+        chapter_id,
+        source_world_version,
+        source_draft_id,
+        source_draft_version,
+        source_chapter_status,
+    )
+    if getattr(chapter, report_field) != source_report:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='REPORT_VERSION_MISMATCH')
+    return world, chapter, draft
 
 
 def create_chapter_session(
@@ -974,16 +1006,37 @@ def critique_chapter(db: Session, user: User, chapter_id: int, llm_client: LLMCl
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_REQUIRED')
+    source_world_version = world.world_version
+    source_draft_id = draft.id
+    source_draft_version = draft.draft_version
+    source_chapter_status = chapter.status
+    source_report = deepcopy(chapter.critique_report)
     characters, foreshadows = _load_world_context(db, world)
     client = _model_client(llm_client)
     try:
         report = client.critique_chapter(build_critique_messages(world, characters, foreshadows, chapter, draft))
     except (TimeoutError, ValueError, RuntimeError) as exc:
         raise _map_model_error(exc) from exc
-    chapter.critique_report = report.model_dump()
-    db.commit()
-    db.refresh(chapter)
-    return {'chapter_id': chapter.id, 'critique_report': chapter.critique_report, 'status': chapter.status}
+    try:
+        _world, chapter, _draft = _revalidate_report_after_model(
+            db,
+            user,
+            world.id,
+            chapter.id,
+            source_world_version,
+            source_draft_id,
+            source_draft_version,
+            source_chapter_status,
+            'critique_report',
+            source_report,
+        )
+        chapter.critique_report = report.model_dump()
+        db.commit()
+        db.refresh(chapter)
+        return {'chapter_id': chapter.id, 'critique_report': chapter.critique_report, 'status': chapter.status}
+    except Exception:
+        db.rollback()
+        raise
 
 
 def generate_critic_report(db: Session, user: User, chapter_id: int, llm_client: LLMClient | None = None) -> dict:
@@ -993,6 +1046,11 @@ def generate_critic_report(db: Session, user: User, chapter_id: int, llm_client:
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_REQUIRED')
+    source_world_version = world.world_version
+    source_draft_id = draft.id
+    source_draft_version = draft.draft_version
+    source_chapter_status = chapter.status
+    source_report = deepcopy(chapter.critique_report)
     characters, foreshadows = _load_world_context(db, world)
     client = _model_client(llm_client)
     try:
@@ -1001,14 +1059,30 @@ def generate_critic_report(db: Session, user: User, chapter_id: int, llm_client:
         raise _map_model_error(exc) from exc
 
     report_payload = _model_dump(report)
-    missing_dimensions = [dimension for dimension in CRITIC_DIMENSIONS if dimension not in report_payload.get('dimensions', {})]
-    if missing_dimensions:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
-    stored_report = _critic_report_payload(chapter, draft, report_payload)
-    chapter.critique_report = stored_report
-    db.commit()
-    db.refresh(chapter)
-    return _critic_report_payload(chapter, draft, chapter.critique_report)
+    try:
+        _world, chapter, draft = _revalidate_report_after_model(
+            db,
+            user,
+            world.id,
+            chapter.id,
+            source_world_version,
+            source_draft_id,
+            source_draft_version,
+            source_chapter_status,
+            'critique_report',
+            source_report,
+        )
+        missing_dimensions = [dimension for dimension in CRITIC_DIMENSIONS if dimension not in report_payload.get('dimensions', {})]
+        if missing_dimensions:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+        stored_report = _critic_report_payload(chapter, draft, report_payload)
+        chapter.critique_report = stored_report
+        db.commit()
+        db.refresh(chapter)
+        return _critic_report_payload(chapter, draft, chapter.critique_report)
+    except Exception:
+        db.rollback()
+        raise
 
 
 def get_critic_report(db: Session, user: User, chapter_id: int) -> dict:
@@ -1028,6 +1102,11 @@ def generate_character_arc_report(db: Session, user: User, chapter_id: int, llm_
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_REQUIRED')
+    source_world_version = world.world_version
+    source_draft_id = draft.id
+    source_draft_version = draft.draft_version
+    source_chapter_status = chapter.status
+    source_report = deepcopy(chapter.character_arc_report)
     characters, foreshadows = _load_world_context(db, world)
     relations = list(db.scalars(select(CharacterRelation).where(CharacterRelation.world_id == world.id).order_by(CharacterRelation.id)))
     recent_events = list(
@@ -1042,12 +1121,29 @@ def generate_character_arc_report(db: Session, user: User, chapter_id: int, llm_
         raise _map_model_error(exc) from exc
 
     report_payload = _model_dump(report)
-    _validate_character_arc_report_ids(report_payload, characters, foreshadows)
-    stored_report = _character_arc_report_payload(chapter, draft, report_payload)
-    chapter.character_arc_report = stored_report
-    db.commit()
-    db.refresh(chapter)
-    return _character_arc_report_payload(chapter, draft, chapter.character_arc_report)
+    try:
+        world, chapter, draft = _revalidate_report_after_model(
+            db,
+            user,
+            world.id,
+            chapter.id,
+            source_world_version,
+            source_draft_id,
+            source_draft_version,
+            source_chapter_status,
+            'character_arc_report',
+            source_report,
+        )
+        characters, foreshadows = _load_world_context(db, world)
+        _validate_character_arc_report_ids(report_payload, characters, foreshadows)
+        stored_report = _character_arc_report_payload(chapter, draft, report_payload)
+        chapter.character_arc_report = stored_report
+        db.commit()
+        db.refresh(chapter)
+        return _character_arc_report_payload(chapter, draft, chapter.character_arc_report)
+    except Exception:
+        db.rollback()
+        raise
 
 
 def get_character_arc_report(db: Session, user: User, chapter_id: int) -> dict:
