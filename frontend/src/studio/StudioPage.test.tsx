@@ -289,6 +289,37 @@ const approvedWorld: WorldOverview = {
   ],
 };
 
+function renderResumedStudio(resumedDraft: DraftResponse = draftResponse, draftVersions: number[] = [resumedDraft.draft_version]) {
+  return render(
+    <StudioPage
+      world={world}
+      launchContext={{
+        resumeSession: {
+          chapter: {
+            id: resumedDraft.chapter_id,
+            world_id: 7,
+            title: resumedDraft.title,
+            status: 'reviewing',
+            draft_version: resumedDraft.draft_version,
+            approved_version: null,
+            base_world_version: 1,
+            approved_content: null,
+            chapter_goal: '推进雨巷密谈',
+            outline_beats: [],
+            outline_context: {},
+            critique_report: {},
+            execution_context: executionContext,
+          },
+          draft: resumedDraft,
+          draft_versions: draftVersions,
+        },
+      }}
+      onBack={vi.fn()}
+      onApproved={vi.fn()}
+    />,
+  );
+}
+
 afterEach(() => {
   cleanup();
   vi.mocked(apiRequest).mockClear();
@@ -481,6 +512,116 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     resolvePreview(await getApprovalPreview(11));
 
     await waitFor(() => expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled());
+  });
+
+  it('shows a retry path and keeps approval fail-closed when approval preview loading fails', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getApprovalPreview).mockRejectedValueOnce(new Error('预览服务暂不可用'));
+    renderResumedStudio();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('审批检查加载失败：预览服务暂不可用');
+    expect(alert).toHaveTextContent('重试不会写入正史');
+    const approveButton = screen.getByRole('button', { name: '写入正史并更新世界' });
+    expect(approveButton).toBeDisabled();
+
+    await user.click(approveButton);
+    expect(approveChapter).not.toHaveBeenCalled();
+    expect(screen.getAllByText(draftResponse.title)).not.toHaveLength(0);
+    expect(screen.getByText(draftResponse.context_summary)).toBeInTheDocument();
+    expect(screen.getByLabelText('草稿版本')).toHaveValue('1');
+    expect(createChapter).not.toHaveBeenCalled();
+    expect(generateOutline).not.toHaveBeenCalled();
+    expect(writeChapter).not.toHaveBeenCalled();
+    expect(editDraft).not.toHaveBeenCalled();
+    expect(reviseDraft).not.toHaveBeenCalled();
+    expect(reviseParagraph).not.toHaveBeenCalled();
+  });
+
+  it('keeps approval fail-closed when readiness loading fails even if preview succeeds', async () => {
+    vi.mocked(getApprovalReadiness).mockRejectedValueOnce(new Error('准备度服务暂不可用'));
+    renderResumedStudio();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('审批检查加载失败：准备度服务暂不可用');
+    expect(getApprovalPreview).toHaveBeenCalledWith(11);
+    expect(screen.getByRole('button', { name: '重试审批检查' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeDisabled();
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
+  it('retries approval checks without losing the draft version or approval selections', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getApprovalReadiness).mockRejectedValueOnce(new Error('准备度服务暂不可用'));
+    renderResumedStudio();
+
+    await screen.findByRole('button', { name: '重试审批检查' });
+    await user.click(screen.getByRole('button', { name: '重试审批检查' }));
+
+    expect(await screen.findByText('写入正史前确认')).toBeInTheDocument();
+    expect(screen.queryByText(/审批检查加载失败/)).not.toBeInTheDocument();
+    expect(screen.getAllByText(draftResponse.title)).not.toHaveLength(0);
+    expect(screen.getByText(draftResponse.context_summary)).toBeInTheDocument();
+    expect(screen.getByLabelText('草稿版本')).toHaveValue('1');
+    expect(screen.getByRole('checkbox', { name: /角色：林砚/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /伏笔：裂纹玉佩/ })).toBeChecked();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled();
+    expect(getApprovalPreview).toHaveBeenCalledTimes(2);
+    expect(getApprovalReadiness).toHaveBeenCalledTimes(2);
+    expect(approveChapter).not.toHaveBeenCalled();
+    expect(createChapter).not.toHaveBeenCalled();
+    expect(generateOutline).not.toHaveBeenCalled();
+    expect(writeChapter).not.toHaveBeenCalled();
+    expect(editDraft).not.toHaveBeenCalled();
+    expect(reviseDraft).not.toHaveBeenCalled();
+    expect(reviseParagraph).not.toHaveBeenCalled();
+  });
+
+  it('preserves user approval selections across a failed refresh and retry', async () => {
+    const user = userEvent.setup();
+    renderResumedStudio();
+
+    const characterChange = await screen.findByRole('checkbox', { name: /角色：林砚/ });
+    await user.click(characterChange);
+    await waitFor(() => expect(characterChange).not.toBeChecked());
+
+    vi.mocked(getApprovalReadiness).mockRejectedValueOnce(new Error('准备度服务暂不可用'));
+    await user.click(screen.getByRole('button', { name: '生成 Critic 报告' }));
+    await user.click(await screen.findByRole('button', { name: '重试审批检查' }));
+
+    expect(await screen.findByText('写入正史前确认')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /角色：林砚/ })).not.toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /伏笔：裂纹玉佩/ })).toBeChecked();
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
+  it('ignores a retried review-panel response that arrives after switching to history', async () => {
+    const user = userEvent.setup();
+    vi.mocked(getApprovalPreview).mockRejectedValueOnce(new Error('预览服务暂不可用'));
+    let resolveRetryPreview!: (value: Awaited<ReturnType<typeof getApprovalPreview>>) => void;
+    vi.mocked(getApprovalPreview).mockImplementationOnce(async () => new Promise<Awaited<ReturnType<typeof getApprovalPreview>>>((resolve) => {
+      resolveRetryPreview = resolve;
+    }));
+    const resumedDraft = {
+      ...draftResponse,
+      draft_id: 102,
+      draft_version: 2,
+      parent_draft_version: 1,
+      content: '第二版正文：林砚在雨巷口试探沈微霜。',
+    };
+    renderResumedStudio(resumedDraft, [1, 2]);
+
+    await user.click(await screen.findByRole('button', { name: '重试审批检查' }));
+    await user.selectOptions(screen.getByLabelText('草稿版本'), '1');
+    expect(await screen.findByText('第一段：林砚停在雨巷口。')).toBeInTheDocument();
+
+    resolveRetryPreview({ ...await getApprovalPreview(11), draft_version: 2 });
+
+    await waitFor(() => expect(screen.queryByText('写入正史前确认')).not.toBeInTheDocument());
+    expect(screen.queryByText('Approval Readiness')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重试审批检查' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeDisabled();
+    expect(approveChapter).not.toHaveBeenCalled();
   });
 
   it('ignores a resumed review-panel response that arrives after switching to history', async () => {
@@ -989,7 +1130,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('让林砚做出是否相信沈微霜的选择')).toBeInTheDocument();
   });
 
-  it('shows blocked approval readiness without changing approve controls', async () => {
+  it('blocks approval controls and command entry when approval readiness is blocked', async () => {
     const user = userEvent.setup();
     vi.mocked(getApprovalReadiness).mockResolvedValueOnce({
       chapter_id: 11,
@@ -1012,7 +1153,10 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(await screen.findByText('暂不可批准')).toBeInTheDocument();
     expect(screen.getByText('世界版本：v1 → v2')).toBeInTheDocument();
     expect(screen.getByText('世界版本已变化，请重新生成草稿后再批准。')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled();
+    const approveButton = screen.getByRole('button', { name: '写入正史并更新世界' });
+    expect(approveButton).toBeDisabled();
+    await user.click(approveButton);
+    expect(approveChapter).not.toHaveBeenCalled();
   });
 
   it('generates a full-draft revision from review context and shows parent diff', async () => {

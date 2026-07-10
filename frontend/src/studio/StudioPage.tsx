@@ -146,6 +146,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [consistencyWarnings, setConsistencyWarnings] = useState<ConsistencyWarning[]>([]);
   const [approvalReadiness, setApprovalReadiness] = useState<ApprovalReadinessResponse | null>(null);
   const [reviewPanelsLoading, setReviewPanelsLoading] = useState(Boolean(resumedDraft));
+  const [reviewPanelsError, setReviewPanelsError] = useState('');
   const [consistencyChecking, setConsistencyChecking] = useState(false);
   const [consistencyValidated, setConsistencyValidated] = useState(false);
   const [critique, setCritique] = useState<CriticReportResponse | null>(null);
@@ -166,6 +167,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const resumedDraftPanelsLoadedRef = useRef(false);
   const reviewPanelsRequestRef = useRef(0);
   const consistencyRequestRef = useRef(0);
+  const approvalSelectionInitializedRef = useRef(false);
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -225,11 +227,13 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   function initializeApprovalSelection(preview: ApprovalPreviewResponse) {
     setSelectedCharacterChangeIndexes(preview.character_changes.map((change, index) => previewIndex(change, index)));
     setSelectedForeshadowChangeIndexes(preview.foreshadow_changes.map((change, index) => previewIndex(change, index)));
+    approvalSelectionInitializedRef.current = true;
   }
 
   function clearApprovalSelection() {
     setSelectedCharacterChangeIndexes([]);
     setSelectedForeshadowChangeIndexes([]);
+    approvalSelectionInitializedRef.current = false;
   }
 
   function clearApprovalConsistency() {
@@ -274,37 +278,31 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     }
   }
 
-  async function refreshReviewStudioPanels(nextDraft: DraftResponse) {
+  async function refreshReviewStudioPanels(nextDraft: DraftResponse, preserveSelection = false) {
     const requestId = ++reviewPanelsRequestRef.current;
+    const shouldPreserveSelection = preserveSelection && approvalSelectionInitializedRef.current;
     consistencyRequestRef.current += 1;
     setConsistencyChecking(false);
     setReviewPanelsLoading(true);
+    setReviewPanelsError('');
+    setApprovalPreview(null);
+    setApprovalReadiness(null);
+    clearApprovalConsistency();
     const version = resolveDraftVersion(nextDraft);
     const knownVersions = [version];
     if (nextDraft.parent_draft_version) knownVersions.push(nextDraft.parent_draft_version);
     setDraftVersions((versions) => Array.from(new Set([...versions, ...knownVersions])).sort((a, b) => a - b));
     setLatestDraftVersion((current) => Math.max(current ?? version, version));
     try {
-      try {
-        const preview = await getApprovalPreview(nextDraft.chapter_id);
-        if (reviewPanelsRequestRef.current !== requestId) return;
-        setApprovalPreview(preview);
-        initializeApprovalSelection(preview);
-        setPreviewConsistency(preview);
-      } catch {
-        if (reviewPanelsRequestRef.current !== requestId) return;
-        setApprovalPreview(null);
-        clearApprovalSelection();
-        clearApprovalConsistency();
-      }
-      try {
-        const readiness = await getApprovalReadiness(nextDraft.chapter_id);
-        if (reviewPanelsRequestRef.current !== requestId) return;
-        setApprovalReadiness(readiness);
-      } catch {
-        if (reviewPanelsRequestRef.current !== requestId) return;
-        setApprovalReadiness(null);
-      }
+      const [preview, readiness] = await Promise.all([
+        getApprovalPreview(nextDraft.chapter_id),
+        getApprovalReadiness(nextDraft.chapter_id),
+      ]);
+      if (reviewPanelsRequestRef.current !== requestId) return;
+      setApprovalPreview(preview);
+      setApprovalReadiness(readiness);
+      if (!shouldPreserveSelection) initializeApprovalSelection(preview);
+      setPreviewConsistency(preview);
       if (nextDraft.parent_draft_version) {
         try {
           const diff = await getDraftDiff(nextDraft.chapter_id, nextDraft.parent_draft_version, nextDraft.draft_version);
@@ -317,9 +315,20 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       } else {
         setDraftDiff(null);
       }
+    } catch (err) {
+      if (reviewPanelsRequestRef.current !== requestId) return;
+      setApprovalPreview(null);
+      setApprovalReadiness(null);
+      clearApprovalConsistency();
+      setReviewPanelsError(err instanceof Error && err.message ? `审批检查加载失败：${err.message}` : '审批检查加载失败，请重试。');
     } finally {
       if (reviewPanelsRequestRef.current === requestId) setReviewPanelsLoading(false);
     }
+  }
+
+  async function retryReviewStudioPanels() {
+    if (!draft || !isViewingLatestDraft()) return;
+    await refreshReviewStudioPanels(draft, true);
   }
 
   async function handleSuggestGoal() {
@@ -353,6 +362,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       clearApprovalSelection();
       clearApprovalConsistency();
       setApprovalReadiness(null);
+      setReviewPanelsError('');
       setCritique(null);
       setCharacterArcReport(null);
       setSettlement(null);
@@ -449,6 +459,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       clearApprovalSelection();
       clearApprovalConsistency();
       setApprovalReadiness(null);
+      setReviewPanelsError('');
       setCritique(null);
       setCharacterArcReport(null);
       setSettlement(null);
@@ -504,11 +515,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       const report = await generateCriticReport(chapter.id);
       setCritique(report);
       setChapter({ ...chapter, critique_report: report });
-      try {
-        setApprovalReadiness(await getApprovalReadiness(chapter.id));
-      } catch {
-        setApprovalReadiness(null);
-      }
+      await refreshReviewStudioPanels(draft, true);
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成 Critic 报告失败');
     } finally {
@@ -523,11 +530,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setError('');
     try {
       setCharacterArcReport(await generateCharacterArcReport(chapter.id));
-      try {
-        setApprovalReadiness(await getApprovalReadiness(chapter.id));
-      } catch {
-        setApprovalReadiness(null);
-      }
+      await refreshReviewStudioPanels(draft, true);
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成角色弧线报告失败');
     } finally {
@@ -569,7 +572,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function approveDraft() {
-    if (!draft || !approvalPreview || reviewPanelsLoading || consistencyChecking || !consistencyValidated || consistencySummary?.status === 'blocked' || !isViewingLatestDraft()) return;
+    if (!draft || !approvalPreview || !approvalReadiness || reviewPanelsLoading || reviewPanelsError || consistencyChecking || !consistencyValidated || consistencySummary?.status === 'blocked' || approvalPreview.version_conflict || approvalReadiness.status === 'blocked' || !isViewingLatestDraft()) return;
     setWorking(true);
     setOperationHint('正在写入正史…');
     setError('');
@@ -773,6 +776,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       clearApprovalSelection();
       clearApprovalConsistency();
       setApprovalReadiness(null);
+      setReviewPanelsError('');
       setCritique(null);
       setCharacterArcReport(null);
       if (latestDraftVersion === null || selectedDraft.draft_version === latestDraftVersion) {
@@ -800,6 +804,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const totalPreviewChanges = approvalPreview ? approvalPreview.character_changes.length + approvalPreview.foreshadow_changes.length : 0;
   const selectedPreviewChanges = selectedCharacterChangeIndexes.length + selectedForeshadowChangeIndexes.length;
   const approvalBlockedByConsistency = consistencySummary?.status === 'blocked';
+  const approvalBlockedByReview = !approvalPreview || !approvalReadiness || Boolean(reviewPanelsError) || approvalPreview.version_conflict || approvalReadiness.status === 'blocked';
 
   return (
     <section className="mx-auto max-w-6xl">
@@ -1018,6 +1023,14 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                 <div className="rounded-2xl bg-white/35 p-4"><h3 className="font-black text-[#3b2511]">审核提示</h3>{draft.review_hints.map((hint) => <p key={hint} className="manuscript mt-2">{hint}</p>)}</div>
               </div>
               <ExecutionContextSnapshot context={draft.execution_context ?? chapter?.execution_context} />
+              {reviewPanelsError && isViewingLatestDraft() && (
+                <div className="paper-error flex flex-wrap items-center justify-between gap-3" role="alert">
+                  <p>{reviewPanelsError} 正文、当前版本和审批选择均已保留，重试不会写入正史。</p>
+                  <button className="secondary-button" disabled={working || reviewPanelsLoading} onClick={() => void retryReviewStudioPanels()}>
+                    {reviewPanelsLoading ? '正在重试审批检查…' : '重试审批检查'}
+                  </button>
+                </div>
+              )}
               {approvalReadiness && <ApprovalReadinessPanel readiness={approvalReadiness} />}
               <section className="space-y-3 rounded-2xl bg-white/35 p-4">
                 <h3 className="font-black text-[#3b2511]">版本差异</h3>
@@ -1142,7 +1155,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
 
           {draft && (
             <div className="flex flex-wrap gap-3">
-              <button className="primary-button" disabled={working || reviewPanelsLoading || consistencyChecking || !consistencyValidated || !approvalPreview || !isViewingLatestDraft() || approvalBlockedByConsistency} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '写入正史并更新世界'}</button>
+              <button className="primary-button" disabled={working || reviewPanelsLoading || consistencyChecking || !consistencyValidated || !isViewingLatestDraft() || approvalBlockedByConsistency || approvalBlockedByReview} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '写入正史并更新世界'}</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={rejectDraft}>驳回</button>
               <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={startEdit}>编辑正文</button>
             </div>
