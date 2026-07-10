@@ -324,6 +324,38 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(goal).toHaveValue('用户修改后的下一章目标');
   });
 
+  it('retries a failed automatic first-chapter draft without creating a duplicate chapter', async () => {
+    const user = userEvent.setup();
+    vi.mocked(writeChapter).mockRejectedValueOnce(new Error('MODEL_REQUEST_FAILED'));
+
+    render(
+      <StudioPage
+        world={world}
+        launchContext={{
+          initialChapterGoal: '让林砚在雨巷第一次试探沈微霜。',
+          executionContext,
+          autoDraftFirstChapter: true,
+        }}
+        onBack={vi.fn()}
+        onApproved={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('MODEL_REQUEST_FAILED');
+    expect(screen.getByLabelText('章节目标')).toHaveValue('让林砚在雨巷第一次试探沈微霜。');
+    expect(screen.getByText('世界进度：1')).toBeInTheDocument();
+    expect(screen.queryByText('Writer Draft')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '重试生成第一章草稿' }));
+
+    expect(await screen.findByText('Writer Draft')).toBeInTheDocument();
+    expect(screen.getAllByText('第一章 雨巷密谈')).toHaveLength(2);
+    expect(createChapter).toHaveBeenCalledTimes(1);
+    expect(generateOutline).toHaveBeenCalledTimes(1);
+    expect(writeChapter).toHaveBeenCalledTimes(2);
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
   it('shows launch execution context summary and submits edited context when creating chapter', async () => {
     const user = userEvent.setup();
     render(<StudioPage world={world} launchContext={{ initialChapterGoal: executionContext.goal, executionContext }} onBack={vi.fn()} onApproved={vi.fn()} />);

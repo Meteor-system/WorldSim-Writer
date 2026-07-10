@@ -317,38 +317,48 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setOperationHint('正在生成第一章草稿…');
     setError('');
     try {
-      const frozenContext = withEditedGoal(executionContext, localWorld, goal);
-      const created = await createChapterRequest(localWorld.id, {
-        chapter_goal: goal,
-        title: goal.slice(0, 40),
-        execution_context: frozenContext,
-      });
-      setChapter(created);
-      setOutlineBeats(created.outline_beats);
-      setOutlineContext(created.outline_context);
-      setDraft(null);
-      setApprovalPreview(null);
-      clearApprovalSelection();
-      clearApprovalConsistency();
-      setApprovalReadiness(null);
-      setCritique(null);
-      setCharacterArcReport(null);
-      setSettlement(null);
+      let activeChapter = chapter;
+      if (!activeChapter) {
+        const frozenContext = withEditedGoal(executionContext, localWorld, goal);
+        activeChapter = await createChapterRequest(localWorld.id, {
+          chapter_goal: goal,
+          title: goal.slice(0, 40),
+          execution_context: frozenContext,
+        });
+        setChapter(activeChapter);
+        setOutlineBeats(activeChapter.outline_beats);
+        setOutlineContext(activeChapter.outline_context);
+        setDraft(null);
+        setApprovalPreview(null);
+        clearApprovalSelection();
+        clearApprovalConsistency();
+        setApprovalReadiness(null);
+        setCritique(null);
+        setCharacterArcReport(null);
+        setSettlement(null);
+      }
 
-      setOperationHint('正在生成第一章大纲…');
-      const outline = await generateOutline(created.id, { chapter_context: goal });
-      setOutlineBeats(outline.outline_beats);
-      setOutlineContext(outline.outline_context);
-      const outlinedChapter = {
-        ...created,
-        status: outline.status,
-        outline_beats: outline.outline_beats,
-        outline_context: outline.outline_context,
-      };
-      setChapter(outlinedChapter);
+      let activeOutlineBeats = outlineBeats;
+      let activeOutlineContext = outlineContext;
+      let outlinedChapter = activeChapter;
+      if (activeOutlineBeats.length === 0) {
+        setOperationHint('正在生成第一章大纲…');
+        const outline = await generateOutline(activeChapter.id, { chapter_context: goal });
+        activeOutlineBeats = outline.outline_beats;
+        activeOutlineContext = outline.outline_context;
+        setOutlineBeats(activeOutlineBeats);
+        setOutlineContext(activeOutlineContext);
+        outlinedChapter = {
+          ...activeChapter,
+          status: outline.status,
+          outline_beats: activeOutlineBeats,
+          outline_context: activeOutlineContext,
+        };
+        setChapter(outlinedChapter);
+      }
 
       setOperationHint('正在生成第一章正文草稿…');
-      const nextDraft = normalizeDraft(await writeChapter(created.id, { outline_beats: outline.outline_beats }));
+      const nextDraft = normalizeDraft(await writeChapter(activeChapter.id, { outline_beats: activeOutlineBeats }));
       setDraft(nextDraft);
       setDraftVersions([nextDraft.draft_version]);
       setLatestDraftVersion(nextDraft.draft_version);
@@ -359,8 +369,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
         ...outlinedChapter,
         title: nextDraft.title,
         status: nextDraft.status ?? 'reviewing',
-        outline_beats: nextDraft.outline_beats ?? outline.outline_beats,
-        outline_context: nextDraft.outline_context ?? outline.outline_context,
+        outline_beats: nextDraft.outline_beats ?? activeOutlineBeats,
+        outline_context: nextDraft.outline_context ?? activeOutlineContext,
         critique_report: nextDraft.critique_report ?? {},
       });
     } catch (err) {
@@ -772,7 +782,16 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
             </div>
           </div>
 
-          {error && <p className="paper-error" role="alert">{error}</p>}
+          {error && (
+            <div className="paper-error flex flex-wrap items-center justify-between gap-3" role="alert">
+              <p>{error}</p>
+              {launchContext?.autoDraftFirstChapter && !draft && (
+                <button className="secondary-button" disabled={working} onClick={() => void autoDraftFirstChapterSession()}>
+                  重试生成第一章草稿
+                </button>
+              )}
+            </div>
+          )}
 
           {autoDrafting && (
             <p className="paper-success px-4 py-2 text-sm" role="status" aria-live="polite">正在生成第一章草稿，完成后会停在 Studio 审稿，不会写入正史。</p>
