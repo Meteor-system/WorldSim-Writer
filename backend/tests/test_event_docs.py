@@ -46,6 +46,23 @@ def test_production_api_runtime_docs_lock_safe_defaults_and_proxy_boundary():
         assert 'CTRL_BREAK_EVENT' in document
 
 
+def test_docker_backend_release_docs_preserve_migration_and_network_boundaries():
+    readme = (REPO_ROOT / 'README.md').read_text(encoding='utf-8')
+    playbook = (REPO_ROOT / 'BETA_TESTING.md').read_text(encoding='utf-8')
+
+    for document in [readme, playbook]:
+        assert 'Docker backend release stack' in document
+        assert 'docker compose config --quiet' in document
+        assert 'docker compose build' in document
+        assert 'docker compose up -d' in document
+        assert 'migrate' in document
+        assert '/ready' in document
+        assert '127.0.0.1' in document
+        assert '10001' in document
+        assert 'does not serve the frontend' in document or 'does not yet' in document
+        assert 'down --volumes' in document
+
+
 def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
     playbook = (REPO_ROOT / 'BETA_TESTING.md').read_text(encoding='utf-8')
 

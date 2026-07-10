@@ -1,0 +1,100 @@
+name: ${COMPOSE_PROJECT_NAME:-worldsim-writer-beta}
+
+x-backend-image: &backend-image
+  image: worldsim-writer-backend:${WORLDSIM_IMAGE_TAG:-local}
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+
+x-backend-environment: &backend-environment
+  DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER:-worldsim}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}@db:5432/${POSTGRES_DB:-worldsim_writer}"
+  DB_CONNECT_TIMEOUT_SECONDS: "${DB_CONNECT_TIMEOUT_SECONDS:-5}"
+  DB_APPLICATION_NAME: "${DB_APPLICATION_NAME:-worldsim-writer}"
+  DB_POOL_SIZE: "${DB_POOL_SIZE:-5}"
+  DB_MAX_OVERFLOW: "${DB_MAX_OVERFLOW:-5}"
+  DB_POOL_TIMEOUT_SECONDS: "${DB_POOL_TIMEOUT_SECONDS:-5}"
+  DB_POOL_RECYCLE_SECONDS: "${DB_POOL_RECYCLE_SECONDS:-1800}"
+  SECRET_KEY: "${SECRET_KEY:?Set SECRET_KEY in the root .env file}"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}"
+  LLM_BASE_URL: "${LLM_BASE_URL:-https://api.openai.com/v1}"
+  LLM_API_KEY: "${LLM_API_KEY:-unused-in-mock-mode}"
+  LLM_MODEL: "${LLM_MODEL:-gpt-4o-mini}"
+  LLM_TIMEOUT_SECONDS: "${LLM_TIMEOUT_SECONDS:-60}"
+  LLM_MOCK: "${LLM_MOCK:-true}"
+  FRONTEND_ORIGIN: "${FRONTEND_ORIGIN:-http://localhost:5173}"
+  LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+  API_HOST: "0.0.0.0"
+  API_PORT: "8000"
+  API_WORKERS: "${API_WORKERS:-1}"
+  API_BACKLOG: "${API_BACKLOG:-2048}"
+  API_LIMIT_CONCURRENCY: "${API_LIMIT_CONCURRENCY:-100}"
+  API_TIMEOUT_KEEP_ALIVE_SECONDS: "${API_TIMEOUT_KEEP_ALIVE_SECONDS:-5}"
+  API_TIMEOUT_GRACEFUL_SHUTDOWN_SECONDS: "${API_TIMEOUT_GRACEFUL_SHUTDOWN_SECONDS:-30}"
+  API_PROXY_HEADERS: "${API_PROXY_HEADERS:-false}"
+  API_FORWARDED_ALLOW_IPS: "${API_FORWARDED_ALLOW_IPS:-127.0.0.1}"
+
+services:
+  db:
+    image: postgres:18.4-alpine@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-worldsim_writer}"
+      POSTGRES_USER: "${POSTGRES_USER:-worldsim}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the root .env file}"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  migrate:
+    <<: *backend-image
+    command: ["python", "scripts/run_migrations.py"]
+    environment: *backend-environment
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    restart: "no"
+
+  api:
+    <<: *backend-image
+    environment: *backend-environment
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${COMPOSE_API_BIND_ADDRESS:-127.0.0.1}:${COMPOSE_API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=2).read()"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: "${API_STOP_GRACE_PERIOD:-40s}"
+
+volumes:
+  postgres-data:

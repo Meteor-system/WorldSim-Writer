@@ -50,6 +50,26 @@ Proxy headers are disabled by default with `API_PROXY_HEADERS=false`. Enable the
 
 Uvicorn access logs are disabled because the application already emits structured request logs without query strings, credentials, or request bodies. Uvicorn `Server` and `Date` response headers are also disabled; a reverse proxy may add its own headers outside this process.
 
+## Docker backend release stack
+
+The committed Compose stack packages the current backend release boundary: PostgreSQL, one serialized migration job, and the production API runner. It intentionally does not serve the frontend yet; keep using the frontend development workflow above until a separate static-hosting and reverse-proxy batch is delivered.
+
+From the repository root, copy the Compose environment template and replace every placeholder. The root `.env` is ignored by Git and excluded from the backend image build context, but Docker receives its values at runtime, so restrict access to that file and never commit it.
+
+```bash
+cp .env.example .env
+# Replace POSTGRES_PASSWORD, SECRET_KEY, and real LLM settings when LLM_MOCK=false.
+docker compose config --quiet
+docker compose build
+docker compose up -d
+docker compose ps --all
+docker compose logs migrate
+```
+
+`docker compose up -d` waits for PostgreSQL health, runs `python scripts/run_migrations.py` once, and starts the API only after that job exits successfully. A successful release shows `migrate` exited with code `0`, `api` becomes healthy through `/ready`, and `GET http://127.0.0.1:8000/live` plus `/ready` return `200`. The image runs as UID/GID `10001`, the migration and API containers use read-only root filesystems with dropped Linux capabilities, and PostgreSQL is not published to the host.
+
+The API is published only on `127.0.0.1:8000` by default. Keep that loopback boundary when a host reverse proxy terminates TLS. Do not set `COMPOSE_API_BIND_ADDRESS=0.0.0.0` without an explicit firewall, TLS termination, authentication review, and the proxy trust configuration described above. `docker compose down` stops the stack while preserving the named PostgreSQL volume; never run `docker compose down --volumes` for retained Beta data.
+
 ## PostgreSQL backups and restore drills
 
 Install PostgreSQL client tools compatible with the server major version, then create a custom-format backup in a protected directory outside the repository:

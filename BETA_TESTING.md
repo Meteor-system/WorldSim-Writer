@@ -53,6 +53,18 @@ The migration command must finish successfully as one serialized pre-deploy job 
 
 Keep `API_PROXY_HEADERS=false` unless every direct connection comes from a known reverse proxy. When enabling it, list only exact proxy IP addresses or CIDR networks in `API_FORWARDED_ALLOW_IPS`; never use `*`, `0.0.0.0/0`, `::/0`, hostnames, or URLs. The production entry point disables Uvicorn access logs because the application already emits structured request logs, and it disables Uvicorn `Server` and `Date` headers. Verify `GET /live` returns `200`, `GET /ready` returns `200` after migrations, the API response itself has no `Server` or `Date` header, and the process exits within the configured graceful shutdown timeout. A front proxy may add its own response headers.
 
+For the committed Docker backend release stack, run these commands from the repository root after copying `.env.example` to the ignored root `.env` and replacing every placeholder:
+
+```bash
+docker compose config --quiet
+docker compose build
+docker compose up -d
+docker compose ps --all
+docker compose logs migrate
+```
+
+Pass criteria: PostgreSQL becomes healthy without publishing a host port; `migrate` exits `0` after printing `{"ok":true,"status":"up_to_date"}`; `api` starts only after that successful one-shot job and becomes healthy through `/ready`; `/live` and `/ready` return `200` through the loopback-only default binding; and `docker compose exec api id -u` prints `10001`. Inspect the API container and confirm its root filesystem is read-only, all Linux capabilities are dropped, and `no-new-privileges` is enabled. Stop with `docker compose down` so the named PostgreSQL volume remains available; never use `docker compose down --volumes` for retained Beta data. This batch does not serve the frontend and is not yet the complete public web stack.
+
 The mock smoke command below intentionally uses Uvicorn reload mode for local development; it is not the production entry point.
 
 ## 3. Mock smoke
