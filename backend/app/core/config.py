@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import AnyHttpUrl, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,6 +17,7 @@ class Settings(BaseSettings):
     llm_timeout_seconds: int = Field(default=60, alias='LLM_TIMEOUT_SECONDS')
     llm_mock: bool = Field(default=False, alias='LLM_MOCK')
     frontend_origin: str = Field(default='http://localhost:5173', alias='FRONTEND_ORIGIN')
+    log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = Field(default='INFO', alias='LOG_LEVEL')
 
     @field_validator('secret_key')
     @classmethod
@@ -23,6 +25,11 @@ class Settings(BaseSettings):
         if value == 'change-this-local-secret':
             raise ValueError('SECRET_KEY must be changed from the example value')
         return value
+
+    @field_validator('log_level', mode='before')
+    @classmethod
+    def normalize_log_level(cls, value: str) -> str:
+        return value.upper()
 
 
 @lru_cache

@@ -35,13 +35,24 @@ def ensure_alembic_version_table_capacity(connection: Connection) -> None:
 
 
 def get_migration_status(engine: Engine | None = None, alembic_ini: Path = ALEMBIC_INI) -> dict[str, Any]:
-    from app.core.database import engine as default_engine
-
-    heads = get_repository_heads(alembic_ini)
-    head = heads[0] if len(heads) == 1 else ','.join(heads)
     try:
-        target_engine = engine or default_engine
-        with target_engine.connect() as connection:
+        heads = get_repository_heads(alembic_ini)
+        head = heads[0] if len(heads) == 1 else ','.join(heads)
+    except Exception:
+        return {
+            'current': None,
+            'head': None,
+            'up_to_date': False,
+            'status': 'unknown',
+            'error': 'MIGRATION_REPOSITORY_UNAVAILABLE',
+        }
+
+    try:
+        if engine is None:
+            from app.core.database import engine as default_engine
+
+            engine = default_engine
+        with engine.connect() as connection:
             current_heads = sorted(MigrationContext.configure(connection).get_current_heads())
         current = current_heads[0] if len(current_heads) == 1 else (','.join(current_heads) if current_heads else None)
         up_to_date = current_heads == heads
@@ -51,5 +62,11 @@ def get_migration_status(engine: Engine | None = None, alembic_ini: Path = ALEMB
             'up_to_date': up_to_date,
             'status': 'up_to_date' if up_to_date else 'behind',
         }
-    except Exception as exc:
-        return {'current': None, 'head': head, 'up_to_date': False, 'status': 'unknown', 'error': str(exc)}
+    except Exception:
+        return {
+            'current': None,
+            'head': head,
+            'up_to_date': False,
+            'status': 'unknown',
+            'error': 'DATABASE_UNAVAILABLE',
+        }
