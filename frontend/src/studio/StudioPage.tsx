@@ -10,6 +10,7 @@ import {
   generateOutline,
   getApprovalPreview,
   getApprovalReadiness,
+  getChapterHistoryDetail,
   getDraftDiff,
   getDraftVersion,
   exportWorldArchiveMarkdown,
@@ -152,6 +153,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [critique, setCritique] = useState<CriticReportResponse | null>(null);
   const [characterArcReport, setCharacterArcReport] = useState<CharacterArcReportResponse | null>(null);
   const [settlement, setSettlement] = useState<WorldSettlement | null>(null);
+  const [approvalCommitState, setApprovalCommitState] = useState<'idle' | 'unknown' | 'committed'>('idle');
+  const [settlementSyncError, setSettlementSyncError] = useState('');
   const [latestDraftVersion, setLatestDraftVersion] = useState<number | null>(resumedDraft?.draft_version ?? null);
   const [revisionInstruction, setRevisionInstruction] = useState('');
   const [working, setWorking] = useState(false);
@@ -327,7 +330,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function retryReviewStudioPanels() {
-    if (!draft || !isViewingLatestDraft()) return;
+    if (approvalCommitState !== 'idle' || !draft || !isViewingLatestDraft()) return;
     await refreshReviewStudioPanels(draft, true);
   }
 
@@ -366,6 +369,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setCritique(null);
       setCharacterArcReport(null);
       setSettlement(null);
+      setApprovalCommitState('idle');
+      setSettlementSyncError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建章节失败');
     } finally {
@@ -445,7 +450,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function runOutliner() {
-    if (!chapter || (draft && !isViewingLatestDraft())) return;
+    if (approvalCommitState !== 'idle' || !chapter || (draft && !isViewingLatestDraft())) return;
     setWorking(true);
     setOperationHint('编剧室正在排布章节骨架…');
     setError('');
@@ -463,6 +468,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setCritique(null);
       setCharacterArcReport(null);
       setSettlement(null);
+      setApprovalCommitState('idle');
+      setSettlementSyncError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : '生成大纲失败');
     } finally {
@@ -476,7 +483,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function runWriter() {
-    if (!chapter || (draft && !isViewingLatestDraft())) return;
+    if (approvalCommitState !== 'idle' || !chapter || (draft && !isViewingLatestDraft())) return;
     setWorking(true);
     setOperationHint('导演正在拆场景…');
     setError('');
@@ -507,7 +514,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function runCritic() {
-    if (!chapter || !draft || !isViewingLatestDraft()) return;
+    if (approvalCommitState !== 'idle' || !chapter || !draft || !isViewingLatestDraft()) return;
     setWorking(true);
     setOperationHint('评论席正在检查节奏与设定…');
     setError('');
@@ -525,7 +532,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function runCharacterArcReport() {
-    if (!chapter || !draft || !isViewingLatestDraft()) return;
+    if (approvalCommitState !== 'idle' || !chapter || !draft || !isViewingLatestDraft()) return;
     setWorking(true);
     setError('');
     try {
@@ -548,7 +555,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function toggleCharacterSelection(changeIndex: number) {
-    if (!isViewingLatestDraft()) return;
+    if (approvalCommitState !== 'idle' || !isViewingLatestDraft()) return;
     const nextCharacterIndexes = toggleIndex(selectedCharacterChangeIndexes, changeIndex);
     setSelectedCharacterChangeIndexes(nextCharacterIndexes);
     try {
@@ -560,7 +567,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function toggleForeshadowSelection(changeIndex: number) {
-    if (!isViewingLatestDraft()) return;
+    if (approvalCommitState !== 'idle' || !isViewingLatestDraft()) return;
     const nextForeshadowIndexes = toggleIndex(selectedForeshadowChangeIndexes, changeIndex);
     setSelectedForeshadowChangeIndexes(nextForeshadowIndexes);
     try {
@@ -571,30 +578,94 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     }
   }
 
+  function apiErrorStatus(err: unknown): number | undefined {
+    return err instanceof Error && typeof (err as Error & { status?: number }).status === 'number'
+      ? (err as Error & { status: number }).status
+      : undefined;
+  }
+
+  async function loadApprovalSettlement() {
+    if (!draft || !approvalPreview) return;
+    setWorking(true);
+    setOperationHint('正在同步世界推进结算…');
+    setSettlementSyncError('');
+    try {
+      const overview = await apiRequest<WorldOverview>(`/worlds/${localWorld.id}/overview`);
+      setLocalWorld(overview);
+      setSettlement({
+        worldBefore: approvalPreview.world_version_before,
+        worldAfter: approvalPreview.world_version_after ?? overview.world_version,
+        approvedChapterCount: overview.approved_chapter_count,
+        characterChangeCount: selectedCharacterChangeIndexes.length,
+        foreshadowChangeCount: selectedForeshadowChangeIndexes.length,
+        hasChapterApprovedEvent: overview.recent_events.some((event) => event.event_type === 'chapter_approved' && event.chapter_id === draft.chapter_id),
+        overview,
+      });
+    } catch (err) {
+      setSettlementSyncError(err instanceof Error && err.message ? `正史已提交，但世界结算加载失败：${err.message}` : '正史已提交，但世界结算加载失败。');
+    } finally {
+      setWorking(false);
+      setOperationHint('');
+    }
+  }
+
+  async function reconcileUnknownApproval() {
+    if (!draft) return;
+    setWorking(true);
+    setOperationHint('正在核对正史写入结果…');
+    setError('');
+    try {
+      const history = await getChapterHistoryDetail(draft.chapter_id);
+      if (history.approved_version !== resolveDraftVersion(draft)) {
+        setError(`服务器显示本章已批准 v${history.approved_version}，与当前草稿 v${resolveDraftVersion(draft)} 不一致。为避免重复写入，本章继续锁定，请返回世界概览核对。`);
+        return;
+      }
+      setApprovalCommitState('committed');
+      await loadApprovalSettlement();
+    } catch (err) {
+      if (apiErrorStatus(err) === 409) {
+        setApprovalCommitState('idle');
+        setError('服务器确认本章尚未写入正史，已重新加载审批检查，可确认后再次批准。');
+        await refreshReviewStudioPanels(draft, true);
+      } else {
+        setError(err instanceof Error && err.message ? `暂时无法确认正史写入结果：${err.message}` : '暂时无法确认正史写入结果，请重试核对。');
+      }
+    } finally {
+      setWorking(false);
+      setOperationHint('');
+    }
+  }
+
   async function approveDraft() {
-    if (!draft || !approvalPreview || !approvalReadiness || reviewPanelsLoading || reviewPanelsError || consistencyChecking || !consistencyValidated || consistencySummary?.status === 'blocked' || approvalPreview.version_conflict || approvalReadiness.status === 'blocked' || !isViewingLatestDraft()) return;
+    if (approvalCommitState !== 'idle' || !draft || !approvalPreview || !approvalReadiness || reviewPanelsLoading || reviewPanelsError || consistencyChecking || !consistencyValidated || consistencySummary?.status === 'blocked' || approvalPreview.version_conflict || approvalReadiness.status === 'blocked' || !isViewingLatestDraft()) return;
     setWorking(true);
     setOperationHint('正在写入正史…');
     setError('');
+    setSettlementSyncError('');
     try {
       await approveChapter(draft.chapter_id, {
         draft_version: resolveDraftVersion(draft),
         selected_character_change_indexes: selectedCharacterChangeIndexes,
         selected_foreshadow_change_indexes: selectedForeshadowChangeIndexes,
       });
-      const overview = await apiRequest<WorldOverview>(`/worlds/${localWorld.id}/overview`);
-      setLocalWorld(overview);
-      setSettlement({
-        worldBefore: approvalPreview?.world_version_before ?? localWorld.world_version,
-        worldAfter: approvalPreview?.world_version_after ?? overview.world_version,
-        approvedChapterCount: overview.approved_chapter_count,
-        characterChangeCount: selectedCharacterChangeIndexes.length,
-        foreshadowChangeCount: selectedForeshadowChangeIndexes.length,
-        hasChapterApprovedEvent: overview.recent_events.some((event) => event.event_type === 'chapter_approved'),
-        overview,
-      });
+      setApprovalCommitState('committed');
+      await loadApprovalSettlement();
     } catch (err) {
-      setError(err instanceof Error ? err.message : '审批草稿失败');
+      const status = apiErrorStatus(err);
+      if (status === undefined || status >= 500) {
+        setApprovalCommitState('unknown');
+        setError('正史写入请求的结果暂时未知。为避免重复写入，已锁定本章；请先核对写入结果。');
+      } else if (status === 409) {
+        setApprovalCommitState('idle');
+        setApprovalPreview(null);
+        setApprovalReadiness(null);
+        clearApprovalConsistency();
+        setReviewPanelsError('正史写入被服务器拒绝，草稿或世界版本可能已变化。请重新加载审批检查。');
+        setError(err instanceof Error ? err.message : '正史写入发生版本冲突');
+      } else {
+        setApprovalCommitState('idle');
+        setError(err instanceof Error ? err.message : '审批草稿失败');
+      }
     } finally {
       setWorking(false);
       setOperationHint('');
@@ -642,10 +713,12 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
     setEditMode(false);
     setEditContent('');
     setSettlement(null);
+    setApprovalCommitState('idle');
+    setSettlementSyncError('');
   }
 
   async function rejectDraft() {
-    if (!draft || !isViewingLatestDraft()) return;
+    if (approvalCommitState !== 'idle' || !draft || !isViewingLatestDraft()) return;
     const feedback = prompt('请输入驳回反馈（修改建议）：');
     if (!feedback || feedback.trim().length === 0) return;
     setWorking(true);
@@ -662,7 +735,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   function startEdit() {
-    if (!draft || !isViewingLatestDraft()) return;
+    if (approvalCommitState !== 'idle' || !draft || !isViewingLatestDraft()) return;
     setEditMode(true);
     setEditContent(draft.content);
   }
@@ -673,8 +746,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function saveEdit() {
-    if (!draft || !isViewingLatestDraft()) {
-      setError('历史版本仅供查看，请切回最新版本后再编辑。');
+    if (approvalCommitState !== 'idle' || !draft || !isViewingLatestDraft()) {
+      setError(approvalCommitState !== 'idle' ? '正史写入结果尚未完成同步，当前草稿已锁定。' : '历史版本仅供查看，请切回最新版本后再编辑。');
       setEditMode(false);
       setEditContent('');
       return;
@@ -701,7 +774,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function saveStash() {
-    if (!draft || !isViewingLatestDraft()) return;
+    if (approvalCommitState !== 'idle' || !draft || !isViewingLatestDraft()) return;
     setWorking(true);
     setError('');
     try {
@@ -718,7 +791,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function reviseDraftParagraph(index: number, mode: 'rewrite' | 'polish') {
-    if (!draft || !isViewingLatestDraft()) return;
+    if (approvalCommitState !== 'idle' || !draft || !isViewingLatestDraft()) return;
     setWorking(true);
     setError('');
     try {
@@ -735,7 +808,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function runFullDraftRevision() {
-    if (!draft || !isViewingLatestDraft()) return;
+    if (approvalCommitState !== 'idle' || !draft || !isViewingLatestDraft()) return;
     const instruction = revisionInstruction.trim();
     if (instruction.length < 3) {
       setError('修订指令至少需要3个字符');
@@ -758,7 +831,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }
 
   async function switchDraftVersion(value: string) {
-    if (!draft) return;
+    if (approvalCommitState !== 'idle' || !draft) return;
     const selected = Number(value);
     if (!Number.isFinite(selected) || selected === resolveDraftVersion(draft)) return;
     setEditMode(false);
@@ -805,6 +878,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const selectedPreviewChanges = selectedCharacterChangeIndexes.length + selectedForeshadowChangeIndexes.length;
   const approvalBlockedByConsistency = consistencySummary?.status === 'blocked';
   const approvalBlockedByReview = !approvalPreview || !approvalReadiness || Boolean(reviewPanelsError) || approvalPreview.version_conflict || approvalReadiness.status === 'blocked';
+  const approvalResultLocked = approvalCommitState !== 'idle';
 
   return (
     <section className="mx-auto max-w-6xl">
@@ -854,10 +928,10 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
             <textarea id="chapter-goal" className="paper-input min-h-28" value={goal} onChange={(event) => setGoal(event.target.value)} aria-label="章节目标" disabled={Boolean(chapter)} placeholder="输入本章要讲什么故事……或者点击「✨ 自动生成」让 AI 帮你写" />
             <div className="mt-4 flex flex-wrap gap-3">
               <button className="primary-button" disabled={working || Boolean(chapter)} onClick={createChapterSession}>{chapter ? '章节已创建' : '创建章节'}</button>
-              <button className="secondary-button" disabled={working || !chapter || Boolean(draft && !isViewingLatestDraft())} onClick={runOutliner}>{operationHint === '编剧室正在排布章节骨架…' ? operationHint : '生成大纲'}</button>
-              <button className="secondary-button" disabled={working || !chapter || outlineBeats.length === 0 || Boolean(draft && !isViewingLatestDraft())} onClick={runWriter}>{operationHint === '导演正在拆场景…' ? operationHint : '基于大纲生成正文'}</button>
-              <button className="secondary-button" disabled={working || !draft || !isViewingLatestDraft()} onClick={runCritic}>{operationHint === '评论席正在检查节奏与设定…' ? operationHint : '生成 Critic 报告'}</button>
-              <button className="secondary-button" disabled={working || !draft || !isViewingLatestDraft()} onClick={runCharacterArcReport}>生成角色弧线报告</button>
+              <button className="secondary-button" disabled={working || approvalResultLocked || !chapter || Boolean(draft && !isViewingLatestDraft())} onClick={runOutliner}>{operationHint === '编剧室正在排布章节骨架…' ? operationHint : '生成大纲'}</button>
+              <button className="secondary-button" disabled={working || approvalResultLocked || !chapter || outlineBeats.length === 0 || Boolean(draft && !isViewingLatestDraft())} onClick={runWriter}>{operationHint === '导演正在拆场景…' ? operationHint : '基于大纲生成正文'}</button>
+              <button className="secondary-button" disabled={working || approvalResultLocked || !draft || !isViewingLatestDraft()} onClick={runCritic}>{operationHint === '评论席正在检查节奏与设定…' ? operationHint : '生成 Critic 报告'}</button>
+              <button className="secondary-button" disabled={working || approvalResultLocked || !draft || !isViewingLatestDraft()} onClick={runCharacterArcReport}>生成角色弧线报告</button>
             </div>
           </div>
 
@@ -869,6 +943,24 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                   重试生成第一章草稿
                 </button>
               )}
+            </div>
+          )}
+
+          {approvalCommitState === 'unknown' && (
+            <div className="paper-error flex flex-wrap items-center justify-between gap-3" role="alert">
+              <p>正史写入结果尚未确认。为避免重复提交，本章编辑与批准已锁定。</p>
+              <button className="secondary-button" disabled={working} onClick={() => void reconcileUnknownApproval()}>
+                {operationHint === '正在核对正史写入结果…' ? operationHint : '核对正史写入结果'}
+              </button>
+            </div>
+          )}
+
+          {approvalCommitState === 'committed' && settlementSyncError && !settlement && (
+            <div className="paper-error flex flex-wrap items-center justify-between gap-3" role="alert">
+              <p>{settlementSyncError} 本章不会再次提交写入。</p>
+              <button className="secondary-button" disabled={working} onClick={() => void loadApprovalSettlement()}>
+                {operationHint === '正在同步世界推进结算…' ? operationHint : '重试加载世界结算'}
+              </button>
             </div>
           )}
 
@@ -957,11 +1049,11 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                 <div className="mt-4 flex flex-wrap items-end gap-3">
                   <label className="block">
                     <span className="text-sm font-bold text-[#5e3b1c]">草稿版本</span>
-                    <select className="paper-input mt-1" aria-label="草稿版本" value={resolveDraftVersion(draft)} disabled={working || editMode} onChange={(event) => void switchDraftVersion(event.target.value)}>
+                    <select className="paper-input mt-1" aria-label="草稿版本" value={resolveDraftVersion(draft)} disabled={working || approvalResultLocked || editMode} onChange={(event) => void switchDraftVersion(event.target.value)}>
                       {draftVersions.map((version) => <option key={`draft-version-${version}`} value={version}>v{version}</option>)}
                     </select>
                   </label>
-                  <button className="secondary-button" disabled={working || !isViewingLatestDraft()} onClick={saveStash}>暂存当前草稿</button>
+                  <button className="secondary-button" disabled={working || approvalResultLocked || !isViewingLatestDraft()} onClick={saveStash}>暂存当前草稿</button>
                   {draft.change_summary && <p className="manuscript text-sm">最近修改：{draft.change_summary}</p>}
                 </div>
               </div>
@@ -981,10 +1073,10 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                     value={revisionInstruction}
                     onChange={(event) => setRevisionInstruction(event.target.value)}
                     placeholder="例如：保留雨巷会面，但补足林砚试探沈微霜的过程。"
-                    disabled={working || !isViewingLatestDraft()}
+                    disabled={working || approvalResultLocked || !isViewingLatestDraft()}
                   />
                 </label>
-                <button className="secondary-button" disabled={working || !isViewingLatestDraft()} onClick={runFullDraftRevision}>生成修订版</button>
+                <button className="secondary-button" disabled={working || approvalResultLocked || !isViewingLatestDraft()} onClick={runFullDraftRevision}>生成修订版</button>
                 {!isViewingLatestDraft() && <p className="paper-error">正在查看历史版本，切回最新版本后才能批准。</p>}
               </section>
               {draft.rejection_feedback && (
@@ -997,7 +1089,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                 <div className="space-y-3">
                   <textarea className="paper-input min-h-64" value={editContent} onChange={(event) => setEditContent(event.target.value)} aria-label="编辑草稿内容" />
                   <div className="flex gap-3">
-                    <button className="primary-button" disabled={working || !isViewingLatestDraft()} onClick={saveEdit}>保存修改</button>
+                    <button className="primary-button" disabled={working || approvalResultLocked || !isViewingLatestDraft()} onClick={saveEdit}>保存修改</button>
                     <button className="ghost-button" disabled={working} onClick={cancelEdit}>取消</button>
                   </div>
                 </div>
@@ -1011,8 +1103,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                     <div key={`${index}-${paragraph.slice(0, 24)}`} className="rounded-xl border border-amber-900/10 bg-amber-50/35 p-3">
                       <p className="manuscript whitespace-pre-wrap text-sm leading-relaxed">第 {index + 1} 段：{paragraph}</p>
                       <div className="mt-2 flex flex-wrap gap-2">
-                        <button className="secondary-button" disabled={working || !isViewingLatestDraft()} onClick={() => reviseDraftParagraph(index, 'rewrite')}>重写本段</button>
-                        <button className="secondary-button" disabled={working || !isViewingLatestDraft()} onClick={() => reviseDraftParagraph(index, 'polish')}>润色本段</button>
+                        <button className="secondary-button" disabled={working || approvalResultLocked || !isViewingLatestDraft()} onClick={() => reviseDraftParagraph(index, 'rewrite')}>重写本段</button>
+                        <button className="secondary-button" disabled={working || approvalResultLocked || !isViewingLatestDraft()} onClick={() => reviseDraftParagraph(index, 'polish')}>润色本段</button>
                       </div>
                     </div>
                   ))}
@@ -1079,7 +1171,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                           type="checkbox"
                           className="mt-1 accent-amber-800"
                           checked={selectedCharacterChangeIndexes.includes(changeIndex)}
-                          disabled={!isViewingLatestDraft()}
+                          disabled={approvalResultLocked || !isViewingLatestDraft()}
                           onChange={() => void toggleCharacterSelection(changeIndex)}
                         />
                         <span>角色：{change.name} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</span>
@@ -1094,7 +1186,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
                           type="checkbox"
                           className="mt-1 accent-amber-800"
                           checked={selectedForeshadowChangeIndexes.includes(changeIndex)}
-                          disabled={!isViewingLatestDraft()}
+                          disabled={approvalResultLocked || !isViewingLatestDraft()}
                           onChange={() => void toggleForeshadowSelection(changeIndex)}
                         />
                         <span>伏笔：{change.title} · {String(change.before.status ?? '未设置')} → {String(change.after.status ?? '未设置')}</span>
@@ -1155,9 +1247,9 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
 
           {draft && (
             <div className="flex flex-wrap gap-3">
-              <button className="primary-button" disabled={working || reviewPanelsLoading || consistencyChecking || !consistencyValidated || !isViewingLatestDraft() || approvalBlockedByConsistency || approvalBlockedByReview} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '写入正史并更新世界'}</button>
-              <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={rejectDraft}>驳回</button>
-              <button className="secondary-button" disabled={working || editMode || !isViewingLatestDraft()} onClick={startEdit}>编辑正文</button>
+              <button className="primary-button" disabled={working || approvalResultLocked || reviewPanelsLoading || consistencyChecking || !consistencyValidated || !isViewingLatestDraft() || approvalBlockedByConsistency || approvalBlockedByReview} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '写入正史并更新世界'}</button>
+              <button className="secondary-button" disabled={working || approvalResultLocked || editMode || !isViewingLatestDraft()} onClick={rejectDraft}>驳回</button>
+              <button className="secondary-button" disabled={working || approvalResultLocked || editMode || !isViewingLatestDraft()} onClick={startEdit}>编辑正文</button>
             </div>
           )}
         </div>

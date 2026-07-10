@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, editDraft, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalPreview, getApprovalReadiness, getDraftVersion, rejectDraft, reviseDraft, reviseParagraph, stashDraft, writeChapter } from '../api/client';
+import { apiRequest, approveChapter, checkApprovalConsistency, createChapter, editDraft, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalPreview, getApprovalReadiness, getChapterHistoryDetail, getDraftVersion, rejectDraft, reviseDraft, reviseParagraph, stashDraft, writeChapter } from '../api/client';
 import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -235,6 +235,18 @@ vi.mock('../api/client', () => ({
       { change_index: 0, selected_by_default: true, foreshadow_id: 1, title: '裂纹玉佩', before: { status: 'planted' }, after: { status: 'advanced', description: '审核备注：湿信推进玉佩线索' } },
     ],
   })),
+  getChapterHistoryDetail: vi.fn(async () => ({
+    id: 11,
+    world_id: 7,
+    title: draftResponse.title,
+    status: 'approved',
+    approved_version: 1,
+    base_world_version: 1,
+    approved_content: draftResponse.content,
+    world_version_before: 1,
+    world_version_after: 2,
+    events: [],
+  })),
   getApprovalReadiness: vi.fn(async () => ({
     chapter_id: 11,
     draft_version: 1,
@@ -333,6 +345,7 @@ afterEach(() => {
   vi.mocked(generateCriticReport).mockClear();
   vi.mocked(generateCharacterArcReport).mockClear();
   vi.mocked(getApprovalReadiness).mockClear();
+  vi.mocked(getChapterHistoryDetail).mockClear();
   vi.mocked(editDraft).mockClear();
   vi.mocked(rejectDraft).mockClear();
   vi.mocked(stashDraft).mockClear();
@@ -1395,6 +1408,92 @@ describe('StudioPage Review Studio 2.0 controls', () => {
       selected_character_change_indexes: [0],
       selected_foreshadow_change_indexes: [],
     });
+  });
+
+  it('does not resubmit approval when settlement loading fails after canon commit', async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiRequest)
+      .mockRejectedValueOnce(new Error('世界概览暂不可用'))
+      .mockResolvedValueOnce(approvedWorld);
+    renderResumedStudio();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('正史已提交，但世界结算加载失败：世界概览暂不可用');
+    expect(alert).toHaveTextContent('本章不会再次提交写入');
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '编辑正文' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '驳回' })).toBeDisabled();
+    expect(approveChapter).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: '重试加载世界结算' }));
+
+    expect(await screen.findByText('世界推进结算')).toBeInTheDocument();
+    expect(apiRequest).toHaveBeenCalledTimes(2);
+    expect(approveChapter).toHaveBeenCalledTimes(1);
+    expect(getChapterHistoryDetail).not.toHaveBeenCalled();
+  });
+
+  it('reconciles an unknown approval result before loading settlement without resubmitting canon', async () => {
+    const user = userEvent.setup();
+    vi.mocked(approveChapter).mockRejectedValueOnce(Object.assign(new Error('网关暂不可用'), { status: 503 }));
+    vi.mocked(apiRequest).mockResolvedValueOnce(approvedWorld);
+    renderResumedStudio();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
+
+    expect(await screen.findByText(/正史写入请求的结果暂时未知/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '编辑正文' })).toBeDisabled();
+    expect(approveChapter).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: '核对正史写入结果' }));
+
+    expect(getChapterHistoryDetail).toHaveBeenCalledWith(11);
+    expect(await screen.findByText('世界推进结算')).toBeInTheDocument();
+    expect(approveChapter).toHaveBeenCalledTimes(1);
+  });
+
+  it('reopens approval only after reconciliation confirms the chapter is not approved', async () => {
+    const user = userEvent.setup();
+    vi.mocked(approveChapter).mockRejectedValueOnce(Object.assign(new Error('网关暂不可用'), { status: 503 }));
+    vi.mocked(getChapterHistoryDetail).mockRejectedValueOnce(Object.assign(new Error('CHAPTER_NOT_APPROVED'), { status: 409 }));
+    renderResumedStudio();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
+    await user.click(await screen.findByRole('button', { name: '核对正史写入结果' }));
+
+    expect(await screen.findByText(/服务器确认本章尚未写入正史/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled());
+    expect(getApprovalPreview).toHaveBeenCalledTimes(2);
+    expect(getApprovalReadiness).toHaveBeenCalledTimes(2);
+    expect(approveChapter).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidates stale approval checks after a server-side version conflict', async () => {
+    const user = userEvent.setup();
+    const conflict = Object.assign(new Error('WORLD_VERSION_MISMATCH'), { status: 409 });
+    vi.mocked(approveChapter).mockRejectedValueOnce(conflict);
+    renderResumedStudio();
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
+
+    expect(await screen.findByText('WORLD_VERSION_MISMATCH')).toBeInTheDocument();
+    expect(screen.getByText(/草稿或世界版本可能已变化/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeDisabled();
+    expect(approveChapter).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: '重试审批检查' }));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled());
+    expect(getApprovalPreview).toHaveBeenCalledTimes(2);
+    expect(getApprovalReadiness).toHaveBeenCalledTimes(2);
+    expect(approveChapter).toHaveBeenCalledTimes(1);
   });
 
   it('shows world progression settlement after approval before returning to overview', async () => {
