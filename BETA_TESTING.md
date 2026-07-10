@@ -30,6 +30,17 @@ npm run build
 
 Expected: all frontend tests pass and Vite reports `✓ built`.
 
+Before a production-like beta handoff, run a PostgreSQL backup and isolated restore drill with PostgreSQL client tools matching the server major version:
+
+```bash
+cd /opt/WorldSim-Writer/backend
+PYTHONIOENCODING=utf-8 .venv/bin/python scripts/postgres_backup.py backup --output /secure/backups/worldsim-beta.dump
+RESTORE_DATABASE_URL=postgresql+psycopg://.../worldsim_restore_test \
+PYTHONIOENCODING=utf-8 .venv/bin/python scripts/postgres_backup.py verify-restore --backup-file /secure/backups/worldsim-beta.dump
+```
+
+Pass criteria: backup JSON has `status: "backup_created"`, a nonzero `size_bytes`, and a 64-character `sha256`; restore JSON has `status: "restore_verified"`. The restore target must be a separately provisioned pristine test database and must be recreated before every drill. The script never creates, drops, cleans, or overwrites the target, and a nonempty target must fail with `RESTORE_TARGET_NOT_EMPTY`. Keep dumps outside the repository in encrypted restricted storage and manage retention separately.
+
 ## 3. Mock smoke
 
 Start a local mock backend:

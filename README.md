@@ -31,6 +31,27 @@ Run `python scripts/run_migrations.py` once as a dedicated, serialized pre-deplo
 
 Do not run migrations from FastAPI startup or from every API worker. The release platform must allow only one migration job at a time; API readiness remains the traffic gate until the schema is current.
 
+## PostgreSQL backups and restore drills
+
+Install PostgreSQL client tools compatible with the server major version, then create a custom-format backup in a protected directory outside the repository:
+
+```bash
+cd backend
+python scripts/postgres_backup.py backup --output /secure/backups/worldsim-YYYYmmddTHHMMSSZ.dump
+```
+
+The backup command reads only `DATABASE_URL`, refuses to overwrite an existing path, writes through a same-directory temporary file, and reports the final size and SHA-256 digest. Database URLs, passwords, client stderr, and tracebacks are not printed. Store the resulting dump encrypted with restricted access and apply an external retention policy; the script does not upload, rotate, or delete backups.
+
+Periodically verify a backup against a separately provisioned PostgreSQL database whose name is clearly isolated, such as `worldsim_restore_test`:
+
+```bash
+cd backend
+RESTORE_DATABASE_URL=postgresql+psycopg://.../worldsim_restore_test \
+python scripts/postgres_backup.py verify-restore --backup-file /secure/backups/worldsim-YYYYmmddTHHMMSSZ.dump
+```
+
+`verify-restore` never creates, drops, cleans, or reuses database objects. The target must already exist, differ from the source database, use a `test_*`, `*_test`, or `*_test_*` name, and contain no user objects. Restore runs in one transaction and succeeds only when the restored Alembic heads match the repository heads. Recreate the isolated target before every drill; never set `RESTORE_DATABASE_URL` to production.
+
 ## Verification
 
 Run backend tests:

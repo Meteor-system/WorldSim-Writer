@@ -12,6 +12,10 @@ __pycache__/
 .playwright-mcp/
 .hermes/plans/*.md
 backend/worldsim-dev.db
+*.dump
+*.backup
+backups/
+backend/backups/
 node_modules/
 dist/
 build/
