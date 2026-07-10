@@ -102,7 +102,7 @@ def test_world_status_update_does_not_record_event_for_unchanged_status(client, 
     assert events == []
 
 
-def test_world_status_update_rejects_invalid_status(client):
+def test_world_status_update_rejects_invalid_status(client, db_session):
     token = register(client, 'archive-invalid@example.com')
     world = create_sample_world(client, token)
 
@@ -113,6 +113,22 @@ def test_world_status_update_rejects_invalid_status(client):
     )
 
     assert response.status_code == 422
+    assert any(
+        error['type'] == 'value_error'
+        and error['loc'] == ['body', 'status']
+        and error['msg'].endswith('status must be active or archived')
+        for error in response.json()['detail']
+    )
+    db_session.expire_all()
+    assert db_session.get(World, world['id']).status == 'active'
+    events = list(
+        db_session.scalars(
+            select(EventLog)
+            .where(EventLog.world_id == world['id'])
+            .where(EventLog.event_type == 'world_status_changed')
+        )
+    )
+    assert events == []
 
 
 def test_world_status_update_rejects_extra_fields_without_changing_status_or_events(client, db_session):
