@@ -254,6 +254,139 @@ def test_outline_generates_and_persists_beat_cards(client, db_session, monkeypat
     assert chapter.outline_beats[1]['summary'] == '沈微霜出现并隐瞒她知道密道入口。'
 
 
+def test_late_outline_cannot_restore_approved_chapter_to_outlined(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    user = db_session.get(World, world_id).owner
+    narrative_service.generate_chapter_outline(db_session, user, chapter_id, llm_client=PipelineLLMClient())
+    narrative_service.write_chapter_from_outline(db_session, user, chapter_id, llm_client=PipelineLLMClient())
+
+    class ApprovingOutlineLLM(PipelineLLMClient):
+        def generate_outline(self, messages):
+            outline = super().generate_outline(messages)
+            approved = narrative_service.approve_chapter(db_session, user, chapter_id)
+            assert approved.status == 'approved'
+            return outline
+
+    try:
+        narrative_service.generate_chapter_outline(db_session, user, chapter_id, llm_client=ApprovingOutlineLLM())
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 409
+        assert getattr(error, 'detail', None) == 'ALREADY_APPROVED'
+    else:
+        raise AssertionError('expected ALREADY_APPROVED')
+
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, chapter_id)
+    assert chapter.status == 'approved'
+    assert chapter.approved_version == 1
+    assert chapter.approved_content == fake_generation().draft_content
+    assert db_session.get(World, world_id).world_version == 2
+    assert db_session.query(EventLog).filter_by(world_id=world_id, event_type='chapter_approved').count() == 1
+
+
+def test_late_outline_rejects_world_version_change_without_overwriting_chapter(client, db_session):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    user = db_session.get(World, world_id).owner
+    before_events = db_session.query(EventLog).filter_by(world_id=world_id).count()
+
+    class AdvancingWorldOutlineLLM(PipelineLLMClient):
+        def generate_outline(self, messages):
+            outline = super().generate_outline(messages)
+            world = db_session.get(World, world_id)
+            world.world_version += 1
+            db_session.commit()
+            return outline
+
+    try:
+        narrative_service.generate_chapter_outline(db_session, user, chapter_id, llm_client=AdvancingWorldOutlineLLM())
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 409
+        assert getattr(error, 'detail', None) == 'WORLD_VERSION_MISMATCH'
+    else:
+        raise AssertionError('expected WORLD_VERSION_MISMATCH')
+
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, chapter_id)
+    assert chapter.status == 'drafting'
+    assert chapter.outline_beats == []
+    assert chapter.outline_context == {}
+    assert db_session.get(World, world_id).world_version == 2
+    assert db_session.query(EventLog).filter_by(world_id=world_id).count() == before_events
+
+
+def test_late_outline_rejects_chapter_status_change_without_overwriting_new_state(client, db_session):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    user = db_session.get(World, world_id).owner
+    before_events = db_session.query(EventLog).filter_by(world_id=world_id).count()
+    preserved_beats = [{'beat_id': 'concurrent', 'summary': '另一请求已生成大纲。'}]
+    preserved_context = {'core_conflict': '保留并发请求结果'}
+
+    class AdvancingChapterOutlineLLM(PipelineLLMClient):
+        def generate_outline(self, messages):
+            outline = super().generate_outline(messages)
+            chapter = db_session.get(Chapter, chapter_id)
+            chapter.status = 'outlined'
+            chapter.outline_beats = preserved_beats
+            chapter.outline_context = preserved_context
+            db_session.commit()
+            return outline
+
+    try:
+        narrative_service.generate_chapter_outline(db_session, user, chapter_id, llm_client=AdvancingChapterOutlineLLM())
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 409
+        assert getattr(error, 'detail', None) == 'CHAPTER_STATUS_MISMATCH'
+    else:
+        raise AssertionError('expected CHAPTER_STATUS_MISMATCH')
+
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, chapter_id)
+    assert chapter.status == 'outlined'
+    assert chapter.outline_beats == preserved_beats
+    assert chapter.outline_context == preserved_context
+    assert db_session.get(World, world_id).world_version == 1
+    assert db_session.query(EventLog).filter_by(world_id=world_id).count() == before_events
+
+
+def test_late_outline_rejects_draft_version_change_without_overwriting_new_draft(client, db_session):
+    token, world_id = register_and_create_world(client)
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    user = db_session.get(World, world_id).owner
+    narrative_service.generate_chapter_outline(db_session, user, chapter_id, llm_client=PipelineLLMClient())
+    draft = narrative_service.write_chapter_from_outline(db_session, user, chapter_id, llm_client=PipelineLLMClient())
+    preserved_beats = list(db_session.get(Chapter, chapter_id).outline_beats)
+    before_events = db_session.query(EventLog).filter_by(world_id=world_id).count()
+
+    class StashingOutlineLLM(PipelineLLMClient):
+        def generate_outline(self, messages):
+            outline = super().generate_outline(messages)
+            stashed = narrative_service.stash_chapter_draft(db_session, user, chapter_id, '模型调用期间暂存')
+            assert stashed['draft_version'] == 2
+            return outline
+
+    try:
+        narrative_service.generate_chapter_outline(db_session, user, chapter_id, llm_client=StashingOutlineLLM())
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 409
+        assert getattr(error, 'detail', None) == 'DRAFT_VERSION_MISMATCH'
+    else:
+        raise AssertionError('expected DRAFT_VERSION_MISMATCH')
+
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, chapter_id)
+    drafts = list(db_session.scalars(select(ChapterDraft).where(ChapterDraft.chapter_id == chapter_id).order_by(ChapterDraft.draft_version)))
+    assert chapter.status == 'reviewing'
+    assert chapter.draft_version == 2
+    assert chapter.outline_beats == preserved_beats
+    assert [item.draft_version for item in drafts] == [1, 2]
+    assert drafts[0].content == drafts[1].content == draft['content']
+    assert db_session.get(World, world_id).world_version == 1
+    assert db_session.query(EventLog).filter_by(world_id=world_id).count() == before_events
+
+
 def test_outline_rejects_extra_body_fields_without_side_effects(client, db_session, monkeypatch):
     token, world_id = register_and_create_world(client)
     chapter_id = create_chapter(client, token, world_id).json()['id']

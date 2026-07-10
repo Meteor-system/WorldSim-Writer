@@ -632,6 +632,36 @@ def _locked_chapter_query(chapter_id: int):
     return select(Chapter).where(Chapter.id == chapter_id).with_for_update().execution_options(populate_existing=True)
 
 
+def _revalidate_outline_after_model(
+    db: Session,
+    user: User,
+    world_id: int,
+    chapter_id: int,
+    source_world_version: int,
+    source_chapter_status: str,
+    source_draft_version: int,
+) -> tuple[World, Chapter]:
+    db.expire_all()
+    try:
+        world = _require_locked_owned_world(db, user, world_id)
+        _ensure_world_is_active(world)
+        chapter = db.scalar(_locked_chapter_query(chapter_id))
+        if chapter is None or chapter.world_id != world.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+        if chapter.status == 'approved':
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
+        if world.world_version != source_world_version:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
+        if chapter.status != source_chapter_status:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='CHAPTER_STATUS_MISMATCH')
+        if chapter.draft_version != source_draft_version:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_VERSION_MISMATCH')
+        return world, chapter
+    except Exception:
+        db.rollback()
+        raise
+
+
 def _revalidate_draft_after_model(
     db: Session,
     user: User,
@@ -708,6 +738,9 @@ def generate_chapter_outline(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
     world = _world_for_chapter(db, chapter)
     _ensure_world_is_active(world)
+    source_world_version = world.world_version
+    source_chapter_status = chapter.status
+    source_draft_version = chapter.draft_version
     characters, foreshadows = _load_world_context(db, world)
     client = _model_client(llm_client)
     try:
@@ -723,6 +756,15 @@ def generate_chapter_outline(
         )
     except (TimeoutError, ValueError, RuntimeError) as exc:
         raise _map_model_error(exc) from exc
+    _world, chapter = _revalidate_outline_after_model(
+        db,
+        user,
+        world.id,
+        chapter.id,
+        source_world_version,
+        source_chapter_status,
+        source_draft_version,
+    )
     chapter.outline_beats = [beat.model_dump() for beat in outline.beats]
     chapter.outline_context = _outline_context_payload(outline)
     chapter.status = 'outlined'
