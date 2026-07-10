@@ -227,6 +227,19 @@ def test_character_create_rejects_blank_required_fields(client):
     )
 
     assert response.status_code == 422
+    detail = response.json()['detail']
+    assert any(
+        error['type'] == 'value_error'
+        and error['loc'] == ['body', 'name']
+        and error['msg'].endswith('must not be blank')
+        for error in detail
+    )
+    assert any(
+        error['type'] == 'value_error'
+        and error['loc'] == ['body', 'role_type']
+        and error['msg'].endswith('must not be blank')
+        for error in detail
+    )
 
 
 def test_character_create_rejects_extra_fields_without_side_effects(client, db_session):
