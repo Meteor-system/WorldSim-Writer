@@ -126,7 +126,7 @@ def test_world_status_update_rejects_extra_fields_without_changing_status_or_eve
     )
 
     assert response.status_code == 422
-    assert any(error['type'] == 'extra_forbidden' and error['loc'][-1] == 'raw_text' for error in response.json()['detail'])
+    assert any(error['type'] == 'extra_forbidden' and error['loc'] == ['body', 'raw_text'] for error in response.json()['detail'])
     db_session.expire_all()
     stored_world = db_session.get(World, world['id'])
     assert stored_world.status == 'active'
