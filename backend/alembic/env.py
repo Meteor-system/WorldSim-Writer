@@ -4,7 +4,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from app.core.config import get_settings
-from app.core.database import Base, import_models
+from app.core.database import Base, database_connect_args, import_models
 from app.core.migrations import ensure_alembic_version_table_capacity
 
 config = context.config
@@ -14,7 +14,8 @@ if config.config_file_name is not None:
 
 import_models()
 target_metadata = Base.metadata
-config.set_main_option('sqlalchemy.url', get_settings().database_url)
+settings = get_settings()
+config.set_main_option('sqlalchemy.url', settings.database_url)
 
 
 def run_migrations_offline() -> None:
@@ -35,6 +36,7 @@ def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix='sqlalchemy.',
         poolclass=pool.NullPool,
+        connect_args=database_connect_args(settings, role='alembic'),
     )
 
     with connectable.connect() as connection:

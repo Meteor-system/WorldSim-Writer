@@ -18,6 +18,18 @@ class Settings(BaseSettings):
     llm_mock: bool = Field(default=False, alias='LLM_MOCK')
     frontend_origin: str = Field(default='http://localhost:5173', alias='FRONTEND_ORIGIN')
     log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = Field(default='INFO', alias='LOG_LEVEL')
+    db_connect_timeout_seconds: int = Field(default=5, ge=1, le=60, alias='DB_CONNECT_TIMEOUT_SECONDS')
+    db_application_name: str = Field(
+        default='worldsim-writer',
+        min_length=1,
+        max_length=55,
+        pattern=r'^[A-Za-z0-9][A-Za-z0-9._:-]*$',
+        alias='DB_APPLICATION_NAME',
+    )
+    db_pool_size: int = Field(default=5, ge=1, le=50, alias='DB_POOL_SIZE')
+    db_max_overflow: int = Field(default=5, ge=0, le=50, alias='DB_MAX_OVERFLOW')
+    db_pool_timeout_seconds: int = Field(default=5, ge=1, le=120, alias='DB_POOL_TIMEOUT_SECONDS')
+    db_pool_recycle_seconds: int = Field(default=1800, ge=30, le=86400, alias='DB_POOL_RECYCLE_SECONDS')
 
     @field_validator('secret_key')
     @classmethod
