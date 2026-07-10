@@ -341,7 +341,9 @@ describe('StudioPage Review Studio 2.0 controls', () => {
       />,
     );
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('CREATE_CHAPTER_FAILED');
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('已创建的世界和当前创作进度都已保留，可以直接重试。');
+    expect(alert).not.toHaveTextContent('CREATE_CHAPTER_FAILED');
     expect(screen.getByText('世界进度：1')).toBeInTheDocument();
     expect(screen.queryByText('Chapter Session')).not.toBeInTheDocument();
 
@@ -371,7 +373,9 @@ describe('StudioPage Review Studio 2.0 controls', () => {
       />,
     );
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('GENERATE_OUTLINE_FAILED');
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('已创建的世界和当前创作进度都已保留，可以直接重试。');
+    expect(alert).not.toHaveTextContent('GENERATE_OUTLINE_FAILED');
     expect(screen.getByText('世界进度：1')).toBeInTheDocument();
     expect(screen.getByText('Chapter Session')).toBeInTheDocument();
     expect(screen.queryByText('Outliner Beats')).not.toBeInTheDocument();
@@ -402,7 +406,9 @@ describe('StudioPage Review Studio 2.0 controls', () => {
       />,
     );
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('MODEL_REQUEST_FAILED');
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('第一章草稿暂未生成。已创建的世界和当前创作进度都已保留，可以直接重试。');
+    expect(alert).not.toHaveTextContent('MODEL_REQUEST_FAILED');
     expect(screen.getByLabelText('章节目标')).toHaveValue('让林砚在雨巷第一次试探沈微霜。');
     expect(screen.getByText('世界进度：1')).toBeInTheDocument();
     expect(screen.queryByText('Writer Draft')).not.toBeInTheDocument();

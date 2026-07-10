@@ -59,6 +59,13 @@ function names(values: Array<{ name?: string; title?: string }>): string {
   return values.map((value) => value.name ?? value.title).filter(Boolean).join('、') || '无';
 }
 
+function autoDraftFailureMessage(error: unknown): string {
+  const recoveryMessage = '第一章草稿暂未生成。已创建的世界和当前创作进度都已保留，可以直接重试。';
+  const detail = error instanceof Error ? error.message.trim() : '';
+  if (!detail || /^[A-Z][A-Z0-9_]+$/.test(detail)) return recoveryMessage;
+  return `${recoveryMessage} 原因：${detail}`;
+}
+
 function ExecutionContextSummary({ context, frozen }: { context?: ChapterExecutionContext | null; frozen?: boolean }) {
   if (!context) {
     return (
@@ -374,7 +381,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
         critique_report: nextDraft.critique_report ?? {},
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : '生成第一章草稿失败');
+      setError(autoDraftFailureMessage(err));
     } finally {
       setWorking(false);
       setAutoDrafting(false);
