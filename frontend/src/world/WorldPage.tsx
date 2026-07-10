@@ -139,15 +139,17 @@ function materialReferencesFromImportBatches(batches: ImportBatchWithAssetsRespo
   })));
 }
 
-function dashboardActions(world: WorldOverview, isArchivedWorld: boolean): Array<{ label: string; detail: string; primary?: boolean }> {
+function dashboardActions(world: WorldOverview, isArchivedWorld: boolean, hasActiveChapter: boolean): Array<{ label: string; detail: string; primary?: boolean }> {
   const urgentForeshadow = openForeshadows(world)[0];
   const needsFirstChapterOnboarding = !isArchivedWorld && world.approved_chapter_count === 0 && world.story_arc.length === 0;
   const actions = [
     isArchivedWorld
       ? { label: '恢复写作后继续下一章', detail: '这本小说已归档；恢复写作后再继续推进正史。' }
-      : needsFirstChapterOnboarding
-        ? { label: '先生成故事大纲', detail: '这本小说还没有写入正史；请先完成上方第一步引导。' }
-        : { label: '继续下一章', detail: `下一章会继承世界进度${labelWorldVersion(world.world_version)}和已写入正史的变化。`, primary: true },
+      : hasActiveChapter
+        ? { label: '继续进行中的章节', detail: '恢复已保留的 Studio 创作进度，不会创建第二个未批准章节。', primary: true }
+        : needsFirstChapterOnboarding
+          ? { label: '先生成故事大纲', detail: '这本小说还没有写入正史；请先完成上方第一步引导。' }
+          : { label: '继续下一章', detail: `下一章会继承世界进度${labelWorldVersion(world.world_version)}和已写入正史的变化。`, primary: true },
   ];
   if (urgentForeshadow) {
     actions.push({
@@ -165,10 +167,10 @@ function dashboardActions(world: WorldOverview, isArchivedWorld: boolean): Array
   return actions;
 }
 
-function WorldOperationsDashboard({ world, isArchivedWorld, onContinue, onShowForeshadows, onShowArchive }: { world: WorldOverview; isArchivedWorld: boolean; onContinue: () => void; onShowForeshadows: () => void; onShowArchive: () => void }) {
+function WorldOperationsDashboard({ world, isArchivedWorld, hasActiveChapter, onContinue, onShowForeshadows, onShowArchive }: { world: WorldOverview; isArchivedWorld: boolean; hasActiveChapter: boolean; onContinue: () => void; onShowForeshadows: () => void; onShowArchive: () => void }) {
   const activeCharacters = world.characters.slice(0, 3);
   const urgentForeshadows = openForeshadows(world).slice(0, 3);
-  const actions = dashboardActions(world, isArchivedWorld);
+  const actions = dashboardActions(world, isArchivedWorld, hasActiveChapter);
 
   return (
     <section className="book-card mt-8 space-y-6 border-2 border-amber-900/15 bg-amber-50/70 p-6" aria-label="今日创作看板">
@@ -930,8 +932,14 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     return selectedStyleHandbook ? withStyleHandbookReference(context, selectedStyleHandbook) : context;
   }
 
+  function resumeActiveChapterIfPresent(): boolean {
+    if (!activeChapterSession?.chapter) return false;
+    resumeActiveChapter();
+    return true;
+  }
+
   function launchStoryArcChapter(chapter: StoryArcChapter) {
-    if (!world) return;
+    if (!world || resumeActiveChapterIfPresent()) return;
     const executionContext = withActiveStyleHandbook(buildStoryArcExecutionContext(world, chapter));
     onEnterStudio(world, {
       initialChapterGoal: executionContext.goal,
@@ -940,7 +948,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   }
 
   function launchSerialPlanChapter(chapter: SerialPlanChapter) {
-    if (!world || !serialPlan) return;
+    if (!world || !serialPlan || resumeActiveChapterIfPresent()) return;
     const executionContext = withActiveStyleHandbook(buildSerialPlanExecutionContext(
       world,
       chapter,
@@ -954,7 +962,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   }
 
   function launchWorldCreationDraftChapter() {
-    if (!world || !worldCreationDraftGoal) return;
+    if (!world || !worldCreationDraftGoal || resumeActiveChapterIfPresent()) return;
     const executionContext = withActiveStyleHandbook(buildWorldCreationDraftExecutionContext(world, worldCreationDraftGoal));
     onEnterStudio(world, {
       initialChapterGoal: executionContext.goal,
@@ -1168,7 +1176,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               <WorldOperationsDashboard
                 world={world}
                 isArchivedWorld={isArchivedWorld}
+                hasActiveChapter={Boolean(activeChapterSession?.chapter)}
                 onContinue={() => {
+                  if (resumeActiveChapterIfPresent()) return;
                   const baseContext = selectedExecutionContext
                     ?? (selectedStyleHandbook ? buildManualExecutionContext(world, '') : undefined);
                   onEnterStudio(world, {
@@ -1249,10 +1259,13 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
               loading={nextPrepLoading}
               error={nextPrepError}
               onUseContext={setSelectedExecutionContext}
-              onEnterStudioWithContext={(context) => onEnterStudio(world, {
-                initialChapterGoal: context.goal,
-                executionContext: withActiveStyleHandbook(context),
-              })}
+              onEnterStudioWithContext={(context) => {
+                if (resumeActiveChapterIfPresent()) return;
+                onEnterStudio(world, {
+                  initialChapterGoal: context.goal,
+                  executionContext: withActiveStyleHandbook(context),
+                });
+              }}
             />
             <WorldImportPanel
               worldId={world.id}

@@ -721,6 +721,30 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(approveChapter).not.toHaveBeenCalled();
   });
 
+  it('stops automatic first-chapter generation when another active chapter already exists', async () => {
+    vi.mocked(createChapter).mockRejectedValueOnce(new Error('ACTIVE_CHAPTER_EXISTS'));
+
+    render(
+      <StudioPage
+        world={world}
+        launchContext={{
+          initialChapterGoal: '让林砚在雨巷第一次试探沈微霜。',
+          executionContext,
+          autoDraftFirstChapter: true,
+        }}
+        onBack={vi.fn()}
+        onApproved={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('这个世界已有进行中的章节。请返回世界页恢复该章节');
+    expect(screen.queryByRole('button', { name: '重试生成第一章草稿' })).not.toBeInTheDocument();
+    expect(createChapter).toHaveBeenCalledTimes(1);
+    expect(generateOutline).not.toHaveBeenCalled();
+    expect(writeChapter).not.toHaveBeenCalled();
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
   it('retries a failed automatic first-chapter outline without creating a duplicate chapter', async () => {
     const user = userEvent.setup();
     vi.mocked(generateOutline).mockRejectedValueOnce(new Error('GENERATE_OUTLINE_FAILED'));

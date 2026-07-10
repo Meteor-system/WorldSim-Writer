@@ -598,6 +598,17 @@ def get_active_chapter_session(db: Session, user: User, world_id: int) -> dict:
     }
 
 
+def _ensure_no_active_chapter(db: Session, world: World) -> None:
+    active_chapter_id = db.scalar(
+        select(Chapter.id)
+        .where(Chapter.world_id == world.id)
+        .where(Chapter.status != 'approved')
+        .order_by(Chapter.id.desc())
+    )
+    if active_chapter_id is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ACTIVE_CHAPTER_EXISTS')
+
+
 def create_chapter_session(
     db: Session,
     user: User,
@@ -608,6 +619,7 @@ def create_chapter_session(
 ) -> Chapter:
     world = require_owned_world(db, user, world_id)
     _ensure_world_is_active(world)
+    _ensure_no_active_chapter(db, world)
     characters, _ = _load_world_context(db, world)
     context = normalize_execution_context(db, world, chapter_goal, execution_context)
     chapter = Chapter(
@@ -680,6 +692,7 @@ def create_chapter_draft(
 ) -> dict:
     world = require_owned_world(db, user, world_id)
     _ensure_world_is_active(world)
+    _ensure_no_active_chapter(db, world)
     characters, foreshadows = _load_world_context(db, world)
     context = normalize_execution_context(db, world, chapter_goal, execution_context)
     client = _model_client(llm_client)

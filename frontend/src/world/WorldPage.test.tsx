@@ -782,6 +782,106 @@ describe('WorldPage world creation', () => {
     });
   });
 
+  it('routes dashboard and story-arc chapter launches back to the same active Studio session', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    const frozenExecutionContext = {
+      source: 'manual' as const,
+      source_world_version: 2,
+      next_chapter_number: 2,
+      goal: '保留原有章节目标',
+      recommended_pov: { character_id: 1, name: '林砚' },
+      priority_characters: [],
+      priority_foreshadows: [],
+      progression_hints: [],
+      continuity_warnings: [],
+      recent_events: [],
+      source_signals: ['manual'],
+      material_references: [],
+    };
+    const activeSession = {
+      chapter: {
+        id: 11,
+        world_id: 7,
+        title: '第二章 保留中的章节',
+        status: 'drafting',
+        draft_version: 1,
+        approved_version: null,
+        base_world_version: 2,
+        approved_content: null,
+        chapter_goal: frozenExecutionContext.goal,
+        outline_beats: [],
+        outline_context: {},
+        critique_report: {},
+        execution_context: frozenExecutionContext,
+      },
+      draft: null,
+      draft_versions: [],
+      recent_approval: null,
+    };
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockResolvedValueOnce([{ id: 7 }]).mockResolvedValueOnce(storyArcWorld);
+    vi.mocked(getActiveChapterSession).mockResolvedValueOnce(activeSession);
+    vi.mocked(getSerialPlan).mockResolvedValueOnce({
+      world_id: 7,
+      world_version: 2,
+      approved_chapter_count: 1,
+      queue: [{
+        chapter_number: 2,
+        title: '替代连载目标',
+        goal: '不应覆盖原有目标',
+        summary: '替代摘要',
+        core_conflict: '替代冲突',
+        pov_suggestion: '沈微霜',
+        foreshadow_hints: [],
+        source: 'story_arc',
+      }],
+      safety_notes: [],
+      review_guardrails: [],
+      convergence_guidance: {
+        mode: 'expand',
+        mode_label: '允许扩张',
+        open_foreshadow_count: 0,
+        high_pressure_count: 0,
+        stale_count: 0,
+        overdue_count: 0,
+        priority_foreshadows: [],
+        recommendation: '可继续扩张。',
+        guidance_notes: [],
+      },
+    });
+
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    const dashboard = within(await screen.findByLabelText('今日创作看板'));
+    await user.click(dashboard.getByRole('button', { name: '继续进行中的章节' }));
+    expect(onEnterStudio).toHaveBeenLastCalledWith(storyArcWorld, {
+      initialChapterGoal: frozenExecutionContext.goal,
+      executionContext: frozenExecutionContext,
+      autoDraftFirstChapter: true,
+      resumeSession: activeSession,
+    });
+
+    await user.click(screen.getByRole('button', { name: '继续创作' }));
+    await user.click(await screen.findByRole('button', { name: '用此目标进入创作台' }));
+    expect(onEnterStudio).toHaveBeenLastCalledWith(storyArcWorld, {
+      initialChapterGoal: frozenExecutionContext.goal,
+      executionContext: frozenExecutionContext,
+      autoDraftFirstChapter: true,
+      resumeSession: activeSession,
+    });
+
+    await user.click(screen.getByRole('button', { name: '生成连载队列' }));
+    await user.click(await screen.findByRole('button', { name: '用此目标进入 Studio' }));
+    expect(onEnterStudio).toHaveBeenLastCalledWith(storyArcWorld, {
+      initialChapterGoal: frozenExecutionContext.goal,
+      executionContext: frozenExecutionContext,
+      autoDraftFirstChapter: true,
+      resumeSession: activeSession,
+    });
+    expect(onEnterStudio).toHaveBeenCalledTimes(3);
+  });
+
   it('restores the latest approval settlement after reopening without exposing another approval action', async () => {
     const user = userEvent.setup();
     const onEnterStudio = vi.fn();

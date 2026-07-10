@@ -193,6 +193,99 @@ def test_create_chapter_freezes_execution_context_without_mutating_world(client,
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
 
 
+def test_active_chapter_guard_blocks_duplicate_create_paths_without_side_effects(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client, 'active-chapter-guard@example.com')
+    headers = {'Authorization': f'Bearer {token}'}
+    first = client.post(
+        f'/worlds/{world_id}/chapters',
+        json={'chapter_goal': '保留当前章节', 'title': '第一章 保留当前章节'},
+        headers=headers,
+    )
+    assert first.status_code == 200
+
+    before_chapters = db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id))
+    before_drafts = db_session.scalar(
+        select(func.count()).select_from(ChapterDraft).join(Chapter).where(Chapter.world_id == world_id)
+    )
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id))
+    before_world_version = db_session.get(World, world_id).world_version
+    llm = CapturingLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+
+    duplicate_session = client.post(
+        f'/worlds/{world_id}/chapters',
+        json={'chapter_goal': '不应创建的第二章', 'title': '第二章'},
+        headers=headers,
+    )
+    duplicate_draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '不应生成的第二章草稿'},
+        headers=headers,
+    )
+
+    assert duplicate_session.status_code == 409
+    assert duplicate_session.json()['detail'] == 'ACTIVE_CHAPTER_EXISTS'
+    assert duplicate_draft.status_code == 409
+    assert duplicate_draft.json()['detail'] == 'ACTIVE_CHAPTER_EXISTS'
+    assert llm.messages == []
+    db_session.expire_all()
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
+    assert db_session.scalar(
+        select(func.count()).select_from(ChapterDraft).join(Chapter).where(Chapter.world_id == world_id)
+    ) == before_drafts
+    assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id)) == before_events
+    assert db_session.get(World, world_id).world_version == before_world_version
+
+
+def test_active_chapter_guard_allows_one_unapproved_chapter_per_world(client, db_session):
+    token, first_world_id = register_and_create_world(client, 'active-chapter-world-isolation@example.com')
+    headers = {'Authorization': f'Bearer {token}'}
+    second_world_id = client.post('/worlds/from-template', headers=headers).json()['id']
+
+    first = client.post(
+        f'/worlds/{first_world_id}/chapters',
+        json={'chapter_goal': '第一个世界的进行中章节'},
+        headers=headers,
+    )
+    second = client.post(
+        f'/worlds/{second_world_id}/chapters',
+        json={'chapter_goal': '第二个世界的进行中章节'},
+        headers=headers,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == first_world_id)) == 1
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == second_world_id)) == 1
+
+
+def test_active_chapter_guard_allows_next_chapter_after_approval(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client, 'active-chapter-after-approval@example.com')
+    headers = {'Authorization': f'Bearer {token}'}
+    llm = CapturingLLMClient()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm)
+    first = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '完成并批准第一章'},
+        headers=headers,
+    )
+    assert first.status_code == 200
+
+    approved = client.post(f"/chapters/{first.json()['chapter_id']}/approve", json={}, headers=headers)
+    assert approved.status_code == 200
+    assert approved.json()['status'] == 'approved'
+
+    next_chapter = client.post(
+        f'/worlds/{world_id}/chapters',
+        json={'chapter_goal': '批准后创建下一章'},
+        headers=headers,
+    )
+    assert next_chapter.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(World, world_id).world_version == 2
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == 2
+
+
 def test_create_chapter_without_context_creates_manual_context(client, db_session):
     token, world_id = register_and_create_world(client, 'manual-execution-context@example.com')
 

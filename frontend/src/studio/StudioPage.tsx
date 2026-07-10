@@ -60,7 +60,14 @@ function names(values: Array<{ name?: string; title?: string }>): string {
   return values.map((value) => value.name ?? value.title).filter(Boolean).join('、') || '无';
 }
 
+const ACTIVE_CHAPTER_RECOVERY_MESSAGE = '这个世界已有进行中的章节。请返回世界页恢复该章节，完成审阅或处理后再开始下一章。';
+
+function isActiveChapterConflict(error: unknown): boolean {
+  return error instanceof Error && error.message === 'ACTIVE_CHAPTER_EXISTS';
+}
+
 function autoDraftFailureMessage(error: unknown): string {
+  if (isActiveChapterConflict(error)) return ACTIVE_CHAPTER_RECOVERY_MESSAGE;
   const recoveryMessage = '第一章草稿暂未生成。已创建的世界和当前创作进度都已保留，可以直接重试。';
   const detail = error instanceof Error ? error.message.trim() : '';
   if (!detail || /^[A-Z][A-Z0-9_]+$/.test(detail)) return recoveryMessage;
@@ -381,7 +388,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
       setApprovalCommitState('idle');
       setSettlementSyncError('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建章节失败');
+      setError(isActiveChapterConflict(err) ? ACTIVE_CHAPTER_RECOVERY_MESSAGE : err instanceof Error ? err.message : '创建章节失败');
     } finally {
       setWorking(false);
     }
@@ -952,7 +959,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
           {error && (
             <div className="paper-error flex flex-wrap items-center justify-between gap-3" role="alert">
               <p>{error}</p>
-              {launchContext?.autoDraftFirstChapter && !draft && (
+              {launchContext?.autoDraftFirstChapter && !draft && error !== ACTIVE_CHAPTER_RECOVERY_MESSAGE && (
                 <button className="secondary-button" disabled={working} onClick={() => void autoDraftFirstChapterSession()}>
                   重试生成第一章草稿
                 </button>
