@@ -207,6 +207,19 @@ def test_active_chapter_creation_lock_compiles_to_postgresql_for_update():
     assert narrative_service._locked_world_query(7).get_execution_options()['populate_existing'] is True
 
 
+def test_chapter_model_write_lock_compiles_to_postgresql_for_update():
+    sql = str(
+        narrative_service._locked_chapter_query(11).compile(
+            dialect=postgresql.dialect(),
+            compile_kwargs={'literal_binds': True},
+        )
+    )
+
+    assert 'WHERE chapters.id = 11' in sql
+    assert 'FOR UPDATE' in sql
+    assert narrative_service._locked_chapter_query(11).get_execution_options()['populate_existing'] is True
+
+
 def test_generated_draft_rechecks_world_version_after_model_generation(client, db_session):
     token, world_id = register_and_create_world(client, 'draft-lock-version-recheck@example.com')
     headers = {'Authorization': f'Bearer {token}'}

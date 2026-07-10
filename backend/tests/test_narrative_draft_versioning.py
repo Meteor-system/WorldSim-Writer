@@ -512,6 +512,84 @@ def test_get_exact_draft_version_returns_requested_version(client, monkeypatch):
     assert missing.status_code == 404
 
 
+def test_late_revision_cannot_create_draft_after_chapter_is_approved(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    user = db_session.get(World, world_id).owner
+
+    class ApprovingRevisionLLM(DraftVersioningLLMClient):
+        def revise_chapter(self, messages):
+            generation = super().revise_chapter(messages)
+            approved = narrative_service.approve_chapter(db_session, user, draft['chapter_id'])
+            assert approved.status == 'approved'
+            return generation
+
+    before_events = db_session.query(EventLog).filter_by(world_id=world_id).count()
+    try:
+        narrative_service.revise_chapter_draft(
+            db_session,
+            user,
+            draft['chapter_id'],
+            '批准完成后不应接受迟到修订。',
+            llm_client=ApprovingRevisionLLM(),
+        )
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 409
+        assert getattr(error, 'detail', None) == 'ALREADY_APPROVED'
+    else:
+        raise AssertionError('expected ALREADY_APPROVED')
+
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    assert chapter.status == 'approved'
+    assert chapter.draft_version == draft['draft_version'] == 1
+    assert chapter.approved_version == draft['draft_version']
+    assert chapter.approved_content == draft['content']
+    assert [item.draft_version for item in get_drafts_for_chapter(db_session, draft['chapter_id'])] == [1]
+    assert db_session.get(World, world_id).world_version == 2
+    assert db_session.query(EventLog).filter_by(world_id=world_id).count() > before_events
+    assert db_session.query(EventLog).filter_by(world_id=world_id, event_type='chapter_approved').count() == 1
+
+
+def test_late_paragraph_revision_cannot_create_draft_after_chapter_is_approved(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    user = db_session.get(World, world_id).owner
+
+    class ApprovingParagraphLLM(DraftVersioningLLMClient):
+        def revise_paragraph(self, messages):
+            revision = super().revise_paragraph(messages)
+            approved = narrative_service.approve_chapter(db_session, user, draft['chapter_id'])
+            assert approved.status == 'approved'
+            return revision
+
+    try:
+        narrative_service.revise_chapter_paragraph(
+            db_session,
+            user,
+            draft['chapter_id'],
+            1,
+            'rewrite',
+            '增强人物试探。',
+            llm_client=ApprovingParagraphLLM(),
+        )
+    except Exception as error:
+        assert getattr(error, 'status_code', None) == 409
+        assert getattr(error, 'detail', None) == 'ALREADY_APPROVED'
+    else:
+        raise AssertionError('expected ALREADY_APPROVED')
+
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    assert chapter.status == 'approved'
+    assert chapter.draft_version == draft['draft_version'] == 1
+    assert chapter.approved_version == draft['draft_version']
+    assert chapter.approved_content == draft['content']
+    assert [item.draft_version for item in get_drafts_for_chapter(db_session, draft['chapter_id'])] == [1]
+    assert db_session.get(World, world_id).world_version == 2
+    assert db_session.query(EventLog).filter_by(world_id=world_id, event_type='chapter_approved').count() == 1
+
+
 def test_revision_rejects_approved_chapter(client, monkeypatch):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)

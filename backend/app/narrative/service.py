@@ -628,6 +628,41 @@ def _require_locked_owned_world(db: Session, user: User, world_id: int) -> World
     return world
 
 
+def _locked_chapter_query(chapter_id: int):
+    return select(Chapter).where(Chapter.id == chapter_id).with_for_update().execution_options(populate_existing=True)
+
+
+def _revalidate_draft_after_model(
+    db: Session,
+    user: User,
+    world_id: int,
+    chapter_id: int,
+    source_world_version: int,
+    source_draft_id: int,
+    source_draft_version: int,
+) -> tuple[World, Chapter, ChapterDraft]:
+    db.expire_all()
+    try:
+        world = _require_locked_owned_world(db, user, world_id)
+        _ensure_world_is_active(world)
+        chapter = db.scalar(_locked_chapter_query(chapter_id))
+        if chapter is None or chapter.world_id != world.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+        if chapter.status == 'approved':
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='ALREADY_APPROVED')
+        if world.world_version != source_world_version:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
+        if chapter.draft_version != source_draft_version:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_VERSION_MISMATCH')
+        draft = _latest_draft(db, chapter)
+        if draft is None or draft.id != source_draft_id:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_VERSION_MISMATCH')
+        return world, chapter, draft
+    except Exception:
+        db.rollback()
+        raise
+
+
 def create_chapter_session(
     db: Session,
     user: User,
@@ -1580,6 +1615,9 @@ def revise_chapter_draft(
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    source_world_version = world.world_version
+    source_draft_id = draft.id
+    source_draft_version = draft.draft_version
     characters, foreshadows = _load_world_context(db, world)
     readiness = _approval_readiness_for_revision(db, user, chapter.id)
     client = _model_client(llm_client)
@@ -1591,6 +1629,17 @@ def revise_chapter_draft(
         raise _map_model_error(exc) from exc
     validate_generation_ids(generation, characters, foreshadows)
 
+    world, chapter, draft = _revalidate_draft_after_model(
+        db,
+        user,
+        world.id,
+        chapter.id,
+        source_world_version,
+        source_draft_id,
+        source_draft_version,
+    )
+    characters, foreshadows = _load_world_context(db, world)
+    validate_generation_ids(generation, characters, foreshadows)
     proposed_changes = {
         'characters': [change.model_dump(exclude_none=True) for change in generation.proposed_character_changes],
         'foreshadows': [change.model_dump(exclude_none=True) for change in generation.proposed_foreshadow_changes],
@@ -1636,6 +1685,9 @@ def revise_chapter_paragraph(
     draft = _latest_draft(db, chapter)
     if draft is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail='NOT_FOUND')
+    source_world_version = world.world_version
+    source_draft_id = draft.id
+    source_draft_version = draft.draft_version
     paragraphs = _split_paragraphs(draft.content)
     if paragraph_index >= len(paragraphs):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='INVALID_PARAGRAPH_INDEX')
@@ -1663,6 +1715,15 @@ def revise_chapter_paragraph(
     except (TimeoutError, ValueError, RuntimeError) as exc:
         raise _map_model_error(exc) from exc
 
+    _world, chapter, draft = _revalidate_draft_after_model(
+        db,
+        user,
+        world.id,
+        chapter.id,
+        source_world_version,
+        source_draft_id,
+        source_draft_version,
+    )
     paragraphs[paragraph_index] = revision.paragraph
     content = '\n\n'.join(paragraphs)
     change_type = 'paragraph_rewrite' if mode == 'rewrite' else 'paragraph_polish'
