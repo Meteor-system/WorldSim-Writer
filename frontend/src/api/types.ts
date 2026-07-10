@@ -613,6 +613,7 @@ export type StudioLaunchContext = {
   initialChapterGoal?: string;
   executionContext?: ChapterExecutionContext;
   autoDraftFirstChapter?: boolean;
+  resumeSession?: ActiveChapterSessionResponse;
 };
 
 export type ChapterPipelineResponse = {
@@ -629,6 +630,11 @@ export type ChapterPipelineResponse = {
   outline_context: Record<string, unknown>;
   critique_report: Record<string, unknown>;
   execution_context: ChapterExecutionContext | null;
+};
+
+export type ActiveChapterSessionResponse = {
+  chapter: ChapterPipelineResponse | null;
+  draft: DraftResponse | null;
 };
 
 export type OutlineResponse = {

@@ -324,6 +324,83 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(goal).toHaveValue('用户修改后的下一章目标');
   });
 
+  it('resumes an outlined first-chapter session without creating a duplicate chapter', async () => {
+    render(
+      <StudioPage
+        world={world}
+        launchContext={{
+          initialChapterGoal: '让林砚在雨巷第一次试探沈微霜。',
+          autoDraftFirstChapter: true,
+          resumeSession: {
+            chapter: {
+              id: 11,
+              world_id: 7,
+              title: '让林砚在雨巷第一次试探沈微霜。',
+              status: 'outlined',
+              draft_version: 1,
+              approved_version: null,
+              base_world_version: 1,
+              approved_content: null,
+              chapter_goal: '让林砚在雨巷第一次试探沈微霜。',
+              outline_beats: [{ beat_id: 'beat-1', summary: '雨巷交换线索', pov_character: '林砚', location: '雨巷', emotional_arc: '警觉 -> 犹疑', key_dialogue_hints: [] }],
+              outline_context: { core_conflict: '判断沈微霜是否可信' },
+              critique_report: {},
+              execution_context: executionContext,
+            },
+            draft: null,
+          },
+        }}
+        onBack={vi.fn()}
+        onApproved={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('Writer Draft')).toBeInTheDocument();
+    expect(createChapter).not.toHaveBeenCalled();
+    expect(generateOutline).not.toHaveBeenCalled();
+    expect(writeChapter).toHaveBeenCalledTimes(1);
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
+  it('restores an existing reviewing draft without regenerating or approving it', async () => {
+    render(
+      <StudioPage
+        world={world}
+        launchContext={{
+          initialChapterGoal: '让林砚在雨巷第一次试探沈微霜。',
+          resumeSession: {
+            chapter: {
+              id: 11,
+              world_id: 7,
+              title: draftResponse.title,
+              status: 'reviewing',
+              draft_version: 1,
+              approved_version: null,
+              base_world_version: 1,
+              approved_content: null,
+              chapter_goal: '让林砚在雨巷第一次试探沈微霜。',
+              outline_beats: draftResponse.outline_beats ?? [],
+              outline_context: draftResponse.outline_context ?? {},
+              critique_report: {},
+              execution_context: executionContext,
+            },
+            draft: draftResponse,
+          },
+        }}
+        onBack={vi.fn()}
+        onApproved={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('Writer Draft')).toBeInTheDocument();
+    await waitFor(() => expect(getApprovalPreview).toHaveBeenCalledWith(11));
+    expect(getApprovalReadiness).toHaveBeenCalledWith(11);
+    expect(createChapter).not.toHaveBeenCalled();
+    expect(generateOutline).not.toHaveBeenCalled();
+    expect(writeChapter).not.toHaveBeenCalled();
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
   it('retries a failed automatic first-chapter chapter creation before continuing to Studio review', async () => {
     const user = userEvent.setup();
     vi.mocked(createChapter).mockRejectedValueOnce(new Error('CREATE_CHAPTER_FAILED'));

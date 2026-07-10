@@ -1,4 +1,5 @@
 import type {
+  ActiveChapterSessionResponse,
   ApprovalConsistencyResponse,
   ApprovalPreviewResponse,
   ApprovalReadinessResponse,
@@ -512,6 +513,10 @@ export function listWorldImports(worldId: number) {
 }
 
 /* ── Narrative pipeline ── */
+
+export function getActiveChapterSession(worldId: number) {
+  return apiRequest<ActiveChapterSessionResponse>(`/worlds/${worldId}/chapters/active`);
+}
 
 export function createChapter(worldId: number, data: { chapter_goal: string; title?: string; execution_context?: ChapterExecutionContext }) {
   const executionContext = data.execution_context ? cleanChapterExecutionContext(data.execution_context) : undefined;

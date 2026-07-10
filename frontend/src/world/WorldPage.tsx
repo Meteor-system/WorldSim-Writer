@@ -14,6 +14,7 @@ import {
   deleteWorldTag,
   exportWorldArchiveMarkdown,
   generateStoryArc,
+  getActiveChapterSession,
   getArcPlan,
   getChapterHistory,
   getChapterHistoryDetail,
@@ -37,7 +38,7 @@ import {
   updateWorldStatus,
   updateWorldTag,
 } from '../api/client';
-import type { ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, ImportBatchWithAssetsResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, SerialPlanChapter, SerialPlanResponse, StoryArcChapter, StudioLaunchContext, StyleHandbookReference, WorldCreateRequest, WorldCreationMaterialReference, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
+import type { ActiveChapterSessionResponse, ArcPlanResponse, ChapterExecutionContext, ChapterHistoryResponse, ImportBatchWithAssetsResponse, NarrativeHealthResponse, NextChapterPrepResponse, OpenThreadsResponse, SerialPlanChapter, SerialPlanResponse, StoryArcChapter, StudioLaunchContext, StyleHandbookReference, WorldCreateRequest, WorldCreationMaterialReference, WorldOverview, WorldPulseResponse, WorldSeedSummary, WorldSummary } from '../api/types';
 import { CharacterManager } from '../components/CharacterManager';
 import { ForeshadowManager } from '../components/ForeshadowManager';
 import { RelationManager } from '../components/RelationManager';
@@ -589,6 +590,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   const [creationMaterialLoading, setCreationMaterialLoading] = useState(false);
   const [creationMaterialError, setCreationMaterialError] = useState('');
   const [worldCreationDraftGoal, setWorldCreationDraftGoal] = useState('');
+  const [activeChapterSession, setActiveChapterSession] = useState<ActiveChapterSessionResponse | null>(null);
   const [expandedStoryArcChapters, setExpandedStoryArcChapters] = useState<number[]>([]);
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -732,9 +734,13 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
   async function openWorld(worldId: number) {
     setError('');
     setArchiveError('');
-    const overview = await apiRequest<WorldOverview>(`/worlds/${worldId}/overview`);
+    const [overview, activeSession] = await Promise.all([
+      apiRequest<WorldOverview>(`/worlds/${worldId}/overview`),
+      getActiveChapterSession(worldId),
+    ]);
     resetNarrativeData();
     setWorld(overview);
+    setActiveChapterSession(activeSession?.chapter ? activeSession : null);
     setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
     setShowCreationForm(false);
     setSelectedExecutionContext(null);
@@ -776,6 +782,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
       setWorld(overview);
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
+      setActiveChapterSession(null);
       setSelectedExecutionContext(null);
       setCreationMaterialReferences([]);
       setCreationMaterialError('');
@@ -956,6 +963,17 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
     });
   }
 
+  function resumeActiveChapter() {
+    if (!world || !activeChapterSession?.chapter) return;
+    const activeChapter = activeChapterSession.chapter;
+    onEnterStudio(world, {
+      initialChapterGoal: activeChapter.chapter_goal ?? undefined,
+      executionContext: activeChapter.execution_context ?? undefined,
+      autoDraftFirstChapter: !activeChapterSession.draft,
+      resumeSession: activeChapterSession,
+    });
+  }
+
   useEffect(() => {
     void loadWorld();
   }, []);
@@ -1110,7 +1128,15 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                 {labelWorldVersion(world.world_version)} · {labelGenre(world.genre_template)} · {labelStatus(world.status)}
               </p>
               <p className="manuscript mt-8 text-lg">{world.truth_canon}</p>
-              {worldCreationDraftGoal && !isArchivedWorld && (
+              {activeChapterSession?.chapter && !isArchivedWorld && (
+                <article className="mt-6 rounded-3xl border-2 border-amber-900/20 bg-amber-100/80 p-5 shadow-sm" aria-label="进行中章节入口">
+                  <p className="chapter-kicker">Studio 草稿已保留</p>
+                  <h2 className="mt-2 text-2xl font-black text-[#34210f]">继续{activeChapterSession.draft ? '审阅' : '生成'}「{activeChapterSession.chapter.title}」</h2>
+                  <p className="manuscript mt-2 text-sm text-[#5e3b1c]">已恢复到 {activeChapterSession.chapter.status} 阶段；不会创建重复章节，也不会自动写入正史或推进世界进度。</p>
+                  <button className="primary-button mt-4" type="button" onClick={resumeActiveChapter}>继续进入 Studio</button>
+                </article>
+              )}
+              {worldCreationDraftGoal && !activeChapterSession?.chapter && !isArchivedWorld && (
                 <article className="mt-6 rounded-3xl border-2 border-amber-900/20 bg-amber-100/80 p-5 shadow-sm" aria-label="创建草稿第一章入口">
                   <p className="chapter-kicker">创建草稿</p>
                   <h2 className="mt-2 text-2xl font-black text-[#34210f]">生成第一章草稿并进入 Studio</h2>
@@ -1119,7 +1145,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true }: Props) {
                   <button className="primary-button mt-4" type="button" onClick={launchWorldCreationDraftChapter}>生成第一章草稿并进入 Studio</button>
                 </article>
               )}
-              {shouldShowFirstChapterOnboarding && !worldCreationDraftGoal && (
+              {shouldShowFirstChapterOnboarding && !worldCreationDraftGoal && !activeChapterSession?.chapter && (
                 <FirstChapterOnboardingCard
                   arcLoading={arcLoading}
                   onGenerateArc={runStoryArcPlanner}

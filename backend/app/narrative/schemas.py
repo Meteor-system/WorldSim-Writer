@@ -267,6 +267,11 @@ class ChapterPipelineResponse(BaseModel):
     model_config = {'from_attributes': True}
 
 
+class ActiveChapterSessionResponse(BaseModel):
+    chapter: ChapterPipelineResponse | None = None
+    draft: DraftResponse | None = None
+
+
 class OutlineResponse(BaseModel):
     chapter_id: int
     outline_beats: list[dict]

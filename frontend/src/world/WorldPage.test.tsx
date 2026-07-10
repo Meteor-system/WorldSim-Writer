@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, confirmWorldImport, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, draftWorldFromBrief, exportWorldArchiveMarkdown, generateStoryArc, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getSerialPlan, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldImports, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, previewWorldImport, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
+import { apiRequest, assignWorldTag, bulkAssignWorldTag, compareWorldSnapshots, confirmWorldImport, createSampleWorld, createWorld, createWorldFromSeed, createWorldSnapshot, createWorldTag, deleteWorldTag, draftWorldFromBrief, exportWorldArchiveMarkdown, generateStoryArc, getActiveChapterSession, getArcPlan, getChapterHistory, getChapterHistoryDetail, getCharacters, getForeshadowLedger, getNarrativeHealth, getNextChapterPrep, getOpenThreads, getRelations, getSerialPlan, getWorldEvents, getWorldPulse, getWorldSeed, getWorldTag, listWorldImports, listWorldSeeds, listWorldSnapshots, listWorldTags, mergeWorldTag, previewWorldImport, searchWorld, unassignWorldTag, updateWorldStatus, updateWorldTag } from '../api/client';
 import type { WorldCreateRequest, WorldOverview, WorldSearchResponse } from '../api/types';
 import { WorldPage } from './WorldPage';
 
@@ -21,6 +21,7 @@ vi.mock('../api/client', () => ({
   draftWorldFromBrief: vi.fn(),
   exportWorldArchiveMarkdown: vi.fn(),
   generateStoryArc: vi.fn(),
+  getActiveChapterSession: vi.fn(),
   getChapterHistory: vi.fn(),
   getChapterHistoryDetail: vi.fn(),
   getNextChapterPrep: vi.fn(),
@@ -159,6 +160,8 @@ beforeEach(() => {
   vi.mocked(draftWorldFromBrief).mockReset();
   vi.mocked(exportWorldArchiveMarkdown).mockReset();
   vi.mocked(generateStoryArc).mockReset();
+  vi.mocked(getActiveChapterSession).mockReset();
+  vi.mocked(getActiveChapterSession).mockResolvedValue({ chapter: null, draft: null });
   vi.mocked(getChapterHistory).mockReset();
   vi.mocked(getChapterHistoryDetail).mockReset();
   vi.mocked(getNextChapterPrep).mockReset();
@@ -737,6 +740,58 @@ describe('WorldPage world creation', () => {
       }),
       autoDraftFirstChapter: true,
     });
+  });
+
+  it('restores an unfinished chapter after reopening the world and resumes Studio without creating a duplicate', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    const activeSession = {
+      chapter: {
+        id: 11,
+        world_id: 7,
+        title: '第一章 雨巷密谈',
+        status: 'outlined',
+        draft_version: 1,
+        approved_version: null,
+        base_world_version: 1,
+        approved_content: null,
+        chapter_goal: '让林砚在雨巷第一次试探沈微霜。',
+        outline_beats: [{ beat_id: 'beat-1', summary: '雨巷试探', pov_character: '林砚', location: '雨巷', emotional_arc: '警觉 -> 犹疑', key_dialogue_hints: [] }],
+        outline_context: { core_conflict: '判断沈微霜是否可信' },
+        critique_report: {},
+        execution_context: null,
+      },
+      draft: null,
+    };
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockResolvedValueOnce([newWorld]).mockResolvedValueOnce(newWorld);
+    vi.mocked(getActiveChapterSession).mockResolvedValueOnce(activeSession);
+
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    expect(await screen.findByLabelText('进行中章节入口')).toHaveTextContent('已恢复到 outlined 阶段');
+    expect(screen.getByLabelText('进行中章节入口')).toHaveTextContent('不会创建重复章节');
+    await user.click(screen.getByRole('button', { name: '继续进入 Studio' }));
+
+    expect(onEnterStudio).toHaveBeenCalledWith(newWorld, {
+      initialChapterGoal: '让林砚在雨巷第一次试探沈微霜。',
+      executionContext: undefined,
+      autoDraftFirstChapter: true,
+      resumeSession: activeSession,
+    });
+  });
+
+  it('does not open a world or new chapter entry when active-session recovery fails', async () => {
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest).mockResolvedValueOnce([newWorld]).mockResolvedValueOnce(newWorld);
+    vi.mocked(getActiveChapterSession).mockRejectedValueOnce(new Error('进行中章节恢复失败'));
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('进行中章节恢复失败');
+    expect(screen.queryByText('世界正史档案')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '继续下一章' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '生成第一章草稿并进入 Studio' })).not.toBeInTheDocument();
   });
 
   it('shows backend validation errors when custom world creation fails', async () => {

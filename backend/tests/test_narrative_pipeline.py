@@ -156,6 +156,43 @@ def test_create_chapter_session_requires_login_and_sets_base_world_version(clien
     assert payload['critique_report'] == {}
 
 
+def test_active_chapter_session_restores_latest_unapproved_progress_without_side_effects(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    other_token = register(client, 'active-session-other@example.com')
+    before_events = db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id))
+
+    empty_response = client.get(f'/worlds/{world_id}/chapters/active', headers=auth(token))
+    forbidden_response = client.get(f'/worlds/{world_id}/chapters/active', headers=auth(other_token))
+    chapter_id = create_chapter(client, token, world_id).json()['id']
+    drafting_response = client.get(f'/worlds/{world_id}/chapters/active', headers=auth(token))
+
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: PipelineLLMClient())
+    client.post(f'/chapters/{chapter_id}/outline', headers=auth(token), json={})
+    outlined_response = client.get(f'/worlds/{world_id}/chapters/active', headers=auth(token))
+    client.post(f'/chapters/{chapter_id}/write', headers=auth(token), json={})
+    reviewing_response = client.get(f'/worlds/{world_id}/chapters/active', headers=auth(token))
+
+    assert empty_response.status_code == 200
+    assert empty_response.json() == {'chapter': None, 'draft': None}
+    assert forbidden_response.status_code == 403
+    assert forbidden_response.json()['detail'] == 'FORBIDDEN'
+    assert drafting_response.status_code == 200
+    assert drafting_response.json()['chapter']['id'] == chapter_id
+    assert drafting_response.json()['chapter']['status'] == 'drafting'
+    assert drafting_response.json()['draft'] is None
+    assert outlined_response.json()['chapter']['status'] == 'outlined'
+    assert outlined_response.json()['chapter']['outline_beats'][0]['beat_id'] == 'beat-1'
+    assert outlined_response.json()['draft'] is None
+    assert reviewing_response.json()['chapter']['status'] == 'reviewing'
+    assert reviewing_response.json()['draft']['chapter_id'] == chapter_id
+    assert reviewing_response.json()['draft']['content'].startswith('林砚在暗井旁')
+
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    assert world.world_version == 1
+    assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id)) == before_events
+
+
 def test_outline_generates_and_persists_beat_cards(client, db_session, monkeypatch):
     token, world_id = register_and_create_world(client)
     chapter_id = create_chapter(client, token, world_id).json()['id']

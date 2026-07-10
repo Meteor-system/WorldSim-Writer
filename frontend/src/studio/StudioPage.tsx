@@ -128,14 +128,16 @@ function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionConte
 }
 
 export function StudioPage({ world, launchContext, onBack, onApproved }: Props) {
+  const resumedChapter = launchContext?.resumeSession?.chapter ?? null;
+  const resumedDraft = launchContext?.resumeSession?.draft ?? null;
   const [localWorld, setLocalWorld] = useState(world);
-  const [goal, setGoal] = useState(launchContext?.initialChapterGoal ?? '');
-  const [executionContext] = useState(launchContext?.executionContext);
-  const [chapter, setChapter] = useState<ChapterPipelineResponse | null>(null);
-  const [outlineBeats, setOutlineBeats] = useState<BeatCard[]>([]);
-  const [outlineContext, setOutlineContext] = useState<Record<string, unknown>>({});
-  const [draft, setDraft] = useState<DraftResponse | null>(null);
-  const [draftVersions, setDraftVersions] = useState<number[]>([]);
+  const [goal, setGoal] = useState(launchContext?.initialChapterGoal ?? resumedChapter?.chapter_goal ?? '');
+  const [executionContext] = useState(launchContext?.executionContext ?? resumedChapter?.execution_context ?? undefined);
+  const [chapter, setChapter] = useState<ChapterPipelineResponse | null>(resumedChapter);
+  const [outlineBeats, setOutlineBeats] = useState<BeatCard[]>(resumedChapter?.outline_beats ?? []);
+  const [outlineContext, setOutlineContext] = useState<Record<string, unknown>>(resumedChapter?.outline_context ?? {});
+  const [draft, setDraft] = useState<DraftResponse | null>(resumedDraft);
+  const [draftVersions, setDraftVersions] = useState<number[]>(resumedDraft ? [resumedDraft.draft_version] : []);
   const [draftDiff, setDraftDiff] = useState<DraftDiffResponse | null>(null);
   const [approvalPreview, setApprovalPreview] = useState<ApprovalPreviewResponse | null>(null);
   const [selectedCharacterChangeIndexes, setSelectedCharacterChangeIndexes] = useState<number[]>([]);
@@ -146,7 +148,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const [critique, setCritique] = useState<CriticReportResponse | null>(null);
   const [characterArcReport, setCharacterArcReport] = useState<CharacterArcReportResponse | null>(null);
   const [settlement, setSettlement] = useState<WorldSettlement | null>(null);
-  const [latestDraftVersion, setLatestDraftVersion] = useState<number | null>(null);
+  const [latestDraftVersion, setLatestDraftVersion] = useState<number | null>(resumedDraft?.draft_version ?? null);
   const [revisionInstruction, setRevisionInstruction] = useState('');
   const [working, setWorking] = useState(false);
   const [autoDrafting, setAutoDrafting] = useState(false);
@@ -158,6 +160,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   const titleRef = useRef<HTMLHeadingElement>(null);
   const draftTitleRef = useRef<HTMLHeadingElement>(null);
   const autoDraftStartedRef = useRef(false);
+  const resumedDraftPanelsLoadedRef = useRef(false);
 
   useEffect(() => {
     titleRef.current?.focus();
@@ -179,10 +182,16 @@ export function StudioPage({ world, launchContext, onBack, onApproved }: Props) 
   }, [draft]);
 
   useEffect(() => {
-    if (!launchContext?.autoDraftFirstChapter || autoDraftStartedRef.current || chapter || draft || !goal.trim()) return;
+    if (!resumedDraft || resumedDraftPanelsLoadedRef.current) return;
+    resumedDraftPanelsLoadedRef.current = true;
+    void refreshReviewStudioPanels(resumedDraft);
+  }, [resumedDraft]);
+
+  useEffect(() => {
+    if (!launchContext?.autoDraftFirstChapter || autoDraftStartedRef.current || draft || !goal.trim()) return;
     autoDraftStartedRef.current = true;
     void autoDraftFirstChapterSession();
-  }, [chapter, draft, goal, launchContext?.autoDraftFirstChapter]);
+  }, [draft, goal, launchContext?.autoDraftFirstChapter]);
 
   function paragraphList(content: string): string[] {
     return content.split('\n\n').map((paragraph) => paragraph.trim()).filter(Boolean);

@@ -542,6 +542,23 @@ def validate_generation_ids(generation: ChapterGeneration, characters: list[Char
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
 
 
+def get_active_chapter_session(db: Session, user: User, world_id: int) -> dict:
+    world = require_owned_world(db, user, world_id)
+    chapter = db.scalar(
+        select(Chapter)
+        .where(Chapter.world_id == world.id)
+        .where(Chapter.status != 'approved')
+        .order_by(Chapter.id.desc())
+    )
+    if chapter is None:
+        return {'chapter': None, 'draft': None}
+    draft = _latest_draft(db, chapter)
+    return {
+        'chapter': chapter,
+        'draft': _draft_payload(chapter, draft) if draft is not None else None,
+    }
+
+
 def create_chapter_session(
     db: Session,
     user: User,

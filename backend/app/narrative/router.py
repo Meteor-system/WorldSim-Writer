@@ -5,6 +5,7 @@ from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
 from app.narrative.schemas import (
+    ActiveChapterSessionResponse,
     ApprovalConsistencyResponse,
     ApprovalReadinessResponse,
     ApproveRequest,
@@ -35,6 +36,7 @@ from app.narrative.service import (
     generate_character_arc_report,
     generate_chapter_outline,
     generate_critic_report,
+    get_active_chapter_session,
     get_approval_consistency,
     get_approval_preview,
     get_approval_readiness,
@@ -50,6 +52,15 @@ from app.narrative.service import (
 )
 
 router = APIRouter(tags=['narrative'])
+
+
+@router.get('/worlds/{world_id}/chapters/active', response_model=ActiveChapterSessionResponse)
+def active_chapter_session(
+    world_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> ActiveChapterSessionResponse:
+    return ActiveChapterSessionResponse.model_validate(get_active_chapter_session(db, current_user, world_id))
 
 
 @router.post('/worlds/{world_id}/chapters', response_model=ChapterPipelineResponse)
