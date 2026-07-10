@@ -262,3 +262,134 @@ def test_settings_normalizes_log_level():
     )
 
     assert settings.log_level == 'WARNING'
+
+
+def test_settings_defaults_documented_api_runtime_fields():
+    settings = Settings(
+        DATABASE_URL='postgresql+psycopg://test:test@localhost:5432/test',
+        SECRET_KEY='test-secret-key',
+        LLM_BASE_URL='https://example.com/v1',
+        LLM_API_KEY='test-api-key',
+        LLM_MODEL='test-model',
+    )
+
+    assert settings.api_host == '127.0.0.1'
+    assert settings.api_port == '8000'
+    assert settings.api_workers == '1'
+    assert settings.api_backlog == '2048'
+    assert settings.api_limit_concurrency == '100'
+    assert settings.api_timeout_keep_alive_seconds == '5'
+    assert settings.api_timeout_graceful_shutdown_seconds == '30'
+    assert settings.api_proxy_headers == 'false'
+    assert settings.api_forwarded_allow_ips == '127.0.0.1'
+
+
+def test_settings_accepts_documented_api_runtime_fields():
+    settings = Settings(
+        DATABASE_URL='postgresql+psycopg://test:test@localhost:5432/test',
+        SECRET_KEY='test-secret-key',
+        LLM_BASE_URL='https://example.com/v1',
+        LLM_API_KEY='test-api-key',
+        LLM_MODEL='test-model',
+        API_HOST='0.0.0.0',
+        API_PORT='9000',
+        API_WORKERS='4',
+        API_BACKLOG='4096',
+        API_LIMIT_CONCURRENCY='250',
+        API_TIMEOUT_KEEP_ALIVE_SECONDS='10',
+        API_TIMEOUT_GRACEFUL_SHUTDOWN_SECONDS='60',
+        API_PROXY_HEADERS='true',
+        API_FORWARDED_ALLOW_IPS='10.0.0.0/8',
+    )
+
+    assert settings.api_host == '0.0.0.0'
+    assert settings.api_port == '9000'
+    assert settings.api_workers == '4'
+    assert settings.api_backlog == '4096'
+    assert settings.api_limit_concurrency == '250'
+    assert settings.api_timeout_keep_alive_seconds == '10'
+    assert settings.api_timeout_graceful_shutdown_seconds == '60'
+    assert settings.api_proxy_headers == 'true'
+    assert settings.api_forwarded_allow_ips == '10.0.0.0/8'
+
+
+def test_settings_loads_api_runtime_fields_from_shared_dotenv(tmp_path, monkeypatch):
+    environment_names = [
+        'DATABASE_URL',
+        'SECRET_KEY',
+        'LLM_BASE_URL',
+        'LLM_API_KEY',
+        'LLM_MODEL',
+        'API_HOST',
+        'API_PORT',
+        'API_WORKERS',
+        'API_BACKLOG',
+        'API_LIMIT_CONCURRENCY',
+        'API_TIMEOUT_KEEP_ALIVE_SECONDS',
+        'API_TIMEOUT_GRACEFUL_SHUTDOWN_SECONDS',
+        'API_PROXY_HEADERS',
+        'API_FORWARDED_ALLOW_IPS',
+    ]
+    for name in environment_names:
+        monkeypatch.delenv(name, raising=False)
+
+    env_file = tmp_path / '.env'
+    env_file.write_text(
+        '\n'.join(
+            [
+                'DATABASE_URL=postgresql+psycopg://test:test@localhost:5432/test',
+                'SECRET_KEY=test-secret-key',
+                'LLM_BASE_URL=https://example.com/v1',
+                'LLM_API_KEY=test-api-key',
+                'LLM_MODEL=test-model',
+                'API_HOST=0.0.0.0',
+                'API_PORT=9000',
+                'API_WORKERS=4',
+                'API_BACKLOG=4096',
+                'API_LIMIT_CONCURRENCY=250',
+                'API_TIMEOUT_KEEP_ALIVE_SECONDS=10',
+                'API_TIMEOUT_GRACEFUL_SHUTDOWN_SECONDS=60',
+                'API_PROXY_HEADERS=true',
+                'API_FORWARDED_ALLOW_IPS=10.1.2.3/8',
+            ]
+        ),
+        encoding='utf-8',
+    )
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.api_host == '0.0.0.0'
+    assert settings.api_port == '9000'
+    assert settings.api_workers == '4'
+    assert settings.api_backlog == '4096'
+    assert settings.api_limit_concurrency == '250'
+    assert settings.api_timeout_keep_alive_seconds == '10'
+    assert settings.api_timeout_graceful_shutdown_seconds == '60'
+    assert settings.api_proxy_headers == 'true'
+    assert settings.api_forwarded_allow_ips == '10.1.2.3/8'
+
+
+def test_settings_rejects_unknown_api_runtime_field_in_shared_dotenv(tmp_path, monkeypatch):
+    for name in ['DATABASE_URL', 'SECRET_KEY', 'LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL', 'API_WOKERS']:
+        monkeypatch.delenv(name, raising=False)
+
+    env_file = tmp_path / '.env'
+    env_file.write_text(
+        '\n'.join(
+            [
+                'DATABASE_URL=postgresql+psycopg://test:test@localhost:5432/test',
+                'SECRET_KEY=test-secret-key',
+                'LLM_BASE_URL=https://example.com/v1',
+                'LLM_API_KEY=test-api-key',
+                'LLM_MODEL=test-model',
+                'API_WOKERS=4',
+            ]
+        ),
+        encoding='utf-8',
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(_env_file=env_file)
+
+    assert exc_info.value.errors()[0]['loc'] == ('api_wokers',)
+    assert exc_info.value.errors()[0]['type'] == 'extra_forbidden'

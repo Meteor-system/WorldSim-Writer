@@ -41,6 +41,20 @@ PYTHONIOENCODING=utf-8 .venv/bin/python scripts/postgres_backup.py verify-restor
 
 Pass criteria: backup JSON has `status: "backup_created"`, a nonzero `size_bytes`, and a 64-character `sha256`; restore JSON has `status: "restore_verified"`. The restore target must be a separately provisioned pristine test database and must be recreated before every drill. The script never creates, drops, cleans, or overwrites the target, and a nonempty target must fail with `RESTORE_TARGET_NOT_EMPTY`. Keep dumps outside the repository in encrypted restricted storage and manage retention separately.
 
+For a production-like beta runtime, start the release in this order:
+
+```bash
+cd /opt/WorldSim-Writer/backend
+PYTHONIOENCODING=utf-8 .venv/bin/python scripts/run_migrations.py
+PYTHONIOENCODING=utf-8 .venv/bin/python scripts/run_api.py
+```
+
+The migration command must finish successfully as one serialized pre-deploy job before API workers start. `scripts/run_api.py` never runs migrations; `/ready` remains the traffic gate. Its defaults are `API_HOST=127.0.0.1`, `API_WORKERS=1`, `API_LIMIT_CONCURRENCY=100` per worker, `API_BACKLOG=2048`, `API_TIMEOUT_KEEP_ALIVE_SECONDS=5`, and `API_TIMEOUT_GRACEFUL_SHUTDOWN_SECONDS=30`. The API process directly owns Uvicorn worker supervision: stop it with `SIGTERM` on POSIX or `CTRL_BREAK_EVENT` from a Windows process group, then wait through the configured graceful shutdown timeout before escalating.
+
+Keep `API_PROXY_HEADERS=false` unless every direct connection comes from a known reverse proxy. When enabling it, list only exact proxy IP addresses or CIDR networks in `API_FORWARDED_ALLOW_IPS`; never use `*`, `0.0.0.0/0`, `::/0`, hostnames, or URLs. The production entry point disables Uvicorn access logs because the application already emits structured request logs, and it disables Uvicorn `Server` and `Date` headers. Verify `GET /live` returns `200`, `GET /ready` returns `200` after migrations, the API response itself has no `Server` or `Date` header, and the process exits within the configured graceful shutdown timeout. A front proxy may add its own response headers.
+
+The mock smoke command below intentionally uses Uvicorn reload mode for local development; it is not the production entry point.
+
 ## 3. Mock smoke
 
 Start a local mock backend:

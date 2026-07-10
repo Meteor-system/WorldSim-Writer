@@ -21,6 +21,31 @@ def test_env_example_documents_mock_llm_mode_for_e2e_smoke():
     assert 'LLM_MOCK=false' in env_example
 
 
+def test_production_api_runtime_docs_lock_safe_defaults_and_proxy_boundary():
+    env_example = (REPO_ROOT / 'backend' / '.env.example').read_text(encoding='utf-8')
+    readme = (REPO_ROOT / 'README.md').read_text(encoding='utf-8')
+    playbook = (REPO_ROOT / 'BETA_TESTING.md').read_text(encoding='utf-8')
+
+    for term in [
+        'API_HOST=127.0.0.1',
+        'API_WORKERS=1',
+        'API_LIMIT_CONCURRENCY=100',
+        'API_PROXY_HEADERS=false',
+        'API_FORWARDED_ALLOW_IPS=127.0.0.1',
+    ]:
+        assert term in env_example
+
+    for document in [readme, playbook]:
+        assert 'scripts/run_migrations.py' in document
+        assert 'scripts/run_api.py' in document
+        assert 'API_PROXY_HEADERS=false' in document
+        assert 'API_FORWARDED_ALLOW_IPS' in document
+        assert 'Never use wildcard proxy trust' in document or 'never use `*`' in document
+        assert 'structured request logs' in document
+        assert 'SIGTERM' in document
+        assert 'CTRL_BREAK_EVENT' in document
+
+
 def test_beta_testing_playbook_documents_main_flow_smoke_and_reporting():
     playbook = (REPO_ROOT / 'BETA_TESTING.md').read_text(encoding='utf-8')
 

@@ -4,7 +4,7 @@ WorldSim-Writer is a long-form narrative creation system. The current MVP runs a
 
 ## Local setup
 
-Backend:
+Backend development:
 
 ```bash
 conda activate worldsim
@@ -14,6 +14,8 @@ pip install -e '.[dev]'
 python scripts/run_migrations.py
 uvicorn app.main:app --reload
 ```
+
+The direct Uvicorn command above is for local development only. Use the production runtime entry point below for a deployed API.
 
 Frontend:
 
@@ -30,6 +32,23 @@ Set `LLM_BASE_URL`, `LLM_API_KEY`, and `LLM_MODEL` in `backend/.env` before gene
 Run `python scripts/run_migrations.py` once as a dedicated, serialized pre-deploy job before starting or rolling API workers. The job runs `alembic upgrade head`, then independently verifies that the database heads match the repository heads. It exits nonzero with a stable error code when upgrade or verification fails and does not print the database URL or underlying exception details.
 
 Do not run migrations from FastAPI startup or from every API worker. The release platform must allow only one migration job at a time; API readiness remains the traffic gate until the schema is current.
+
+## Production API runtime
+
+Start a release in this order from `backend/`:
+
+```bash
+python scripts/run_migrations.py
+python scripts/run_api.py
+```
+
+`run_migrations.py` is the serialized pre-deploy job. `run_api.py` starts only API workers and never upgrades the database. Keep `/ready` as the traffic gate and `/live` as the process liveness probe. On POSIX platforms Uvicorn replaces the launcher process, and on Windows it runs in the launcher process, so the API process directly owns worker supervision and graceful shutdown. Send `SIGTERM` on POSIX or `CTRL_BREAK_EVENT` from a Windows process group and allow the configured shutdown timeout before escalating.
+
+The runtime defaults to `127.0.0.1:8000`, one worker, a per-worker concurrency limit of `100`, backlog `2048`, keep-alive `5` seconds, and graceful shutdown timeout `30` seconds. Configure these with `API_HOST`, `API_PORT`, `API_WORKERS`, `API_LIMIT_CONCURRENCY`, `API_BACKLOG`, `API_TIMEOUT_KEEP_ALIVE_SECONDS`, and `API_TIMEOUT_GRACEFUL_SHUTDOWN_SECONDS`. The launcher validates bounded values and ignores `UVICORN_*`, `WEB_CONCURRENCY`, and `FORWARDED_ALLOW_IPS` override variables so deployment behavior comes only from the documented `API_*` interface.
+
+Proxy headers are disabled by default with `API_PROXY_HEADERS=false`. Enable them only when every direct connection reaches the API through known reverse proxies, then set `API_FORWARDED_ALLOW_IPS` to their exact IP addresses or CIDR networks. Hostnames, URLs, Unix socket literals, empty entries, unspecified addresses, malformed networks, and wildcard trust such as `*`, `0.0.0.0/0`, or `::/0` are rejected. Never use wildcard proxy trust.
+
+Uvicorn access logs are disabled because the application already emits structured request logs without query strings, credentials, or request bodies. Uvicorn `Server` and `Date` response headers are also disabled; a reverse proxy may add its own headers outside this process.
 
 ## PostgreSQL backups and restore drills
 

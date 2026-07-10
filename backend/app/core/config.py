@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8')
+    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='forbid')
 
     database_url: str = Field(alias='DATABASE_URL')
     secret_key: str = Field(alias='SECRET_KEY')
@@ -18,6 +18,18 @@ class Settings(BaseSettings):
     llm_mock: bool = Field(default=False, alias='LLM_MOCK')
     frontend_origin: str = Field(default='http://localhost:5173', alias='FRONTEND_ORIGIN')
     log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = Field(default='INFO', alias='LOG_LEVEL')
+    api_host: str = Field(default='127.0.0.1', alias='API_HOST')
+    api_port: str = Field(default='8000', alias='API_PORT')
+    api_workers: str = Field(default='1', alias='API_WORKERS')
+    api_backlog: str = Field(default='2048', alias='API_BACKLOG')
+    api_limit_concurrency: str = Field(default='100', alias='API_LIMIT_CONCURRENCY')
+    api_timeout_keep_alive_seconds: str = Field(default='5', alias='API_TIMEOUT_KEEP_ALIVE_SECONDS')
+    api_timeout_graceful_shutdown_seconds: str = Field(
+        default='30',
+        alias='API_TIMEOUT_GRACEFUL_SHUTDOWN_SECONDS',
+    )
+    api_proxy_headers: str = Field(default='false', alias='API_PROXY_HEADERS')
+    api_forwarded_allow_ips: str = Field(default='127.0.0.1', alias='API_FORWARDED_ALLOW_IPS')
     db_connect_timeout_seconds: int = Field(default=5, ge=1, le=60, alias='DB_CONNECT_TIMEOUT_SECONDS')
     db_application_name: str = Field(
         default='worldsim-writer',
