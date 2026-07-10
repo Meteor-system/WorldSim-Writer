@@ -503,6 +503,74 @@ def test_draft_world_from_brief_returns_editable_variants_without_creating_world
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == 0
 
 
+def test_brief_to_first_chapter_requires_confirmation_and_studio_approval(
+    client, db_session, monkeypatch
+):
+    token = register(client, 'brief-first-chapter-loop@example.com')
+    world_llm = DraftWorldLLMClient()
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: world_llm)
+
+    draft_response = client.post(
+        '/worlds/draft-from-brief',
+        headers=auth(token),
+        json={'brief': '一个边境殖民地依赖濒临失控的跃迁灯塔'},
+    )
+
+    assert draft_response.status_code == 200
+    creation_draft = draft_response.json()
+    assert db_session.scalar(select(func.count()).select_from(World)) == 0
+    assert db_session.scalar(select(func.count()).select_from(EventLog)) == 0
+
+    create_response = client.post('/worlds', headers=auth(token), json=creation_draft['draft'])
+
+    assert create_response.status_code == 200
+    world = create_response.json()
+    assert world['world_version'] == 1
+    created_events = list(
+        db_session.scalars(select(EventLog).where(EventLog.world_id == world['id']).order_by(EventLog.id))
+    )
+    assert [event.event_type for event in created_events] == ['WORLD_CREATED']
+
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: CustomWorldLLMClient())
+    chapter_response = client.post(
+        f"/worlds/{world['id']}/chapters/draft",
+        headers=auth(token),
+        json={'chapter_goal': creation_draft['first_chapter_goal']},
+    )
+
+    assert chapter_response.status_code == 200
+    chapter_draft = chapter_response.json()
+    assert chapter_draft['status'] == 'reviewing'
+    assert chapter_draft['source_world_version'] == 1
+    db_session.expire_all()
+    assert db_session.get(World, world['id']).world_version == 1
+    reviewing_events = list(
+        db_session.scalars(select(EventLog).where(EventLog.world_id == world['id']).order_by(EventLog.id))
+    )
+    assert [event.event_type for event in reviewing_events] == ['WORLD_CREATED']
+
+    approve_response = client.post(
+        f"/chapters/{chapter_draft['chapter_id']}/approve",
+        headers=auth(token),
+        json={'draft_version': chapter_draft['draft_version']},
+    )
+
+    assert approve_response.status_code == 200
+    assert approve_response.json()['status'] == 'approved'
+    db_session.expire_all()
+    assert db_session.get(World, world['id']).world_version == 2
+    approved_events = list(
+        db_session.scalars(select(EventLog).where(EventLog.world_id == world['id']).order_by(EventLog.id))
+    )
+    assert [event.event_type for event in approved_events] == [
+        'WORLD_CREATED',
+        'world_version_increment',
+        'chapter_approved',
+    ]
+    assert approved_events[-1].world_version_before == 1
+    assert approved_events[-1].world_version_after == 2
+
+
 def test_draft_world_from_brief_rejects_extra_root_field_without_side_effects(client, db_session, monkeypatch):
     token = register(client, 'brief-root-extra@example.com')
     llm = DraftWorldLLMClient()
