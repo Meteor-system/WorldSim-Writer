@@ -446,8 +446,28 @@ def test_foreshadow_rejects_blank_required_fields_and_bad_urgency(client):
     )
 
     assert blank_response.status_code == 422
+    blank_detail = blank_response.json()['detail']
+    for field_name in ('title', 'description', 'foreshadow_type'):
+        assert any(
+            error['type'] == 'value_error'
+            and error['loc'] == ['body', field_name]
+            and error['msg'].endswith('must not be blank')
+            for error in blank_detail
+        )
     assert low_urgency_response.status_code == 422
+    assert any(
+        error['type'] == 'greater_than_equal'
+        and error['loc'] == ['body', 'urgency_level']
+        and error['msg'].endswith('greater than or equal to 1')
+        for error in low_urgency_response.json()['detail']
+    )
     assert high_urgency_response.status_code == 422
+    assert any(
+        error['type'] == 'less_than_equal'
+        and error['loc'] == ['body', 'urgency_level']
+        and error['msg'].endswith('less than or equal to 5')
+        for error in high_urgency_response.json()['detail']
+    )
 
 
 def test_foreshadow_create_rejects_extra_fields_without_side_effects(client, db_session):
