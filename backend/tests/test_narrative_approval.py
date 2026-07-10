@@ -837,18 +837,49 @@ def test_reject_chapter_does_not_approve_or_update_world(client, monkeypatch):
     assert [event['event_type'] for event in overview['recent_events']] == ['WORLD_CREATED']
 
 
-def test_create_draft_maps_model_request_failure(client, monkeypatch):
+def test_create_draft_maps_model_request_failure(client, monkeypatch, db_session):
     token, world_id = register_and_create_world(client)
+    chapter_goal = '推进玉佩线索'
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FailingLLMClient())
 
     response = client.post(
         f'/worlds/{world_id}/chapters/draft',
-        json={'chapter_goal': '推进玉佩线索'},
+        json={'chapter_goal': chapter_goal},
         headers={'Authorization': f'Bearer {token}'},
     )
 
     assert response.status_code == 502
     assert response.json()['detail'] == 'MODEL_REQUEST_FAILED'
+
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    assert world is not None
+    assert world.world_version == 1
+    assert [event.event_type for event in event_logs(db_session, world_id)] == ['WORLD_CREATED']
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == 0
+    assert db_session.scalar(select(func.count()).select_from(ChapterDraft)) == 0
+
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
+    retry_response = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': chapter_goal},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    retry = retry_response.json()
+
+    assert retry_response.status_code == 200
+    assert retry['status'] == 'reviewing'
+    assert retry['source_world_version'] == 1
+
+    db_session.expire_all()
+    world = db_session.get(World, world_id)
+    chapter = db_session.get(Chapter, retry['chapter_id'])
+    assert world.world_version == 1
+    assert chapter.chapter_goal == chapter_goal
+    assert chapter.status == 'reviewing'
+    assert [event.event_type for event in event_logs(db_session, world_id)] == ['WORLD_CREATED']
+    assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == 1
+    assert db_session.scalar(select(func.count()).select_from(ChapterDraft)) == 1
 
 
 def test_create_draft_preserves_safe_model_runtime_error_detail(client, monkeypatch):
