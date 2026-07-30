@@ -1,4 +1,4 @@
-﻿const OBJECT_TYPE_LABELS: Record<string, string> = {
+const OBJECT_TYPE_LABELS: Record<string, string> = {
   character: '角色',
   foreshadow: '悬念/伏笔',
   chapter: '章节',
@@ -74,12 +74,22 @@ const STATUS_LABELS: Record<string, string> = {
   changed: '变化',
 };
 
-const GENRE_LABELS: Record<string, string> = {
-  xianxia: '仙侠',
-  xianxia_intrigue: '仙侠 · 权谋/悬疑',
+export const GENRE_LABELS: Record<string, string> = {
+  fantasy: '奇幻',
   sci_fi: '科幻',
+  modern: '现代都市',
+  xianxia: '仙侠',
   weird_fantasy: '诡秘奇幻',
+  dark_fantasy: '黑暗奇幻',
+  political_fantasy: '政治奇幻',
+  xianxia_intrigue: '仙侠 · 权谋/悬疑',
 };
+
+export const GENRE_TEMPLATE_OPTIONS = Object.entries(GENRE_LABELS).map(([value, label]) => ({ value, label }));
+
+export function isKnownGenreTemplate(value: string): boolean {
+  return value in GENRE_LABELS;
+}
 
 const TAG_PART_LABELS: Record<string, string> = {
   xianxia: '仙侠',
@@ -101,7 +111,7 @@ export function labelStatus(value: string): string {
 }
 
 export function labelGenre(value: string): string {
-  return GENRE_LABELS[value] ?? readableToken(value);
+  return GENRE_LABELS[value] ?? value;
 }
 
 export function labelTagName(value: string): string {

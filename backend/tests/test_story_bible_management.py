@@ -2,17 +2,59 @@ from sqlalchemy import select
 
 from app.character.models import Character, CharacterRelation
 from app.event.models import EventLog
-from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
+from app.llm.schemas import (
+    BeatCard,
+    ChapterGeneration,
+    ChapterOutline,
+    OpeningContract,
+    OpeningEvidence,
+    ProposedCharacterChange,
+    ProposedForeshadowChange,
+)
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter, ChapterDraft
 from app.world.models import World
 
 
 class StoryBibleDraftLLMClient:
+    def generate_outline(self, messages):
+        return ChapterOutline(
+            beats=[
+                BeatCard(
+                    beat_id='opening-1',
+                    summary='林砚在雨巷接过沈微霜递来的湿信。',
+                    pov_character='林砚',
+                    location='青岚城雨巷',
+                    emotional_arc='迟疑 -> 警觉',
+                    key_dialogue_hints=['信上的名字不能让城主府看见。'],
+                )
+            ],
+            core_conflict='林砚必须在巡夜人赶到前判断湿信是否指向玉佩。',
+            pov_suggestion='林砚',
+            pacing='雨巷密谈中逐步逼近巡夜压力。',
+            role_skill_targets=['林砚', '沈微霜'],
+            opening_contract=OpeningContract(
+                background='青岚城雨夜不断，灵脉衰退引来城主府巡查。',
+                protagonist_identity='林砚是替师门送药的外门弟子。',
+                motivation='他必须查明湿信来源，保护师门和师妹。',
+                personality_evidence_plan='让林砚先收拾被冲散的药瓶，再冒险留下读信。',
+                conflict_goal='在巡夜人发现前确认湿信是否推进玉佩线索。',
+                locked_pov='林砚限知第三人称。',
+            ),
+        )
+
     def generate_chapter(self, messages):
+        content = '\n\n'.join([
+            '雨水灌满青岚城的石缝，雨巷尽头的灵井仍冒着白雾。林砚停在檐下，听见城主府巡夜人的铜铃从远处逼近，湿冷的雾气把整条巷子压得喘不过气。',
+            '他是替师门送药的外门弟子，师妹还在等药；可沈微霜递来的湿信写着失踪师兄的名字，他必须查明信从何而来，才不至于让师门再次替城主府的秘密付账。',
+            '药瓶被雨水冲散时，林砚先蹲进泥水逐只捡回，再把发疼的手藏进袖里。他没有立刻拆信，只确认巷口没有第二双靴印，也不肯让师妹明日断药。',
+            '沈微霜说信来自城主府库房，林砚只能看见她湿发下的神色，却猜不透她为何冒险送信；玉佩在掌心忽然发烫，信纸上的墨迹也像被井雾一点点唤醒。',
+            '他必须在巡夜人发现前确认湿信是否推进玉佩线索，否则师门会被牵连，师兄的失踪也会被彻底抹去；他必须在雨停前做出选择。',
+            '铜铃在巷口停住，林砚只能从信纸背面的血色水痕判断，送信的人也许已经被困在灵井下面；他把湿信贴近胸口，准备绕到井边寻找入口。',
+        ])
         return ChapterGeneration(
             title='第一章 雨巷密谈',
-            draft_content='第一段：林砚停在雨巷口。\n\n第二段：沈微霜递来一封湿透的信。',
+            draft_content=content,
             context_summary='林砚与沈微霜交换线索。',
             review_hints=['确认第二段信息揭示是否过快'],
             proposed_character_changes=[
@@ -20,6 +62,14 @@ class StoryBibleDraftLLMClient:
             ],
             proposed_foreshadow_changes=[
                 ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='湿信推进玉佩线索')
+            ],
+            opening_evidence=[
+                OpeningEvidence(check='background', paragraph_index=0, quote='雨巷尽头的灵井仍冒着白雾'),
+                OpeningEvidence(check='protagonist_identity', paragraph_index=1, quote='替师门送药的外门弟子'),
+                OpeningEvidence(check='motivation', paragraph_index=1, quote='必须查明信从何而来'),
+                OpeningEvidence(check='personality_evidence_plan', paragraph_index=2, quote='药瓶被雨水冲散时，林砚先蹲进泥水逐只捡回'),
+                OpeningEvidence(check='conflict_goal', paragraph_index=4, quote='必须在巡夜人发现前确认湿信是否推进玉佩线索'),
+                OpeningEvidence(check='locked_pov', paragraph_index=5, quote='林砚只能从信纸背面的血色水痕判断'),
             ],
         )
 
@@ -269,7 +319,7 @@ def test_story_bible_edit_does_not_mutate_reviewing_draft_and_readiness_reports_
     assert readiness_payload['world_version']['matches'] is False
     assert readiness_payload['status'] == 'blocked'
     assert readiness_payload['ready'] is False
-    assert readiness_payload['blocking_reasons'] == ['世界版本已变化，请重新生成草稿后再批准。']
+    assert '世界版本已变化，请重新生成草稿后再批准。' in readiness_payload['blocking_reasons']
     assert isinstance(readiness_payload['warnings'], list)
 
     assert preview.status_code == 200

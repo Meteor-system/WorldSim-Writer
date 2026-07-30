@@ -3,20 +3,80 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 
 from app.event.models import EventLog
-from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
+from app.llm.schemas import (
+    BeatCard,
+    ChapterGeneration,
+    ChapterOutline,
+    OpeningContract,
+    OpeningEvidence,
+    ProposedCharacterChange,
+    ProposedForeshadowChange,
+)
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter
 from app.world.models import World
+
+
+def opening_outline() -> ChapterOutline:
+    return ChapterOutline(
+        beats=[
+            BeatCard(
+                beat_id='opening-1',
+                summary='林砚在雨巷追查湿信与玉佩线索。',
+                pov_character='林砚',
+                location='青岚城雨巷',
+                emotional_arc='谨慎到决断',
+                key_dialogue_hints=['湿信是谁留下的？'],
+            )
+        ],
+        core_conflict='林砚必须在巡夜人抵达前确认湿信与玉佩的主人。',
+        pov_suggestion='林砚',
+        pacing='雨夜悬疑，逐段增加巡夜压力。',
+        role_skill_targets=['保持线索压力'],
+        opening_contract=OpeningContract(
+            background='青岚城灵脉衰退，雨巷尽头的废井在雨夜发出异响。',
+            protagonist_identity='林砚是为师门债务奔走的外门弟子。',
+            motivation='他必须查清湿信和玉佩的来历，避免师妹被城主府带走。',
+            personality_evidence_plan='让林砚先救下被雨水冲走的药箱，再带伤追查。',
+            conflict_goal='在城主府巡夜人发现前确认湿信与玉佩的主人。',
+            locked_pov='林砚限知第三人称。',
+        ),
+    )
+
+
+def opening_body() -> str:
+    return '\n\n'.join([
+        '雨水压低了青岚城的屋檐，雨巷尽头的废井却在夜里吐出温热白雾。城里人人都说灵脉衰退只是旱灾，林砚知道那是谎话，因为掌心的玉佩正隔着湿布发烫。',
+        '林砚是欠着师门药债的外门弟子，今夜原该回去照看师妹。可城主府的文书写明天亮前要带走她问话，他只能追查湿信与失踪师兄的名字，哪怕会把自己送进巡夜人的眼里。',
+        '巷口的药箱被雨水冲翻，他先扑进泥水把药瓶一只只捡回，又把割裂的手藏进袖中。沈微霜问他为何不逃，林砚只说师妹还在等药，这不是能算清的账。',
+        '废井底下传来铁链拖地声，玉佩映出师兄惯用的云纹。林砚没有告诉沈微霜自己看见了什么，只沿着井壁摸到一道新鲜的靴印，听见城主府巡夜人的铜铃越来越近。',
+        '他必须在铜铃停在巷口前确认湿信与玉佩主人，否则师妹会被带走，师兄的失踪也会被埋进井里。林砚让沈微霜守住巷口，自己系紧绳索下井；他不确定她会不会出卖自己。',
+        '林砚的靴底刚离开井沿，铜铃便在雨幕外停住。巡夜人喊出他的名字，他只能从井壁渗出的血色水痕判断，下面等着他的不是师兄，而是一场早已布好的局。',
+    ])
+
+
+def opening_evidence() -> list[OpeningEvidence]:
+    return [
+        OpeningEvidence(check='background', paragraph_index=0, quote='雨巷尽头的废井却在夜里吐出温热白雾'),
+        OpeningEvidence(check='protagonist_identity', paragraph_index=1, quote='欠着师门药债的外门弟子'),
+        OpeningEvidence(check='motivation', paragraph_index=1, quote='只能追查湿信与失踪师兄的名字'),
+        OpeningEvidence(check='personality_evidence_plan', paragraph_index=2, quote='先扑进泥水把药瓶一只只捡回'),
+        OpeningEvidence(check='conflict_goal', paragraph_index=4, quote='必须在铜铃停在巷口前确认湿信与玉佩主人'),
+        OpeningEvidence(check='locked_pov', paragraph_index=3, quote='林砚没有告诉沈微霜自己看见了什么'),
+    ]
 
 
 class CharacterArcReportLLMClient:
     def __init__(self):
         self.character_arc_report_calls = 0
 
+    def generate_outline(self, messages):
+        return opening_outline()
+
     def generate_chapter(self, messages):
         return ChapterGeneration(
             title='第一章 雨巷密谈',
-            draft_content='第一段：林砚停在雨巷口。\n\n第二段：沈微霜递来一封湿透的信。',
+            draft_content=opening_body(),
             context_summary='林砚与沈微霜在雨巷交换线索。',
             review_hints=['确认第二段的信息揭示是否过快'],
             proposed_character_changes=[
@@ -25,6 +85,7 @@ class CharacterArcReportLLMClient:
             proposed_foreshadow_changes=[
                 ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='湿信推进玉佩线索')
             ],
+            opening_evidence=opening_evidence(),
         )
 
     def generate_character_arc_report(self, messages):

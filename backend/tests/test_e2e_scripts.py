@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 
 import httpx
@@ -117,7 +118,7 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': False, 'status': 'needs_review', 'blocking_reasons': [], 'warnings': ['mock warnings']}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -138,6 +139,21 @@ def test_e2e_smoke_script_runs_api_flow_and_returns_json_summary(monkeypatch):
     assert summary['checks']['health']['migration_up_to_date'] is True
     assert summary['checks']['health']['llm_mock'] is True
     assert summary['checks']['approval_preview']['proposed_change_count'] == 1
+    assert summary['checks']['approval_preview']['opening_pov_confirmation_target'] == {
+        'required': True,
+        'locked_character_id': 1,
+        'locked_character_name': 'Lin Yan',
+    }
+    approve_request = transport.requests[7]
+    assert json.loads(approve_request.content) == {
+        'draft_version': 1,
+        'opening_pov_confirmation': {
+            'confirmed': True,
+            'draft_version': 1,
+            'locked_character_id': 1,
+            'locked_character_name': 'Lin Yan',
+        },
+    }
     assert summary['checks']['approve']['expected_world_version_after'] == 2
     assert summary['checks']['approve']['world_version_validation_source'] == 'overview'
     assert summary['checks']['overview']['world_version_incremented'] is True
@@ -172,7 +188,7 @@ def test_e2e_smoke_script_accepts_chapter_approved_version_that_differs_from_wor
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 1}),
@@ -238,7 +254,7 @@ def test_e2e_smoke_script_fails_when_approval_preview_has_version_conflict(monke
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': True, 'character_changes': [], 'foreshadow_changes': []}),
+            json_response({'version_conflict': True, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -265,6 +281,66 @@ def test_e2e_smoke_script_fails_when_approval_preview_has_version_conflict(monke
     ]
 
 
+def test_e2e_smoke_script_does_not_approve_when_opening_pov_target_is_missing(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
+            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'approval_preview'
+    assert summary['error'] == 'MISSING_REQUIRED_FIELDS'
+    assert summary['missing_fields'] == ['opening_pov_confirmation_target']
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+        '/worlds/10/chapters/draft',
+        '/chapters/20/approval-preview',
+    ]
+    assert all(request.url.path != '/chapters/20/approve' for request in transport.requests)
+
+
+def test_e2e_smoke_script_does_not_approve_when_opening_pov_target_name_is_whitespace(monkeypatch):
+    monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
+    module = load_e2e_smoke_module()
+    transport = SequencedTransport(
+        [
+            json_response({'status': 'ok', 'migration': {'up_to_date': True}, 'llm': {'mock': True}}),
+            json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
+            json_response({'id': 10, 'world_version': 1}),
+            json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': ' \t\n '}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+        ]
+    )
+    client = httpx.Client(transport=transport, base_url='https://worldsim.test')
+
+    summary = module.run_smoke(client=client, email='e2e-smoke@example.com')
+
+    assert summary['ok'] is False
+    assert summary['failed_step'] == 'approval_preview'
+    assert summary['error'] == 'INVALID_FIELD_TYPES'
+    assert summary['invalid_fields'] == ['opening_pov_confirmation_target.locked_character_name']
+    assert [request.url.path for request in transport.requests] == [
+        '/health',
+        '/auth/register',
+        '/worlds/from-template',
+        '/worlds/10/chapters/draft',
+        '/chapters/20/approval-preview',
+    ]
+    assert all(request.url.path != '/chapters/20/approve' for request in transport.requests)
+
+
 def test_e2e_smoke_script_requires_preview_version_conflict_before_approval(monkeypatch):
     monkeypatch.setenv('BASE_URL', 'https://worldsim.test')
     module = load_e2e_smoke_module()
@@ -274,7 +350,7 @@ def test_e2e_smoke_script_requires_preview_version_conflict_before_approval(monk
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
         ]
     )
     client = httpx.Client(transport=transport, base_url='https://worldsim.test')
@@ -303,7 +379,7 @@ def test_e2e_smoke_script_requires_preview_version_conflict_to_be_boolean(monkey
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': 'false', 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': 'false', 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
         ]
     )
     client = httpx.Client(transport=transport, base_url='https://worldsim.test')
@@ -332,7 +408,7 @@ def test_e2e_smoke_script_fails_when_approval_preview_has_no_proposed_changes(mo
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -368,7 +444,7 @@ def test_e2e_smoke_script_requires_preview_character_changes_to_be_list_of_objec
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': {'character_id': 1}, 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': {'character_id': 1}, 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -403,7 +479,7 @@ def test_e2e_smoke_script_requires_preview_foreshadow_changes_to_be_list_of_obje
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [], 'foreshadow_changes': 'foreshadow-1'}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [], 'foreshadow_changes': 'foreshadow-1'}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -438,7 +514,7 @@ def test_e2e_smoke_script_fails_when_post_approval_overview_is_stale(monkeypatch
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -478,7 +554,7 @@ def test_e2e_smoke_script_fails_when_expected_event_is_missing(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -518,7 +594,7 @@ def test_e2e_smoke_script_requires_event_items_for_event_check(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -557,7 +633,7 @@ def test_e2e_smoke_script_requires_event_items_to_be_list_of_objects(monkeypatch
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -597,7 +673,7 @@ def test_e2e_smoke_script_requires_events_summary_to_be_object_when_present(monk
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -636,7 +712,7 @@ def test_e2e_smoke_script_requires_markdown_export_archive_fields(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -664,7 +740,7 @@ def test_e2e_smoke_script_requires_markdown_export_files_to_be_list_of_objects(m
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -692,7 +768,7 @@ def test_e2e_smoke_script_requires_markdown_export_archive_base64_to_be_string(m
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -733,7 +809,7 @@ def test_e2e_smoke_script_fails_when_markdown_export_archive_format_is_invalid(m
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -761,7 +837,7 @@ def test_e2e_smoke_script_fails_when_markdown_export_world_file_is_missing(monke
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -789,7 +865,7 @@ def test_e2e_smoke_script_fails_when_post_approval_overview_does_not_increment_w
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 1}),
@@ -830,7 +906,7 @@ def test_e2e_smoke_script_stops_when_approval_status_is_not_approved(monkeypatch
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'rejected', 'approved_version': 2}),
@@ -868,7 +944,7 @@ def test_e2e_smoke_script_requires_approval_status_after_approval(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'approved_version': 2}),
@@ -903,7 +979,7 @@ def test_e2e_smoke_script_requires_approved_version_after_approval(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved'}),
@@ -938,7 +1014,7 @@ def test_e2e_smoke_script_requires_approved_version_to_be_int(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': '2'}),
@@ -973,7 +1049,7 @@ def test_e2e_smoke_script_requires_readiness_status_before_approval(monkeypatch)
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -1009,7 +1085,7 @@ def test_e2e_smoke_script_requires_readiness_ready_before_approval(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
         ]
@@ -1041,7 +1117,7 @@ def test_e2e_smoke_script_requires_readiness_ready_to_be_boolean(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': 'true', 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
         ]
@@ -1073,7 +1149,7 @@ def test_e2e_smoke_script_requires_readiness_status_to_be_string(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 7, 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
         ]
@@ -1105,7 +1181,7 @@ def test_e2e_smoke_script_requires_readiness_status_to_be_known(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'unknown', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
         ]
@@ -1138,7 +1214,7 @@ def test_e2e_smoke_script_requires_readiness_blocking_reasons_to_be_list(monkeyp
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': False, 'status': 'blocked', 'blocking_reasons': 'version conflict', 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -1174,7 +1250,7 @@ def test_e2e_smoke_script_requires_readiness_warnings_to_be_list(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': 'warning text'}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -1210,7 +1286,7 @@ def test_e2e_smoke_script_fails_when_approval_readiness_is_blocked(monkeypatch):
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': False, 'status': 'blocked', 'blocking_reasons': ['世界版本已变化，请重新生成草稿后再批准。'], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -1248,7 +1324,7 @@ def test_e2e_smoke_script_requires_consistency_summary_status_before_approval(mo
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {}, 'consistency_warnings': []}),
         ]
@@ -1281,7 +1357,7 @@ def test_e2e_smoke_script_requires_consistency_summary_status_to_be_string(monke
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 7, 'blocking_count': 0}, 'consistency_warnings': []}),
         ]
@@ -1314,7 +1390,7 @@ def test_e2e_smoke_script_requires_consistency_summary_status_to_be_known(monkey
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'unknown', 'blocking_count': 0}, 'consistency_warnings': []}),
         ]
@@ -1348,7 +1424,7 @@ def test_e2e_smoke_script_requires_consistency_blocking_count_before_approval(mo
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear'}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -1385,7 +1461,7 @@ def test_e2e_smoke_script_requires_consistency_blocking_count_to_be_int(monkeypa
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': '0'}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -1422,7 +1498,7 @@ def test_e2e_smoke_script_requires_consistency_blocking_count_to_be_non_negative
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': -1}, 'consistency_warnings': []}),
         ]
@@ -1465,7 +1541,7 @@ def test_e2e_smoke_script_fails_when_approval_consistency_is_blocked(monkeypatch
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'blocked', 'blocking_count': 1}, 'consistency_warnings': consistency_warnings}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -1505,7 +1581,7 @@ def test_e2e_smoke_script_requires_consistency_warnings_before_approval(monkeypa
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -1542,7 +1618,7 @@ def test_e2e_smoke_script_requires_consistency_warnings_to_be_list_of_objects(mo
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': 'warning text'}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),
@@ -2006,7 +2082,7 @@ def test_e2e_smoke_script_logs_in_when_register_returns_email_conflict(monkeypat
             json_response({'access_token': 'token', 'user': {'id': 1, 'email': 'e2e-smoke@example.com'}}),
             json_response({'id': 10, 'world_version': 1}),
             json_response({'chapter_id': 20, 'draft_id': 30, 'draft_version': 1}),
-            json_response({'version_conflict': False, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
+            json_response({'version_conflict': False, 'opening_pov_confirmation_target': {'required': True, 'locked_character_id': 1, 'locked_character_name': 'Lin Yan'}, 'character_changes': [{'character_id': 1}], 'foreshadow_changes': []}),
             json_response({'ready': True, 'status': 'ready', 'blocking_reasons': [], 'warnings': []}),
             json_response({'consistency_summary': {'status': 'clear', 'blocking_count': 0}, 'consistency_warnings': []}),
             json_response({'id': 20, 'status': 'approved', 'approved_version': 2}),

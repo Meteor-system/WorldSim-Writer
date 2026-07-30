@@ -3,25 +3,86 @@ from sqlalchemy import func, select
 from app.character.models import Character
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow, ForeshadowEvent
-from app.llm.schemas import BeatCard, ChapterGeneration, ChapterOutline, ProposedCharacterChange, ProposedForeshadowChange
+from app.llm.schemas import BeatCard, ChapterGeneration, ChapterOutline, OpeningContract, OpeningEvidence, ProposedCharacterChange, ProposedForeshadowChange
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter, ChapterDraft
 from app.world.models import World
 
 
 class FailingLLMClient:
+    def generate_outline(self, messages):
+        return opening_outline()
+
     def generate_chapter(self, messages):
         raise RuntimeError('MODEL_REQUEST_FAILED')
 
 
 class AuthFailingLLMClient:
+    def generate_outline(self, messages):
+        return opening_outline()
+
     def generate_chapter(self, messages):
         raise RuntimeError('MODEL_AUTH_FAILED')
 
 
 class UnknownFailingLLMClient:
+    def generate_outline(self, messages):
+        return opening_outline()
+
     def generate_chapter(self, messages):
         raise RuntimeError('provider secret text')
+
+
+def opening_contract() -> OpeningContract:
+    return OpeningContract(
+        background='青岚城灵脉衰退，灵井在雨夜发出异响。',
+        protagonist_identity='林砚是为师门奔走的外门弟子。',
+        motivation='他必须查清玉佩线索以保护师妹。',
+        personality_evidence_plan='让林砚先救下药箱再继续追查。',
+        conflict_goal='在巡夜人抵达前确认玉佩的主人。',
+        locked_pov='林砚限知第三人称。',
+    )
+
+
+def opening_body() -> str:
+    return '\n\n'.join([
+        '林砚在灵井旁听见了第二个人的脚步声。雨水压低了青岚城的屋檐，废弃灵井却在巷尾吐出温热白雾；城里人人都说灵脉衰退只是旱灾，他知道那是谎话。',
+        '他是欠着师门药债的外门弟子，今夜原该回去照看师妹。可城主府的文书写明天亮前要带走她问话，林砚只能追查玉佩与失踪师兄的名字，哪怕这会把自己送进巡夜人的眼里。',
+        '巷口的药箱被雨水冲翻，他先扑进泥水把药瓶一只只捡回，又把割裂的手藏进袖中。沈微霜问他为何不逃，林砚只说师妹还在等药，这不是能算清的账。',
+        '灵井底下传来铁链拖地声，玉佩映出师兄惯用的云纹。林砚没有告诉沈微霜自己看见了什么，只沿着井壁摸到一道新鲜的靴印，听见城主府巡夜人的铜铃越来越近。',
+        '他必须在铜铃停在巷口前确认玉佩主人，否则师妹会被带走，师兄的失踪也会被埋进井里。林砚让沈微霜守住巷口，自己系紧绳索下井；他不确定她会不会出卖自己。',
+        '林砚的靴底刚离开井沿，铜铃便在雨幕外停住。巡夜人喊出他的名字，他只能从井壁渗出的血色水痕判断，下面等着他的不是师兄，而是一场早已布好的局。',
+    ])
+
+
+def opening_evidence() -> list[OpeningEvidence]:
+    return [
+        OpeningEvidence(check='background', paragraph_index=0, quote='废弃灵井却在巷尾吐出温热白雾'),
+        OpeningEvidence(check='protagonist_identity', paragraph_index=1, quote='欠着师门药债的外门弟子'),
+        OpeningEvidence(check='motivation', paragraph_index=1, quote='只能追查玉佩与失踪师兄的名字'),
+        OpeningEvidence(check='personality_evidence_plan', paragraph_index=2, quote='先扑进泥水把药瓶一只只捡回'),
+        OpeningEvidence(check='conflict_goal', paragraph_index=4, quote='必须在铜铃停在巷口前确认玉佩主人'),
+        OpeningEvidence(check='locked_pov', paragraph_index=3, quote='林砚没有告诉沈微霜自己看见了什么'),
+    ]
+
+
+def opening_outline() -> ChapterOutline:
+    return ChapterOutline(
+        beats=[
+            BeatCard(
+                beat_id='opening-1',
+                summary='林砚抵达灵井并追查玉佩线索。',
+                pov_character='林砚',
+                location='灵井',
+                emotional_arc='疑惑到警觉',
+                key_dialogue_hints=['湿信是谁留下的？'],
+            )
+        ],
+        core_conflict='林砚必须在巡夜人抵达前确认玉佩主人。',
+        pacing='紧凑推进',
+        role_skill_targets=['保持线索压力'],
+        opening_contract=opening_contract(),
+    )
 
 
 class FakeLLMClient:
@@ -33,33 +94,20 @@ class FakeLLMClient:
 
     def generate_outline(self, messages):
         self.outline_messages.append(messages)
-        return ChapterOutline(
-            beats=[
-                BeatCard(
-                    beat_id='beat-1',
-                    summary='林砚抵达灵井。',
-                    pov_character='林砚',
-                    location='灵井',
-                    emotional_arc='疑惑到警觉',
-                    key_dialogue_hints=['湿信是谁留下的？'],
-                )
-            ],
-            core_conflict='林砚必须确认灵井异响是否与玉佩有关。',
-            pacing='紧凑推进',
-            role_skill_targets=['保持线索压力'],
-        )
+        return opening_outline()
 
     def generate_chapter(self, messages):
         self.generation_messages.append(messages)
         return ChapterGeneration(
             title='第一章 暗井回声',
-            draft_content='林砚在灵井旁听见了第二个人的脚步声。',
+            draft_content=opening_body(),
             context_summary='林砚调查灵脉衰退，裂纹玉佩成为线索。',
             review_hints=['确认沈微霜动机是否一致'],
             proposed_character_changes=[ProposedCharacterChange(character_id=1, current_goals=['追查城主府叛乱'])],
             proposed_foreshadow_changes=[
                 ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='玉佩线索被推进')
             ],
+            opening_evidence=opening_evidence(),
         )
 
     def revise_chapter(self, messages):
@@ -72,10 +120,13 @@ class FakeLLMClient:
 
 
 class MultiChangeLLMClient:
+    def generate_outline(self, messages):
+        return opening_outline()
+
     def generate_chapter(self, messages):
         return ChapterGeneration(
             title='第一章 雨巷密谈',
-            draft_content='林砚停在雨巷口，沈微霜递来一封湿透的信。',
+            draft_content=opening_body(),
             context_summary='林砚与沈微霜交换线索。',
             review_hints=['确认角色状态与伏笔推进是否都应提交'],
             proposed_character_changes=[
@@ -85,34 +136,43 @@ class MultiChangeLLMClient:
             proposed_foreshadow_changes=[
                 ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='湿信推进玉佩线索'),
             ],
+            opening_evidence=opening_evidence(),
         )
 
 
 class RollbackForeshadowLLMClient:
+    def generate_outline(self, messages):
+        return opening_outline()
+
     def generate_chapter(self, messages):
         return ChapterGeneration(
-            title='第二章 玉佩回潮',
-            draft_content='裂纹玉佩已经被解释清楚，却又在雨夜重新发出旧光。',
+            title='第一章 玉佩回潮',
+            draft_content=opening_body(),
             context_summary='已解决伏笔被重新推进。',
             review_hints=['确认伏笔是否允许倒退'],
             proposed_character_changes=[],
             proposed_foreshadow_changes=[
                 ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='尝试重新推进已解决伏笔'),
             ],
+            opening_evidence=opening_evidence(),
         )
 
 
 class CharacterJumpLLMClient:
+    def generate_outline(self, messages):
+        return opening_outline()
+
     def generate_chapter(self, messages):
         return ChapterGeneration(
-            title='第二章 急转',
-            draft_content='林砚放弃旧案，转而追查城主府密信。',
+            title='第一章 急转',
+            draft_content=opening_body(),
             context_summary='角色目标发生明显切换。',
             review_hints=['确认角色目标跳变是否有铺垫'],
             proposed_character_changes=[
                 ProposedCharacterChange(character_id=1, status='转向追查密信', current_goals=['追查城主府密信']),
             ],
             proposed_foreshadow_changes=[],
+            opening_evidence=opening_evidence(),
         )
 
 
@@ -221,7 +281,7 @@ def test_archived_world_rejects_core_narrative_writes_but_allows_review_reads(cl
     assert chapter.status == 'reviewing'
 
 
-def test_approve_chapter_updates_world_character_foreshadow_and_events(client, monkeypatch):
+def test_approve_chapter_updates_world_character_foreshadow_and_events(client, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
     draft = client.post(
@@ -230,7 +290,11 @@ def test_approve_chapter_updates_world_character_foreshadow_and_events(client, m
         headers={'Authorization': f'Bearer {token}'},
     ).json()
 
-    approve_response = client.post(f"/chapters/{draft['chapter_id']}/approve", headers={'Authorization': f'Bearer {token}'})
+    approve_response = client.post(
+        f"/chapters/{draft['chapter_id']}/approve",
+        json=opening_approval_payload(draft),
+        headers={'Authorization': f'Bearer {token}'},
+    )
     overview_response = client.get(f'/worlds/{world_id}/overview', headers={'Authorization': f'Bearer {token}'})
     overview = overview_response.json()
 
@@ -243,7 +307,7 @@ def test_approve_chapter_updates_world_character_foreshadow_and_events(client, m
     assert overview['recent_events'][0]['world_version_after'] == 2
 
 
-def test_approve_chapter_rejects_second_commit_without_duplicate_side_effects(client, monkeypatch, db_session):
+def test_approve_chapter_rejects_second_commit_without_duplicate_side_effects(client, monkeypatch, db_session, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
     draft = client.post(
@@ -253,7 +317,7 @@ def test_approve_chapter_rejects_second_commit_without_duplicate_side_effects(cl
     ).json()
     headers = {'Authorization': f'Bearer {token}'}
 
-    first = client.post(f"/chapters/{draft['chapter_id']}/approve", headers=headers)
+    first = client.post(f"/chapters/{draft['chapter_id']}/approve", json=opening_approval_payload(draft), headers=headers)
     assert first.status_code == 200
     db_session.expire_all()
     world = db_session.get(World, world_id)
@@ -286,7 +350,7 @@ def test_approve_chapter_rejects_second_commit_without_duplicate_side_effects(cl
     ) == before_foreshadow_events
 
 
-def test_abandon_endpoint_rejects_unauthorized_forbidden_extra_body_and_approved_chapter(client, monkeypatch):
+def test_abandon_endpoint_rejects_unauthorized_forbidden_extra_body_and_approved_chapter(client, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
     draft = client.post(
@@ -322,7 +386,11 @@ def test_abandon_endpoint_rejects_unauthorized_forbidden_extra_body_and_approved
         for error in extra_body.json()['detail']
     )
 
-    approve_response = client.post(f"/chapters/{draft['chapter_id']}/approve", headers=headers)
+    approve_response = client.post(
+        f"/chapters/{draft['chapter_id']}/approve",
+        json=opening_approval_payload(draft),
+        headers=headers,
+    )
     assert approve_response.status_code == 200
 
     approved_abandon = client.post(f"/chapters/{draft['chapter_id']}/abandon", headers=headers, json={})
@@ -661,7 +729,7 @@ def test_write_request_rejects_extra_fields_without_side_effects(client, monkeyp
     assert len(event_logs(db_session, world_id)) == before_events
 
 
-def test_approve_chapter_creates_foreshadow_lifecycle_event(client, monkeypatch):
+def test_approve_chapter_creates_foreshadow_lifecycle_event(client, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
     draft = client.post(
@@ -670,7 +738,11 @@ def test_approve_chapter_creates_foreshadow_lifecycle_event(client, monkeypatch)
         headers={'Authorization': f'Bearer {token}'},
     ).json()
 
-    response = client.post(f"/chapters/{draft['chapter_id']}/approve", headers={'Authorization': f'Bearer {token}'})
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/approve",
+        json=opening_approval_payload(draft),
+        headers={'Authorization': f'Bearer {token}'},
+    )
     assert response.status_code == 200
 
     timeline = client.get('/foreshadows/1/timeline', headers={'Authorization': f'Bearer {token}'})
@@ -695,13 +767,18 @@ def test_approval_preview_exposes_change_indexes_and_default_selection(client, m
 
     assert response.status_code == 200
     body = response.json()
+    assert body['opening_pov_confirmation_target'] == {
+        'required': True,
+        'locked_character_id': 1,
+        'locked_character_name': '林砚',
+    }
     assert body['character_changes'][0]['change_index'] == 0
     assert body['character_changes'][0]['selected_by_default'] is True
     assert body['foreshadow_changes'][0]['change_index'] == 0
     assert body['foreshadow_changes'][0]['selected_by_default'] is True
 
 
-def test_approve_chapter_applies_only_selected_character_and_foreshadow_changes(client, monkeypatch, db_session):
+def test_approve_chapter_applies_only_selected_character_and_foreshadow_changes(client, monkeypatch, db_session, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: MultiChangeLLMClient())
     draft = client.post(
@@ -713,7 +790,7 @@ def test_approve_chapter_applies_only_selected_character_and_foreshadow_changes(
     response = client.post(
         f"/chapters/{draft['chapter_id']}/approve",
         json={
-            'draft_version': draft['draft_version'],
+            **opening_approval_payload(draft),
             'selected_character_change_indexes': [1],
             'selected_foreshadow_change_indexes': [0],
         },
@@ -739,7 +816,7 @@ def test_approve_chapter_applies_only_selected_character_and_foreshadow_changes(
     assert 'proposed_changes' not in approved.payload
 
 
-def test_approve_chapter_allows_empty_selection_without_object_changes(client, monkeypatch, db_session):
+def test_approve_chapter_allows_empty_selection_without_object_changes(client, monkeypatch, db_session, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
     draft = client.post(
@@ -751,7 +828,7 @@ def test_approve_chapter_allows_empty_selection_without_object_changes(client, m
     response = client.post(
         f"/chapters/{draft['chapter_id']}/approve",
         json={
-            'draft_version': draft['draft_version'],
+            **opening_approval_payload(draft),
             'selected_character_change_indexes': [],
             'selected_foreshadow_change_indexes': [],
         },
@@ -770,7 +847,7 @@ def test_approve_chapter_allows_empty_selection_without_object_changes(client, m
     assert approved.payload['applied_changes'] == {'characters': [], 'foreshadows': []}
 
 
-def test_approve_chapter_rejects_invalid_change_selection(client, monkeypatch):
+def test_approve_chapter_rejects_invalid_change_selection(client, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: FakeLLMClient())
     draft = client.post(
@@ -781,7 +858,7 @@ def test_approve_chapter_rejects_invalid_change_selection(client, monkeypatch):
 
     response = client.post(
         f"/chapters/{draft['chapter_id']}/approve",
-        json={'draft_version': draft['draft_version'], 'selected_character_change_indexes': [0, 0]},
+        json={**opening_approval_payload(draft), 'selected_character_change_indexes': [0, 0]},
         headers={'Authorization': f'Bearer {token}'},
     )
 
@@ -858,7 +935,7 @@ def test_approval_consistency_recalculates_for_selected_change_set(client, monke
     assert body['consistency_warnings'] == []
 
 
-def test_approve_chapter_blocks_selected_consistency_violations(client, monkeypatch, db_session):
+def test_approve_chapter_blocks_selected_consistency_violations(client, monkeypatch, db_session, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     set_foreshadow_status(db_session, 1, 'resolved')
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: RollbackForeshadowLLMClient())
@@ -870,7 +947,7 @@ def test_approve_chapter_blocks_selected_consistency_violations(client, monkeypa
 
     response = client.post(
         f"/chapters/{draft['chapter_id']}/approve",
-        json={'draft_version': draft['draft_version'], 'selected_foreshadow_change_indexes': [0]},
+        json={**opening_approval_payload(draft), 'selected_foreshadow_change_indexes': [0]},
         headers={'Authorization': f'Bearer {token}'},
     )
 
@@ -881,7 +958,7 @@ def test_approve_chapter_blocks_selected_consistency_violations(client, monkeypa
     assert detail['warnings'][0]['category'] == 'foreshadow_transition'
 
 
-def test_approve_chapter_allows_warning_only_consistency_and_records_summary(client, monkeypatch, db_session):
+def test_approve_chapter_allows_warning_only_consistency_and_records_summary(client, monkeypatch, db_session, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: CharacterJumpLLMClient())
     draft = client.post(
@@ -892,7 +969,7 @@ def test_approve_chapter_allows_warning_only_consistency_and_records_summary(cli
 
     response = client.post(
         f"/chapters/{draft['chapter_id']}/approve",
-        json={'draft_version': draft['draft_version'], 'selected_character_change_indexes': [0]},
+        json={**opening_approval_payload(draft), 'selected_character_change_indexes': [0]},
         headers={'Authorization': f'Bearer {token}'},
     )
 

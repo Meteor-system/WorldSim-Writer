@@ -38,6 +38,9 @@ def test_compose_serializes_migrations_before_a_non_root_ready_api():
     assert 'read_only: true' in api_service
     assert 'no-new-privileges:true' in api_service
     assert 'stop_signal: SIGTERM' in api_service
+    assert 'LLM_API_MODE: "${LLM_API_MODE:-responses}"' in compose
+    assert 'LLM_TIMEOUT_SECONDS: "${LLM_TIMEOUT_SECONDS:-60}"' in compose
+    assert 'LLM_READ_TIMEOUT_SECONDS: "${LLM_READ_TIMEOUT_SECONDS:-300}"' in compose
 
 
 def test_compose_example_defaults_to_loopback_and_mock_llm_without_real_secrets():
@@ -45,6 +48,11 @@ def test_compose_example_defaults_to_loopback_and_mock_llm_without_real_secrets(
 
     assert 'COMPOSE_API_BIND_ADDRESS=127.0.0.1' in env_example
     assert 'LLM_MOCK=true' in env_example
+    assert 'LLM_API_MODE=responses' in env_example
+    assert 'LLM_TIMEOUT_SECONDS=60' in env_example
+    assert 'LLM_READ_TIMEOUT_SECONDS=300' in env_example
     assert 'SECRET_KEY=change-this-local-secret' in env_example
     assert 'POSTGRES_PASSWORD=change-this-database-password' in env_example
-    assert 'replace every placeholder' in env_example
+    assert 'replace the database password and SECRET_KEY' in env_example
+    assert 'replace the LLM provider placeholders only when LLM_MOCK=false' in env_example
+    assert 'replace every placeholder' not in env_example

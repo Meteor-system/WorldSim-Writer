@@ -29,7 +29,7 @@ def test_ensure_alembic_version_table_capacity_creates_wide_version_column():
 def test_get_repository_heads_reads_current_alembic_heads():
     heads = get_repository_heads(Path(__file__).resolve().parents[1] / 'alembic.ini')
 
-    assert heads == ['0013_add_import_node']
+    assert heads == ['0014_add_chapter_draft_quality_report']
 
 
 def test_get_migration_status_redacts_database_connection_error():
@@ -41,7 +41,7 @@ def test_get_migration_status_redacts_database_connection_error():
 
     assert status == {
         'current': None,
-        'head': '0013_add_import_node',
+        'head': '0014_add_chapter_draft_quality_report',
         'up_to_date': False,
         'status': 'unknown',
         'error': 'DATABASE_UNAVAILABLE',

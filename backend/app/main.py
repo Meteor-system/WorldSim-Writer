@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from time import perf_counter
 from traceback import extract_tb
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
@@ -130,13 +131,38 @@ def _public_migration_status() -> dict[str, object]:
     return public_status
 
 
+def _cors_allow_origins(frontend_origin: str) -> list[str]:
+    try:
+        origin = urlsplit(frontend_origin)
+        port = origin.port
+    except ValueError:
+        return [frontend_origin]
+
+    loopback_aliases = {'localhost': '127.0.0.1', '127.0.0.1': 'localhost'}
+    alias = loopback_aliases.get(origin.hostname)
+    if (
+        origin.scheme not in {'http', 'https'}
+        or not origin.netloc
+        or origin.username is not None
+        or origin.password is not None
+        or origin.path
+        or origin.query
+        or origin.fragment
+        or alias is None
+    ):
+        return [frontend_origin]
+
+    port_suffix = f':{port}' if port is not None else ''
+    return list(dict.fromkeys([frontend_origin, f'{origin.scheme}://{alias}{port_suffix}']))
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     _configure_request_logging(settings.log_level)
     app = FastAPI(title='WorldSim-Writer API')
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[settings.frontend_origin],
+        allow_origins=_cors_allow_origins(settings.frontend_origin),
         allow_credentials=True,
         allow_methods=['*'],
         allow_headers=['*'],

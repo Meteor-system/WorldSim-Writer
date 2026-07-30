@@ -1,7 +1,9 @@
+import re
+
 from sqlalchemy import func, select
 
 from app.event.models import EventLog
-from app.llm.schemas import ChapterGeneration, WorldCreationDraftPayload
+from app.llm.schemas import BeatCard, ChapterGeneration, ChapterOutline, OpeningEvidence, OpeningContract, WorldCreationDraftPayload
 from app.narrative import service as narrative_service
 from app.world import service as world_service
 from app.world.models import World
@@ -50,14 +52,64 @@ def style_handbook_reference_payload():
 
 
 class CustomWorldLLMClient:
+    def generate_outline(self, messages):
+        character_names = re.findall(r'- \d+: ([^,]+), role=', messages[-1]['content'])
+        protagonist = character_names[0]
+        return ChapterOutline(
+            core_conflict=f'{protagonist}必须在企业封锁前查明跃迁灯塔异常。',
+            pov_suggestion=protagonist,
+            pacing='高压悬疑',
+            role_skill_targets=[protagonist],
+            beats=[
+                BeatCard(
+                    beat_id='beat-1',
+                    summary=f'{protagonist}在灯塔维修通道听见异常低鸣。',
+                    pov_character=protagonist,
+                    location='跃迁灯塔维修通道',
+                    emotional_arc='警觉转为决断',
+                    key_dialogue_hints=['先确认异常来源，再避开企业封锁。'],
+                )
+            ],
+            opening_contract=OpeningContract(
+                background='边境殖民地依赖濒临失控的跃迁灯塔。',
+                protagonist_identity=f'{protagonist}是灯塔维修工程师。',
+                motivation=f'{protagonist}要查明异常脉冲来源。',
+                personality_evidence_plan=f'让{protagonist}先校准阵列、再隐瞒异常日志，体现其谨慎与责任感。',
+                conflict_goal='企业安保即将封锁灯塔，必须抢先取得异常证据。',
+                locked_pov=f'{protagonist}第三人称限知视角。',
+            ),
+        )
+
     def generate_chapter(self, messages):
+        outline_context = messages[-1]['content']
+        protagonist = re.search(r"'locked_pov': '([^']+)第三人称限知视角。'", outline_context).group(1)
+        draft_content = (
+            f'{protagonist}站在跃迁灯塔维修通道尽头，听见阵列深处传来低鸣，潮湿的冷凝水沿着靴边滑进无重力排水槽。\n\n'
+            f'作为殖民地仅剩的灯塔维修工程师，{protagonist}知道这座濒临失控的跃迁灯塔一旦熄灭，边境船团和居民都会被困在黑暗里。\n\n'
+            f'{protagonist}想要查明异常脉冲来源，因为只有找到最初的偏移节点，才能知道是谁把故障伪装成了普通事故。\n\n'
+            f'企业安保即将封锁灯塔，{protagonist}必须在他们接管控制室前取得异常证据。{protagonist}没有呼叫安保，而是先校准阵列、逐格比对偏移数据，再把那段曾被自己篡改的事故日志压进工具箱夹层。\n\n'
+            f'警报灯由黄转红，维修通道另一端传来沉重脚步声；黑匣子的指示灯却在此刻亮起，吐出一串不该存在的未来坐标。\n\n'
+            f'低鸣再度压过警报，{protagonist}意识到自己无法判断黑匣子吐出的未来坐标是否真实，却知道不能把证据留给安保；他握紧黑匣子，决定赶在封锁完成前找到信号的源头。'
+        )
         return ChapterGeneration(
             title='第一章 灯塔低鸣',
-            draft_content='许砚听见跃迁灯塔深处传来低鸣。',
-            context_summary='许砚开始追查灯塔异常。',
+            draft_content=draft_content,
+            context_summary=f'{protagonist}开始追查灯塔异常。',
             review_hints=['确认灯塔异常是否推进黑匣子脉冲伏笔。'],
             proposed_character_changes=[],
             proposed_foreshadow_changes=[],
+            opening_evidence=[
+                OpeningEvidence(check='background', paragraph_index=0, quote='跃迁灯塔维修通道'),
+                OpeningEvidence(check='protagonist_identity', paragraph_index=1, quote='灯塔维修工程师'),
+                OpeningEvidence(check='motivation', paragraph_index=2, quote='想要查明异常脉冲来源'),
+                OpeningEvidence(check='personality_evidence_plan', paragraph_index=3, quote='先校准阵列、逐格比对'),
+                OpeningEvidence(check='conflict_goal', paragraph_index=3, quote='企业安保即将封锁灯塔'),
+                OpeningEvidence(
+                    check='locked_pov',
+                    paragraph_index=5,
+                    quote=f'{protagonist}意识到自己无法判断黑匣子吐出的未来坐标是否真实',
+                ),
+            ],
         )
 
 
@@ -119,6 +171,20 @@ def custom_world_payload():
             ],
         },
     }
+
+
+def test_build_world_creation_draft_messages_includes_strict_json_contract():
+    messages = world_service.build_world_creation_draft_messages('一个原创世界脑洞')
+    system_prompt = messages[0]['content']
+
+    assert 'draft、first_chapter_goal、generation_notes、safety_notes、followup_questions 五个字段' in system_prompt
+    assert 'title、genre_template、truth_canon、tone_profile、starter_assets 五个字段' in system_prompt
+    assert 'name、role_type、status、public_profile、hidden_traits、destiny_flag、current_goals' in system_prompt
+    assert 'source_index、target_index、relation_type、intensity、visibility' in system_prompt
+    assert '索引为 0-based、不得相同，intensity 为 1..5' in system_prompt
+    assert 'urgency_level 为 1..5' in system_prompt
+    assert 'first_chapter_goal 必须为非空字符串' in system_prompt
+    assert '只返回一个 JSON 对象；不得返回 Markdown、代码围栏或解释。' in system_prompt
 
 
 def test_create_sample_world_and_overview(client):
@@ -504,7 +570,7 @@ def test_draft_world_from_brief_returns_editable_variants_without_creating_world
 
 
 def test_brief_to_first_chapter_requires_confirmation_and_studio_approval(
-    client, db_session, monkeypatch
+    client, db_session, monkeypatch, opening_approval_payload
 ):
     token = register(client, 'brief-first-chapter-loop@example.com')
     world_llm = DraftWorldLLMClient()
@@ -542,6 +608,7 @@ def test_brief_to_first_chapter_requires_confirmation_and_studio_approval(
     chapter_draft = chapter_response.json()
     assert chapter_draft['status'] == 'reviewing'
     assert chapter_draft['source_world_version'] == 1
+    assert chapter_draft['quality_report']['status'] == 'pass', chapter_draft['quality_report']
     db_session.expire_all()
     assert db_session.get(World, world['id']).world_version == 1
     reviewing_events = list(
@@ -552,10 +619,10 @@ def test_brief_to_first_chapter_requires_confirmation_and_studio_approval(
     approve_response = client.post(
         f"/chapters/{chapter_draft['chapter_id']}/approve",
         headers=auth(token),
-        json={'draft_version': chapter_draft['draft_version']},
+        json=opening_approval_payload(chapter_draft),
     )
 
-    assert approve_response.status_code == 200
+    assert approve_response.status_code == 200, approve_response.json()
     assert approve_response.json()['status'] == 'approved'
     db_session.expire_all()
     assert db_session.get(World, world['id']).world_version == 2

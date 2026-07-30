@@ -1,5 +1,10 @@
 .superpowers/
 .claude/
+.agents/
+.plan/
+/AGENTS.md
+*.log
+/1000
 .env
 .env.*
 !.env.example

@@ -53,7 +53,7 @@ The migration command must finish successfully as one serialized pre-deploy job 
 
 Keep `API_PROXY_HEADERS=false` unless every direct connection comes from a known reverse proxy. When enabling it, list only exact proxy IP addresses or CIDR networks in `API_FORWARDED_ALLOW_IPS`; never use `*`, `0.0.0.0/0`, `::/0`, hostnames, or URLs. The production entry point disables Uvicorn access logs because the application already emits structured request logs, and it disables Uvicorn `Server` and `Date` headers. Verify `GET /live` returns `200`, `GET /ready` returns `200` after migrations, the API response itself has no `Server` or `Date` header, and the process exits within the configured graceful shutdown timeout. A front proxy may add its own response headers.
 
-For the committed Docker backend release stack, run these commands from the repository root after copying `.env.example` to the ignored root `.env` and replacing every placeholder:
+For the committed Docker backend release stack, run these commands from the repository root after copying `.env.example` to the ignored root `.env`, replacing the database password and `SECRET_KEY`, and replacing the LLM provider placeholders only when `LLM_MOCK=false`:
 
 ```bash
 docker compose config --quiet

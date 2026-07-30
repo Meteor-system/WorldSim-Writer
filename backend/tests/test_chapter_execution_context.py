@@ -2,7 +2,15 @@ from sqlalchemy import func, inspect, select
 from sqlalchemy.dialects import postgresql
 
 from app.event.models import EventLog
-from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
+from app.llm.schemas import (
+    BeatCard,
+    ChapterGeneration,
+    ChapterOutline,
+    OpeningContract,
+    OpeningEvidence,
+    ProposedCharacterChange,
+    ProposedForeshadowChange,
+)
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter, ChapterDraft
 from app.narrative.schemas import CreateChapterRequest, DraftRequest
@@ -94,17 +102,66 @@ def test_create_and_draft_requests_accept_execution_context():
 class CapturingLLMClient:
     def __init__(self):
         self.messages = []
+        self.outline_messages = []
+        self.calls = []
+
+    def generate_outline(self, messages):
+        self.outline_messages.append(messages)
+        self.calls.append('outline')
+        return ChapterOutline(
+            beats=[
+                BeatCard(
+                    beat_id='opening-1',
+                    summary='林砚在雨夜的废弃灵井发现裂纹玉佩异动。',
+                    pov_character='林砚',
+                    location='青岚城后巷',
+                    emotional_arc='焦灼到警觉',
+                    key_dialogue_hints=['师妹还在等药。'],
+                )
+            ],
+            core_conflict='林砚必须在巡夜人抵达前确认裂纹玉佩的主人。',
+            pov_suggestion='林砚',
+            pacing='雨夜悬疑，逐段增加巡夜压力。',
+            role_skill_targets=['林砚', '沈微霜'],
+            opening_contract=OpeningContract(
+                background='青岚城灵脉衰退，废弃灵井在雨夜发出异响。',
+                protagonist_identity='林砚是为师门债务奔走的外门弟子。',
+                motivation='他必须查清裂纹玉佩为何牵连师门，避免师妹被城主府带走。',
+                personality_evidence_plan='让林砚先救下被雨水冲走的药箱，再隐瞒手伤继续追查。',
+                conflict_goal='在城主府巡夜人发现前，确认暗井中的玉佩是否属于失踪师兄。',
+                locked_pov='林砚限知第三人称。',
+            ),
+        )
 
     def generate_chapter(self, messages):
         self.messages.append(messages)
+        self.calls.append('writer')
+        draft_content = '\n\n'.join(
+            [
+                '雨水压低了青岚城的屋檐，废弃灵井却在巷尾吐出温热白雾。林砚替师门送药归来，掌心的裂纹玉佩忽然发烫；城里人人都说灵脉衰退只是旱灾，他知道那是谎话。',
+                '他是欠着师门药债的外门弟子，今夜原该回去照看师妹。可城主府的文书写明天亮前要带走她问话，林砚只能追查玉佩与失踪师兄的名字，哪怕这会把自己送进巡夜人的眼里。',
+                '巷口的药箱被雨水冲翻，他先扑进泥水把药瓶一只只捡回，又把割裂的手藏进袖中。沈微霜问他为何不逃，林砚只说：师妹还在等药，这不是能算清的账。',
+                '灵井底下传来铁链拖地声，玉佩映出师兄惯用的云纹。林砚没有告诉沈微霜自己看见了什么，只沿着井壁摸到一道新鲜的靴印，听见城主府巡夜人的铜铃越来越近。',
+                '他必须在铜铃停在巷口前确认玉佩主人，否则师妹会被带走，师兄的失踪也会被埋进井里。林砚让沈微霜守住巷口，自己系紧绳索下井；他不确定她会不会出卖自己。',
+                '林砚的靴底刚离开井沿，铜铃便在雨幕外停住。巡夜人喊出他的名字，他只能从井壁渗出的血色水痕判断，下面等着他的不是师兄，而是一场早已布好的局。',
+            ]
+        )
         return ChapterGeneration(
             title='第二章 城主府外墙',
-            draft_content='林砚抵达城主府外墙，借湿信试探沈微霜。',
+            draft_content=draft_content,
             context_summary='本章执行城主府外墙试探。',
             review_hints=['确认沈微霜动机是否可信'],
             proposed_character_changes=[ProposedCharacterChange(character_id=1, current_goals=['试探沈微霜'])],
             proposed_foreshadow_changes=[
                 ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='湿信线索继续推进')
+            ],
+            opening_evidence=[
+                OpeningEvidence(check='background', paragraph_index=0, quote='废弃灵井却在巷尾吐出温热白雾'),
+                OpeningEvidence(check='protagonist_identity', paragraph_index=1, quote='欠着师门药债的外门弟子'),
+                OpeningEvidence(check='motivation', paragraph_index=1, quote='只能追查玉佩与失踪师兄的名字'),
+                OpeningEvidence(check='personality_evidence_plan', paragraph_index=2, quote='先扑进泥水把药瓶一只只捡回'),
+                OpeningEvidence(check='conflict_goal', paragraph_index=4, quote='必须在铜铃停在巷口前确认玉佩主人'),
+                OpeningEvidence(check='locked_pov', paragraph_index=3, quote='林砚没有告诉沈微霜自己看见了什么'),
             ],
         )
 
@@ -140,6 +197,8 @@ def test_draft_request_rejects_root_extra_fields_without_side_effects(client, db
         for error in response.json()['detail']
     )
     assert llm.messages == []
+    assert llm.outline_messages == []
+    assert llm.calls == []
     assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
 
@@ -337,6 +396,8 @@ def test_active_chapter_guard_blocks_duplicate_create_paths_without_side_effects
     assert duplicate_draft.status_code == 409
     assert duplicate_draft.json()['detail'] == 'ACTIVE_CHAPTER_EXISTS'
     assert llm.messages == []
+    assert llm.outline_messages == []
+    assert llm.calls == []
     db_session.expire_all()
     assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
     assert db_session.scalar(
@@ -368,7 +429,7 @@ def test_active_chapter_guard_allows_one_unapproved_chapter_per_world(client, db
     assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == second_world_id)) == 1
 
 
-def test_active_chapter_guard_allows_next_chapter_after_approval(client, db_session, monkeypatch):
+def test_active_chapter_guard_allows_next_chapter_after_approval(client, db_session, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client, 'active-chapter-after-approval@example.com')
     headers = {'Authorization': f'Bearer {token}'}
     llm = CapturingLLMClient()
@@ -380,7 +441,11 @@ def test_active_chapter_guard_allows_next_chapter_after_approval(client, db_sess
     )
     assert first.status_code == 200
 
-    approved = client.post(f"/chapters/{first.json()['chapter_id']}/approve", json={}, headers=headers)
+    approved = client.post(
+        f"/chapters/{first.json()['chapter_id']}/approve",
+        json=opening_approval_payload(first.json()),
+        headers=headers,
+    )
     assert approved.status_code == 200
     assert approved.json()['status'] == 'approved'
 
@@ -465,14 +530,31 @@ def test_outline_and_writer_prompts_use_frozen_execution_context(client, db_sess
     assert '裂纹玉佩' in writer_text
 
 
-def test_write_chapter_copies_chapter_execution_context_to_draft(client, db_session, monkeypatch):
+def test_write_chapter_copies_chapter_execution_context_to_draft(client, db_session, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client, 'write-context@example.com')
-    context = sample_execution_context()
+    headers = {'Authorization': f'Bearer {token}'}
+    monkeypatch.setenv('LLM_MOCK', 'true')
+    narrative_service.get_settings.cache_clear()
+    first = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '完成并批准第一章'},
+        headers=headers,
+    )
+    assert first.status_code == 200, first.json()
+    approved = client.post(
+        f"/chapters/{first.json()['chapter_id']}/approve",
+        json=opening_approval_payload(first.json()),
+        headers=headers,
+    )
+    assert approved.status_code == 200
+
+    context = sample_execution_context(source_world_version=2)
     chapter = client.post(
         f'/worlds/{world_id}/chapters',
         json={'chapter_goal': context['goal'], 'title': '第二章 城主府外墙', 'execution_context': context},
-        headers={'Authorization': f'Bearer {token}'},
+        headers=headers,
     ).json()
+    assert chapter['execution_context']['next_chapter_number'] == 2
     db_chapter = db_session.get(Chapter, chapter['id'])
     db_chapter.outline_beats = [
         {
@@ -538,6 +620,8 @@ def test_direct_draft_rejects_stale_execution_context_before_model_call(client, 
     assert response.status_code == 409
     assert response.json()['detail'] == 'WORLD_VERSION_MISMATCH'
     assert llm.messages == []
+    assert llm.outline_messages == []
+    assert llm.calls == []
 
 
 def test_direct_draft_rejects_extra_execution_context_field_before_model_call(client, db_session, monkeypatch):
@@ -562,6 +646,8 @@ def test_direct_draft_rejects_extra_execution_context_field_before_model_call(cl
         for error in response.json()['detail']
     )
     assert llm.messages == []
+    assert llm.outline_messages == []
+    assert llm.calls == []
     assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
 
@@ -588,6 +674,8 @@ def test_direct_draft_rejects_extra_nested_execution_context_field_before_model_
         for error in response.json()['detail']
     )
     assert llm.messages == []
+    assert llm.outline_messages == []
+    assert llm.calls == []
     assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
 
@@ -627,6 +715,8 @@ def test_direct_draft_rejects_raw_text_material_reference_before_model_call(clie
         for error in response.json()['detail']
     )
     assert llm.messages == []
+    assert llm.outline_messages == []
+    assert llm.calls == []
     assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
 
@@ -680,6 +770,8 @@ def test_direct_draft_rejects_raw_text_style_reference_before_model_call(client,
         for error in response.json()['detail']
     )
     assert llm.messages == []
+    assert llm.outline_messages == []
+    assert llm.calls == []
     assert db_session.scalar(select(func.count()).select_from(Chapter).where(Chapter.world_id == world_id)) == before_chapters
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == before_events
 
@@ -732,7 +824,7 @@ def test_approval_requests_reject_extra_body_fields_without_side_effects(client,
         assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id)) == before_events
 
 
-def test_chapter_history_detail_exposes_execution_context(client, monkeypatch):
+def test_chapter_history_detail_exposes_execution_context(client, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client, 'history-context@example.com')
     context = sample_execution_context()
     llm = CapturingLLMClient()
@@ -742,7 +834,11 @@ def test_chapter_history_detail_exposes_execution_context(client, monkeypatch):
         json={'chapter_goal': context['goal'], 'execution_context': context},
         headers={'Authorization': f'Bearer {token}'},
     ).json()
-    approve = client.post(f"/chapters/{draft['chapter_id']}/approve", headers={'Authorization': f'Bearer {token}'})
+    approve = client.post(
+        f"/chapters/{draft['chapter_id']}/approve",
+        json=opening_approval_payload(draft),
+        headers={'Authorization': f'Bearer {token}'},
+    )
     assert approve.status_code == 200
 
     response = client.get(f"/chapters/{draft['chapter_id']}/history", headers={'Authorization': f'Bearer {token}'})

@@ -96,12 +96,784 @@ def _load_world_context(db: Session, world: World) -> tuple[list[Character], lis
 
 
 def _outline_context_payload(outline) -> dict:
-    return {
+    payload = {
         'core_conflict': outline.core_conflict,
         'pov_suggestion': outline.pov_suggestion,
         'pacing': outline.pacing,
         'role_skill_targets': outline.role_skill_targets,
     }
+    if outline.opening_contract is not None:
+        payload['opening_contract'] = outline.opening_contract.model_dump()
+    return payload
+
+
+OPENING_QUALITY_VALIDATION_VERSION = 5
+
+OPENING_CHECKS = (
+    'background',
+    'protagonist_identity',
+    'motivation',
+    'personality_evidence_plan',
+    'conflict_goal',
+    'locked_pov',
+)
+OPENING_CHECK_LABELS = {
+    'background': '背景建立',
+    'protagonist_identity': '主角身份',
+    'motivation': '主角动机',
+    'personality_evidence_plan': '性格行动证据',
+    'conflict_goal': '冲突与目标',
+    'locked_pov': '锁定 POV 证据定位',
+}
+
+
+def _is_opening_context(execution_context: dict | None) -> bool:
+    return bool(execution_context and execution_context.get('next_chapter_number') == 1)
+
+
+def _unique_character_in_text(characters: list[Character], text: str | None) -> Character | None:
+    matches = [character for character in characters if character.name and character.name in (text or '')]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _has_recommended_pov(execution_context: dict | None) -> bool:
+    recommended = (execution_context or {}).get('recommended_pov') or {}
+    return recommended.get('character_id') is not None or bool(recommended.get('name'))
+
+
+def _contract_locked_pov_character(characters: list[Character], text: str | None) -> Character | None:
+    normalized_text = ''.join((text or '').upper().split())
+    if any(
+        phrase in normalized_text
+        for phrase in (
+            '交替使用',
+            '轮流使用',
+            '轮换使用',
+            '视角交替',
+            '视角轮换',
+            '视角切换',
+            '双POV',
+            '多POV',
+            '双视角',
+            '多视角',
+        )
+    ):
+        return None
+
+    clause_text = normalized_text
+    for separator in ('，', '。', '；', ';', '：', ':', '！', '!', '？', '?'):
+        clause_text = clause_text.replace(separator, '|')
+    clauses = [clause for clause in clause_text.split('|') if clause]
+
+    matches = []
+    normalized_names = {}
+    negative_anchors_by_character = {}
+    for character in characters:
+        if not character.name:
+            continue
+        normalized_name = ''.join(character.name.upper().split())
+        normalized_names[character.id] = normalized_name
+        anchors = (
+            f'{normalized_name}第三人称限知',
+            f'{normalized_name}限知第三人称',
+            f'{normalized_name}固定第三人称限知',
+            f'{normalized_name}固定限知第三人称',
+            f'仅跟随{normalized_name}',
+            f'只跟随{normalized_name}',
+            f'固定跟随{normalized_name}',
+            f'以{normalized_name}为第三人称限知',
+            f'以{normalized_name}为限知第三人称',
+            f'以{normalized_name}为固定视角',
+        )
+        negative_anchors = (
+            f'不使用{normalized_name}',
+            f'不采用{normalized_name}',
+            f'不跟随{normalized_name}',
+            f'不切换到{normalized_name}',
+            f'不切换至{normalized_name}',
+            f'不进入{normalized_name}',
+            f'不直接进入{normalized_name}',
+            f'不得使用{normalized_name}',
+            f'不能使用{normalized_name}',
+            f'禁止使用{normalized_name}',
+            f'避免使用{normalized_name}',
+            f'不得进入{normalized_name}',
+            f'不能进入{normalized_name}',
+            f'禁止进入{normalized_name}',
+            f'避免进入{normalized_name}',
+            f'不描写{normalized_name}',
+            f'不得描写{normalized_name}',
+            f'{normalized_name}不作为',
+            f'{normalized_name}不是',
+            f'{normalized_name}不得作为',
+            f'{normalized_name}不能作为',
+        )
+        negative_anchors_by_character[character.id] = negative_anchors
+        if any(
+            not any(negative_anchor in clause for negative_anchor in negative_anchors)
+            and (
+                any(anchor in clause for anchor in anchors)
+                or (
+                    normalized_name in clause
+                    and any(pov_term in clause for pov_term in ('第三人称', '限知', '视角', 'POV'))
+                )
+            )
+            for clause in clauses
+        ):
+            matches.append(character)
+    if len(matches) != 1:
+        return None
+
+    locked_character = matches[0]
+    interior_access_terms = ('内心', '内心段落', '心理', '心声', '意识', '感知', '所见所闻', '视角', 'POV')
+    access_terms = ('进入', '转入', '切入', '切换', '跟随', '使用', '采用', '补充', '允许', '可以', '偶尔', '偶有', '展开', '描写')
+    for character in characters:
+        if character.id == locked_character.id or character.id not in normalized_names:
+            continue
+        normalized_name = normalized_names[character.id]
+        negative_anchors = negative_anchors_by_character[character.id]
+        for clause in clauses:
+            if normalized_name not in clause or any(negative_anchor in clause for negative_anchor in negative_anchors):
+                continue
+            if any(term in clause for term in interior_access_terms) and any(term in clause for term in access_terms):
+                return None
+    return locked_character
+
+
+def _recommended_pov_character(characters: list[Character], execution_context: dict | None) -> Character | None:
+    recommended = (execution_context or {}).get('recommended_pov') or {}
+    recommended_id = recommended.get('character_id')
+    recommended_name = recommended.get('name')
+    by_id = next((character for character in characters if character.id == recommended_id), None) if recommended_id is not None else None
+    by_name = next((character for character in characters if character.name == recommended_name), None) if recommended_name else None
+    if recommended_id is not None and by_id is None:
+        return None
+    if recommended_name and by_name is None:
+        return None
+    if by_id is not None and by_name is not None and by_id.id != by_name.id:
+        return None
+    return by_id or by_name
+
+
+def _validate_opening_contract(outline, execution_context: dict | None, characters: list[Character] | None = None) -> None:
+    if not _is_opening_context(execution_context):
+        return
+    contract = outline.opening_contract
+    if contract is None or characters is None:
+        raise ValueError('MODEL_RESPONSE_INVALID')
+    if '第三人称' not in contract.locked_pov or '限知' not in contract.locked_pov:
+        raise ValueError('MODEL_RESPONSE_INVALID')
+
+    recommended_character = _recommended_pov_character(characters, execution_context)
+    if _has_recommended_pov(execution_context) and recommended_character is None:
+        raise ValueError('MODEL_RESPONSE_INVALID')
+
+    beat_characters = []
+    for beat in outline.beats:
+        pov_character = beat.pov_character
+        if not pov_character:
+            continue
+        character = next((candidate for candidate in characters if candidate.name == pov_character), None)
+        if character is None:
+            raise ValueError('MODEL_RESPONSE_INVALID')
+        beat_characters.append(character)
+    if len({character.id for character in beat_characters}) > 1:
+        raise ValueError('MODEL_RESPONSE_INVALID')
+
+    has_suggestion = bool(outline.pov_suggestion)
+    suggested_character = _unique_character_in_text(characters, outline.pov_suggestion)
+    if has_suggestion and suggested_character is None:
+        raise ValueError('MODEL_RESPONSE_INVALID')
+
+    contract_character = _contract_locked_pov_character(characters, contract.locked_pov)
+    if contract_character is None:
+        raise ValueError('MODEL_RESPONSE_INVALID')
+
+    pov_signals = [
+        character
+        for character in (recommended_character, *beat_characters, suggested_character, contract_character)
+        if character is not None
+    ]
+    locked_character = pov_signals[0]
+    if any(character.id != locked_character.id for character in pov_signals[1:]):
+        raise ValueError('MODEL_RESPONSE_INVALID')
+
+    if locked_character.name not in contract.locked_pov:
+        raise ValueError('MODEL_RESPONSE_INVALID')
+    for character in beat_characters:
+        if character.name != locked_character.name:
+            raise ValueError('MODEL_RESPONSE_INVALID')
+
+
+def _locked_pov_character(characters: list[Character], execution_context: dict | None, outline_context: dict | None) -> Character | None:
+    recommended_character = _recommended_pov_character(characters, execution_context)
+    if _has_recommended_pov(execution_context):
+        return recommended_character
+    suggested_character = _unique_character_in_text(characters, (outline_context or {}).get('pov_suggestion'))
+    if suggested_character is not None:
+        return suggested_character
+    opening_contract = (outline_context or {}).get('opening_contract') or {}
+    return _contract_locked_pov_character(characters, opening_contract.get('locked_pov'))
+
+
+def _validate_locked_beat_pov(beats: list[dict], locked_character: Character | None) -> None:
+    if locked_character is None:
+        return
+    for beat in beats:
+        pov = (beat.get('pov_character') or '').strip()
+        if pov and pov != locked_character.name:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail='MODEL_RESPONSE_INVALID')
+
+
+OPENING_ANCHOR_STOP_PHRASES = (
+    '第三人称',
+    '限知',
+    '视角',
+    '固定',
+    '跟随',
+    '通过',
+    '表现',
+    '体现',
+    '本章',
+    '当前',
+    '主角',
+    '角色',
+    '必须',
+    '需要',
+    '应该',
+    '可以',
+    '不能',
+    '不会',
+    '已经',
+    '仍然',
+    '继续',
+    '选择',
+    '决定',
+    '同时',
+    '查清',
+    '查明',
+    '追查',
+    '确认',
+    '保护',
+    '避免',
+    '取得',
+    '完成',
+    '处理',
+    '推进',
+    '发现',
+    '阻止',
+)
+OPENING_ANCHOR_STOP_CHARACTERS = frozenset('的了是在于与和及或并把被让使从向为由将其这那他她它们中前后再先却也都而以')
+OPENING_SENTENCE_BOUNDARIES = ('。', '！', '？', '!', '?', '；', ';')
+OPENING_INTENT_SIGNALS = (
+    '必须',
+    '只能',
+    '需要',
+    '为了',
+    '避免',
+    '不能让',
+    '不至于',
+    '想要',
+    '决心',
+    '要查',
+    '要找',
+    '要完成',
+    '要取得',
+    '要保护',
+    '要阻止',
+    '要确认',
+    '要证明',
+    '要取回',
+    '查明',
+    '查清',
+    '追查',
+    '调查',
+    '取回',
+    '保护',
+    '阻止',
+)
+OPENING_CONFLICT_SIGNALS = OPENING_INTENT_SIGNALS + (
+    '否则',
+    '赶在',
+    '抢先',
+    '即将',
+    '封锁',
+    '抵达',
+    '发现前',
+    '完成前',
+    '来不及',
+    '阻力',
+    '周旋',
+    '对抗',
+    '躲避',
+)
+OPENING_ACTION_SIGNALS = (
+    '主动',
+    '隐瞒',
+    '藏',
+    '救',
+    '捡',
+    '拾',
+    '收拾',
+    '校准',
+    '核对',
+    '比对',
+    '抢救',
+    '冒险',
+    '带伤',
+    '选择',
+    '决定',
+    '拒绝',
+    '坚持',
+    '锁死',
+    '压进',
+    '扑进',
+    '蹲进',
+)
+OPENING_BACKGROUND_BRIDGE_GROUPS = (
+    ('暗井', '灵井', '废井', '古井', '枯井'),
+    ('灯塔', '跃迁塔'),
+    ('雨巷', '街巷', '巷道'),
+    ('港口', '海港', '码头'),
+    ('舱室', '故障舱', '核心舱'),
+    ('站台', '车站', '静默站'),
+    ('门廊', '通道', '走廊'),
+    ('雨夜', '雨水', '雨巷', '暴雨', '雨幕'),
+    ('灵脉', '灵井', '灵气', '灵力'),
+    ('异响', '白雾', '低鸣', '震颤', '异常脉冲'),
+)
+OPENING_MOTIVATION_BRIDGE_GROUPS = (
+    ('湿信', '密信', '信件', '信从何而来', '这封信', '来信'),
+    ('来源', '来历', '从何而来', '来处', '出处'),
+)
+OPENING_BACKGROUND_SIGNALS = (
+    '雨',
+    '夜',
+    '雾',
+    '风',
+    '雪',
+    '灯',
+    '空气',
+    '屋檐',
+    '街道',
+    '巷尾',
+    '上空',
+    '通道',
+    '震颤',
+    '低鸣',
+    '异响',
+    '白雾',
+    '灵脉',
+    '跃迁',
+    '殖民地',
+)
+OPENING_PERSONALITY_BRIDGE_GROUPS = (
+    ('药箱', '药瓶', '药包', '药材', '药剂'),
+    ('供氧', '氧气', '泄漏', '供氧阀', '故障舱', '检修槽'),
+    ('手伤', '伤势', '擦伤', '割裂的手'),
+)
+OPENING_PERSONALITY_BRIDGE_CONTRACT_ACTIONS = ('救下', '抢救', '收拾', '保住', '隐瞒')
+OPENING_PERSONALITY_BRIDGE_EVIDENCE_ACTIONS = ('捡回', '拾回', '收拾', '救下', '抢救', '锁死', '止住', '堵住', '藏进', '藏起', '隐瞒')
+OPENING_LOCKED_POV_SUBJECTIVE_SIGNALS = (
+    '感到',
+    '觉得',
+    '以为',
+    '认为',
+    '判断',
+    '意识到',
+    '明白',
+    '看见',
+    '知道',
+    '不知',
+    '只能',
+    '想',
+    '记得',
+    '担心',
+    '害怕',
+    '愤怒',
+    '难过',
+    '下意识',
+    '心里',
+    '心头',
+    '打算',
+    '决定',
+)
+OPENING_LOCKED_POV_CLAUSE_BOUNDARIES = ('，', ',', '；', ';', '。', '！', '!', '？', '?', '：', ':')
+OPENING_LOCKED_POV_DIRECT_PREFIX_MAX_LENGTH = 5
+OPENING_LOCKED_POV_WITHHOLDING_MARKERS = ('没有告诉', '没告诉', '未告诉', '不告诉', '隐瞒', '瞒着')
+OPENING_LOCKED_POV_SELF_REFERENCE_SIGNALS = tuple(f'自己{signal}' for signal in OPENING_LOCKED_POV_SUBJECTIVE_SIGNALS)
+
+
+def _opening_character_mentions(
+    text: str,
+    known_character_names: set[str] | None,
+) -> list[tuple[int, int, str]]:
+    names = sorted(
+        {name for name in known_character_names or set() if name},
+        key=lambda name: (-len(name), name),
+    )
+    mentions = []
+    index = 0
+    while index < len(text):
+        character_name = next((name for name in names if text.startswith(name, index)), None)
+        if character_name is None:
+            index += 1
+            continue
+        mentions.append((index, index + len(character_name), character_name))
+        index += len(character_name)
+    return mentions
+
+
+def _opening_quote_mentions_character(
+    quote: str,
+    character_name: str | None,
+    known_character_names: set[str] | None,
+) -> bool:
+    if not character_name:
+        return False
+    names = set(known_character_names or set())
+    names.add(character_name)
+    return any(
+        mentioned_name == character_name
+        for _, _, mentioned_name in _opening_character_mentions(quote, names)
+    )
+
+
+def _locked_pov_subjective_signal_is_owned(
+    quote: str,
+    locked_pov_character_name: str | None,
+    known_character_names: set[str] | None = None,
+) -> bool:
+    if not locked_pov_character_name:
+        return False
+    names = set(known_character_names or set())
+    names.add(locked_pov_character_name)
+    clauses = [quote]
+    for boundary in OPENING_LOCKED_POV_CLAUSE_BOUNDARIES:
+        clauses = [part for clause in clauses for part in clause.split(boundary)]
+    for clause in clauses:
+        mentions = _opening_character_mentions(clause, names)
+        for mention_index, (_, name_end, character_name) in enumerate(mentions):
+            if character_name != locked_pov_character_name:
+                continue
+            next_mention_start = mentions[mention_index + 1][0] if mention_index + 1 < len(mentions) else len(clause)
+            direct_signal_window = clause[name_end:next_mention_start]
+            if any(
+                signal_index <= OPENING_LOCKED_POV_DIRECT_PREFIX_MAX_LENGTH
+                for signal in OPENING_LOCKED_POV_SUBJECTIVE_SIGNALS
+                if (signal_index := direct_signal_window.find(signal)) >= 0
+            ):
+                return True
+            signal_window = clause[name_end:]
+            if (
+                any(signal_window.startswith(marker) for marker in OPENING_LOCKED_POV_WITHHOLDING_MARKERS)
+                and any(signal in signal_window for signal in OPENING_LOCKED_POV_SELF_REFERENCE_SIGNALS)
+            ):
+                return True
+    return False
+
+
+def _locked_pov_quote_has_other_character_subjectivity(
+    quote: str,
+    locked_pov_character_name: str | None,
+    known_character_names: set[str] | None,
+) -> bool:
+    if not locked_pov_character_name or not known_character_names:
+        return False
+    names = set(known_character_names)
+    names.add(locked_pov_character_name)
+    clauses = [quote]
+    for boundary in OPENING_LOCKED_POV_CLAUSE_BOUNDARIES:
+        clauses = [part for clause in clauses for part in clause.split(boundary)]
+    for clause in clauses:
+        mentions = _opening_character_mentions(clause, names)
+        for mention_index, (_, name_end, character_name) in enumerate(mentions):
+            if character_name == locked_pov_character_name:
+                continue
+            next_mention_start = mentions[mention_index + 1][0] if mention_index + 1 < len(mentions) else len(clause)
+            signal_window = clause[name_end:next_mention_start]
+            preceding_locked_mention = next(
+                (
+                    mention
+                    for mention in reversed(mentions[:mention_index])
+                    if mention[2] == locked_pov_character_name
+                ),
+                None,
+            )
+            locked_withholding_self_reference = bool(
+                preceding_locked_mention
+                and any(
+                    clause[preceding_locked_mention[1]:].startswith(marker)
+                    for marker in OPENING_LOCKED_POV_WITHHOLDING_MARKERS
+                )
+            )
+            for signal in OPENING_LOCKED_POV_SUBJECTIVE_SIGNALS:
+                signal_index = signal_window.find(signal)
+                if signal_index < 0 or signal_index > OPENING_LOCKED_POV_DIRECT_PREFIX_MAX_LENGTH:
+                    continue
+                if locked_withholding_self_reference and signal_window[:signal_index] == '自己':
+                    continue
+                return True
+    return False
+
+
+def _normalize_opening_anchor_text(text: str | None, locked_pov_character_name: str | None) -> str:
+    normalized = ''.join(character for character in (text or '').casefold() if character.isalnum())
+    normalized_name = ''.join(
+        character for character in (locked_pov_character_name or '').casefold() if character.isalnum()
+    )
+    return normalized.replace(normalized_name, '') if normalized_name else normalized
+
+
+def _opening_anchor_content_length(value: str) -> int:
+    content = value
+    for phrase in OPENING_ANCHOR_STOP_PHRASES:
+        content = content.replace(phrase, '')
+    return sum(character not in OPENING_ANCHOR_STOP_CHARACTERS for character in content)
+
+
+def _opening_evidence_sentence(paragraph: str, quote: str) -> str:
+    quote_start = paragraph.find(quote)
+    if quote_start < 0:
+        return ''
+    quote_end = quote_start + len(quote)
+    sentence_start = 0
+    sentence_end = len(paragraph)
+    for boundary in OPENING_SENTENCE_BOUNDARIES:
+        boundary_start = paragraph.rfind(boundary, 0, quote_start)
+        sentence_start = max(sentence_start, boundary_start + 1)
+        boundary_end = paragraph.find(boundary, quote_end)
+        if boundary_end >= 0:
+            sentence_end = min(sentence_end, boundary_end + 1)
+    return paragraph[sentence_start:sentence_end].strip()
+
+
+def _opening_anchor_scores(
+    contract_text: str,
+    evidence_context: str,
+    locked_pov_character_name: str | None,
+) -> list[int]:
+    contract = _normalize_opening_anchor_text(contract_text, locked_pov_character_name)
+    context = _normalize_opening_anchor_text(evidence_context, locked_pov_character_name)
+    scores = []
+    for block in difflib.SequenceMatcher(a=contract, b=context, autojunk=False).get_matching_blocks():
+        if not block.size:
+            continue
+        score = _opening_anchor_content_length(contract[block.a:block.a + block.size])
+        if score >= 2:
+            scores.append(score)
+    return scores
+
+
+def _opening_bridge_group_matches(contract_text: str, quote: str, groups: tuple[tuple[str, ...], ...]) -> bool:
+    return any(
+        any(term in contract_text for term in group)
+        and any(term in quote for term in group)
+        for group in groups
+    )
+
+
+def _opening_personality_bridge_matches(contract_text: str, quote: str) -> bool:
+    return (
+        any(action in contract_text for action in OPENING_PERSONALITY_BRIDGE_CONTRACT_ACTIONS)
+        and any(action in quote for action in OPENING_PERSONALITY_BRIDGE_EVIDENCE_ACTIONS)
+        and _opening_bridge_group_matches(contract_text, quote, OPENING_PERSONALITY_BRIDGE_GROUPS)
+    )
+
+
+def _opening_contract_evidence_matches(
+    check: str,
+    contract_text: str | None,
+    quote: str,
+    locked_pov_character_name: str | None,
+    known_character_names: set[str] | None = None,
+) -> bool:
+    if check == 'locked_pov':
+        return _locked_pov_subjective_signal_is_owned(
+            quote,
+            locked_pov_character_name,
+            known_character_names,
+        )
+    if not contract_text:
+        return False
+    scores = _opening_anchor_scores(contract_text, quote, locked_pov_character_name)
+    if check == 'background':
+        has_background_signal = any(signal in quote for signal in OPENING_BACKGROUND_SIGNALS)
+        return has_background_signal and (
+            any(score >= 2 for score in scores)
+            or _opening_bridge_group_matches(contract_text, quote, OPENING_BACKGROUND_BRIDGE_GROUPS)
+        )
+    if check == 'protagonist_identity':
+        return any(score >= 3 for score in scores) or len(scores) >= 2
+    if check == 'motivation':
+        return any(score >= 2 for score in scores) and any(signal in quote for signal in OPENING_INTENT_SIGNALS)
+    if check == 'personality_evidence_plan':
+        return (
+            any(score >= 2 for score in scores)
+            and any(signal in quote for signal in OPENING_ACTION_SIGNALS)
+        ) or _opening_personality_bridge_matches(contract_text, quote)
+    if check == 'conflict_goal':
+        return any(score >= 2 for score in scores) and any(signal in quote for signal in OPENING_CONFLICT_SIGNALS)
+    return False
+
+
+def _opening_quote_spans(paragraph: str, quote: str) -> list[tuple[int, int]]:
+    spans = []
+    search_start = 0
+    while True:
+        quote_start = paragraph.find(quote, search_start)
+        if quote_start < 0:
+            return spans
+        spans.append((quote_start, quote_start + len(quote)))
+        search_start = quote_start + 1
+
+
+def _evaluate_opening_quality(
+    content: str,
+    opening_evidence,
+    opening_contract: dict,
+    draft_version: int,
+    locked_pov_character_name: str | None,
+    known_character_names: set[str] | None = None,
+) -> dict:
+    paragraphs = [paragraph for paragraph in _split_paragraphs(content) if paragraph]
+    evidence_by_check = {}
+    duplicates = set()
+    for evidence in opening_evidence:
+        if evidence.check in evidence_by_check:
+            duplicates.add(evidence.check)
+        evidence_by_check[evidence.check] = evidence
+
+    evidence_spans = {}
+    ambiguous_quote_checks = set()
+    for check, evidence in evidence_by_check.items():
+        if not 0 <= evidence.paragraph_index < len(paragraphs) or not evidence.quote.strip():
+            continue
+        spans = _opening_quote_spans(paragraphs[evidence.paragraph_index], evidence.quote)
+        if len(spans) == 1:
+            evidence_spans[check] = (evidence.paragraph_index, *spans[0])
+        elif len(spans) > 1:
+            ambiguous_quote_checks.add(check)
+
+    overlapping_evidence_checks = set()
+    same_sentence_evidence_checks = set()
+    positioned_checks = list(evidence_spans)
+    for index, check in enumerate(positioned_checks):
+        paragraph_index, quote_start, quote_end = evidence_spans[check]
+        for other_check in positioned_checks[index + 1:]:
+            other_paragraph_index, other_start, other_end = evidence_spans[other_check]
+            if paragraph_index != other_paragraph_index:
+                continue
+            if max(quote_start, other_start) < min(quote_end, other_end):
+                overlapping_evidence_checks.update((check, other_check))
+            elif _opening_evidence_sentence(paragraphs[paragraph_index], evidence_by_check[check].quote) == _opening_evidence_sentence(
+                paragraphs[other_paragraph_index], evidence_by_check[other_check].quote
+            ):
+                same_sentence_evidence_checks.update((check, other_check))
+
+    checks = []
+    for check in OPENING_CHECKS:
+        evidence = evidence_by_check.get(check)
+        quote_is_valid = evidence is not None and check in evidence_spans
+        contract_evidence_matches = (
+            quote_is_valid
+            and _opening_contract_evidence_matches(
+                check,
+                opening_contract.get(check) if isinstance(opening_contract, dict) else None,
+                evidence.quote,
+                locked_pov_character_name,
+                known_character_names,
+            )
+        )
+        locked_pov_passed = False
+        locked_pov_message = None
+        if check == 'locked_pov':
+            if not locked_pov_character_name:
+                locked_pov_message = '无法解析 opening contract 锁定的 POV 角色，锁定 POV 证据定位失败。'
+            elif not quote_is_valid:
+                locked_pov_message = '证据引文未在指定自然段中唯一定位。'
+            elif not _opening_quote_mentions_character(
+                evidence.quote,
+                locked_pov_character_name,
+                known_character_names,
+            ):
+                locked_pov_message = f'锁定 POV 证据必须显式包含锁定角色全名“{locked_pov_character_name}”。'
+            elif not _locked_pov_subjective_signal_is_owned(
+                evidence.quote,
+                locked_pov_character_name,
+                known_character_names,
+            ):
+                locked_pov_message = '锁定 POV 证据引文中的主观信号未明确归属于锁定角色。'
+            elif _locked_pov_quote_has_other_character_subjectivity(
+                evidence.quote,
+                locked_pov_character_name,
+                known_character_names,
+            ):
+                locked_pov_message = '锁定 POV 证据引文同时包含其他角色主观信号，主观信号未唯一归属于锁定角色。'
+            else:
+                locked_pov_passed = True
+                locked_pov_message = '锁定 POV 证据已定位，全文 POV 需审批人确认。'
+        passed = (
+            evidence is not None
+            and check not in duplicates
+            and check not in overlapping_evidence_checks
+            and check not in same_sentence_evidence_checks
+            and quote_is_valid
+            and contract_evidence_matches
+            and (locked_pov_passed if check == 'locked_pov' else True)
+        )
+        if evidence is None:
+            message = '模型未提供该项可定位证据。'
+        elif check in duplicates:
+            message = '该项证据重复，必须唯一。'
+        elif check in overlapping_evidence_checks:
+            message = '该证据引文与其他开篇检查的引文区间重叠，不能跨检查复用。'
+        elif check in same_sentence_evidence_checks:
+            message = '该证据引文与其他开篇检查的引文来自同一句，不能跨检查复用。'
+        elif evidence.paragraph_index < 0 or evidence.paragraph_index >= len(paragraphs):
+            message = '证据段落索引超出正文范围。'
+        elif not quote_is_valid:
+            message = '证据引文未出现在指定自然段。'
+        elif check in ambiguous_quote_checks:
+            message = '证据引文在指定自然段中出现多次，无法唯一定位。'
+        elif check == 'locked_pov':
+            message = locked_pov_message
+        elif not contract_evidence_matches:
+            message = '证据引文本身与 opening contract 对应项缺少确定性内容锚点。'
+        else:
+            message = '模型提供的可定位证据有效。'
+        checks.append({
+            'check': check,
+            'label': OPENING_CHECK_LABELS[check],
+            'status': 'pass' if passed else 'fail',
+            'message': message,
+            'expected': locked_pov_character_name if check == 'locked_pov' else None,
+            'paragraph_index': evidence.paragraph_index if evidence is not None else None,
+            'quote': evidence.quote if evidence is not None else None,
+        })
+    structural_pass = len(paragraphs) >= 6 and len(content) >= 300
+    if not structural_pass:
+        for check in checks:
+            if check['status'] == 'pass':
+                check['status'] = 'fail'
+                check['message'] = '正文未满足开篇所需的至少 6 段和 300 字符结构要求。'
+    return {
+        'profile': 'opening_chapter',
+        'validation_version': OPENING_QUALITY_VALIDATION_VERSION,
+        'status': 'pass' if structural_pass and all(check['status'] == 'pass' for check in checks) else 'fail',
+        'evaluated_draft_version': draft_version,
+        'paragraph_count': len(paragraphs),
+        'character_count': len(content),
+        'checks': checks,
+    }
+
+def _stale_quality_report(report: dict, draft_version: int) -> dict:
+    if not report:
+        return {}
+    stale = deepcopy(report)
+    stale['status'] = 'stale'
+    stale['current_draft_version'] = draft_version
+    return stale
 
 
 def _approved_chapter_count(db: Session, world_id: int) -> int:
@@ -139,6 +911,7 @@ def normalize_execution_context(db: Session, world: World, chapter_goal: str, ex
     context.setdefault('style_handbook_reference', None)
     if context_provided and context.get('source_world_version') != world.world_version:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
+    context['next_chapter_number'] = _approved_chapter_count(db, world.id) + 1
     return context
 
 
@@ -150,6 +923,7 @@ def format_execution_context_for_prompt(execution_context: dict | None) -> str:
         '本章执行上下文：',
         f"- 来源：{execution_context.get('source', 'manual')}",
         f"- 源世界版本：{execution_context.get('source_world_version', '未知')}",
+        f"- 章节序号：{execution_context.get('next_chapter_number', '未知')}",
         f"- 推荐 POV：{pov.get('name') or '暂无'}",
     ]
     characters = execution_context.get('priority_characters') or []
@@ -223,6 +997,7 @@ def _draft_payload(chapter: Chapter, draft: ChapterDraft) -> dict:
         'outline_context': chapter.outline_context,
         'critique_report': chapter.critique_report,
         'execution_context': draft.execution_context or chapter.execution_context,
+        'quality_report': draft.quality_report or {},
     }
 
 
@@ -234,8 +1009,14 @@ def build_outline_messages(
     chapter_context: str | None = None,
     execution_context: dict | None = None,
 ) -> list[dict[str, str]]:
-    character_lines = '\n'.join(f'- {c.id}: {c.name}, status={c.status}, goals={c.current_goals}' for c in characters)
-    foreshadow_lines = '\n'.join(f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}' for f in foreshadows[:3])
+    character_lines = '\n'.join(
+        f'- {c.id}: {c.name}, role={c.role_type}, public_profile={c.public_profile}, hidden_traits={c.hidden_traits}, goals={c.current_goals}'
+        for c in characters
+    )
+    foreshadow_lines = '\n'.join(
+        f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}, description={f.description}, window={f.expected_resolution_window}'
+        for f in foreshadows[:3]
+    )
     return [
         {
             'role': 'system',
@@ -244,12 +1025,20 @@ def build_outline_messages(
                 '{"core_conflict":"本章核心冲突","pov_suggestion":"建议POV",'
                 '"pacing":"节奏倾向","role_skill_targets":["角色名"],'
                 '"beats":[{"beat_id":"beat-1","summary":"节拍摘要","pov_character":"角色名",'
-                '"location":"地点","emotional_arc":"情绪弧线","key_dialogue_hints":["对白提示"]}]}。'
+                '"location":"地点","emotional_arc":"情绪弧线","key_dialogue_hints":["对白提示"]}],'
+                '"opening_contract":{"background":"...","protagonist_identity":"...","motivation":"...",'
+                '"personality_evidence_plan":"...","conflict_goal":"...","locked_pov":"..."}}。'
+                '当执行上下文的章节序号为 1 时，opening_contract 必填，且 locked_pov 必须指定固定第三人称限知视角；其他章节可省略。'
+                'pov_suggestion 和每个 beat.pov_character 只能填写同一位现有角色的完整姓名，不要附加任何描述。'
+                'locked_pov 必须明确该角色的第三人称限知视角，不要通过列举其他角色来表达视角锁定。'
             ),
         },
         {
             'role': 'user',
             'content': (
+                f'世界标题：{world.title}\n'
+                f'题材：{world.genre_template}\n'
+                f'语调：{world.tone_profile}\n'
                 f'世界设定：{world.truth_canon}\n'
                 f'世界版本：{world.world_version}\n'
                 f'角色：\n{character_lines}\n'
@@ -272,8 +1061,14 @@ def build_generation_messages(
     outline_context: dict | None = None,
     execution_context: dict | None = None,
 ) -> list[dict[str, str]]:
-    character_lines = '\n'.join(f'- {c.id}: {c.name}, status={c.status}, goals={c.current_goals}' for c in characters)
-    foreshadow_lines = '\n'.join(f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}' for f in foreshadows)
+    character_lines = '\n'.join(
+        f'- {c.id}: {c.name}, role={c.role_type}, public_profile={c.public_profile}, hidden_traits={c.hidden_traits}, destiny={c.destiny_flag}, goals={c.current_goals}'
+        for c in characters
+    )
+    foreshadow_lines = '\n'.join(
+        f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}, description={f.description}, window={f.expected_resolution_window}'
+        for f in foreshadows
+    )
     outline_lines = ''
     if outline_context:
         outline_lines += f'Outliner上下文：{outline_context}\n'
@@ -287,12 +1082,17 @@ def build_generation_messages(
          '{"title": "章节标题", "draft_content": "正文内容", "context_summary": "摘要", '
          '"review_hints": ["提示1", "提示2"], '
          '"proposed_character_changes": [{"character_id": 整数, "status": "新状态", "current_goals": ["目标1"]}], '
-         '"proposed_foreshadow_changes": [{"foreshadow_id": 整数, "status": "advanced|resolved|expired", "description_note": "备注"}]}。'
+         '"proposed_foreshadow_changes": [{"foreshadow_id": 整数, "status": "advanced|resolved|expired", "description_note": "备注"}], '
+         '"opening_evidence": [{"check":"background|protagonist_identity|motivation|personality_evidence_plan|conflict_goal|locked_pov", "paragraph_index":0, "quote":"正文原文片段"}]}。'
          '\nproposed_character_changes 和 proposed_foreshadow_changes 可以为空数组 []，'
-         '但如果包含元素则必须严格包含上述必填字段。'},
+         '但如果包含元素则必须严格包含上述必填字段。首章必须返回全部六项唯一 opening_evidence，且正文不得使用摘要式写法。'
+         '首章若有 opening_contract，locked_pov 的 evidence.quote 必须逐字来自正文，显式包含 contract 锁定角色的全名，并体现该角色的主观感知、判断、情绪、意图或知识边界；纯外部动作不算有效证据。'},
         {
             'role': 'user',
             'content': (
+                f'世界标题：{world.title}\n'
+                f'题材：{world.genre_template}\n'
+                f'语调：{world.tone_profile}\n'
                 f'世界设定：{world.truth_canon}\n'
                 f'世界版本：{world.world_version}\n'
                 f'角色：\n{character_lines}\n'
@@ -328,6 +1128,7 @@ def _create_draft_version(
         change_summary=change_summary,
         parent_draft_version=previous_draft.draft_version,
         execution_context=previous_draft.execution_context,
+        quality_report=_stale_quality_report(previous_draft.quality_report, next_version),
     )
     chapter.draft_version = next_version
     db.add(draft)
@@ -417,6 +1218,9 @@ def build_critic_report_messages(
         {
             'role': 'user',
             'content': (
+                f'世界标题：{world.title}\n'
+                f'题材：{world.genre_template}\n'
+                f'语调：{world.tone_profile}\n'
                 f'世界设定：{world.truth_canon}\n'
                 f'世界版本：{world.world_version}\n'
                 f'角色：\n{character_lines}\n'
@@ -485,6 +1289,9 @@ def build_character_arc_report_messages(
         {
             'role': 'user',
             'content': (
+                f'世界标题：{world.title}\n'
+                f'题材：{world.genre_template}\n'
+                f'语调：{world.tone_profile}\n'
                 f'世界设定：{world.truth_canon}\n'
                 f'世界版本：{world.world_version}\n'
                 f'故事弧线：{world.story_arc}\n'
@@ -844,6 +1651,10 @@ def generate_chapter_outline(
         )
     except (TimeoutError, ValueError, RuntimeError) as exc:
         raise _map_model_error(exc) from exc
+    try:
+        _validate_opening_contract(outline, chapter.execution_context, characters)
+    except ValueError as exc:
+        raise _map_model_error(exc) from exc
     _world, chapter = _revalidate_outline_after_model(
         db,
         user,
@@ -853,8 +1664,13 @@ def generate_chapter_outline(
         source_chapter_status,
         source_draft_version,
     )
-    chapter.outline_beats = [beat.model_dump() for beat in outline.beats]
-    chapter.outline_context = _outline_context_payload(outline)
+    outline_beats = [beat.model_dump() for beat in outline.beats]
+    outline_context = _outline_context_payload(outline)
+    locked_character = _locked_pov_character(characters, chapter.execution_context, outline_context)
+    _validate_locked_beat_pov(outline_beats, locked_character)
+    chapter.outline_beats = outline_beats
+    chapter.outline_context = outline_context
+    chapter.pov_character_id = locked_character.id if locked_character else None
     chapter.status = 'outlined'
     db.commit()
     db.refresh(chapter)
@@ -881,9 +1697,22 @@ def create_chapter_draft(
     characters, foreshadows = _load_world_context(db, world)
     context = normalize_execution_context(db, world, chapter_goal, execution_context)
     client = _model_client(llm_client)
+    outline = None
+    outline_beats: list[dict] = []
+    outline_context: dict = {}
     try:
+        if _is_opening_context(context):
+            generate_outline = getattr(client, 'generate_outline', None)
+            if not callable(generate_outline):
+                raise ValueError('MODEL_RESPONSE_INVALID')
+            outline = generate_outline(build_outline_messages(world, characters, foreshadows, chapter_goal, execution_context=context))
+            _validate_opening_contract(outline, context, characters)
+            outline_beats = [beat.model_dump() for beat in outline.beats]
+            outline_context = _outline_context_payload(outline)
+        locked_character = _locked_pov_character(characters, context, outline_context)
+        _validate_locked_beat_pov(outline_beats, locked_character)
         generation = client.generate_chapter(
-            build_generation_messages(world, characters, foreshadows, chapter_goal, execution_context=context)
+            build_generation_messages(world, characters, foreshadows, chapter_goal, outline_beats or None, outline_context or None, context)
         )
     except (TimeoutError, ValueError, RuntimeError) as exc:
         raise _map_model_error(exc) from exc
@@ -898,17 +1727,19 @@ def create_chapter_draft(
     characters, foreshadows = _load_world_context(db, world)
     validate_generation_ids(generation, characters, foreshadows)
     context = normalize_execution_context(db, world, chapter_goal, execution_context)
+    locked_character = _locked_pov_character(characters, context, outline_context)
+    _validate_locked_beat_pov(outline_beats, locked_character)
 
     chapter = Chapter(
         world_id=world.id,
         title=generation.title,
-        pov_character_id=characters[0].id if characters else None,
+        pov_character_id=locked_character.id if locked_character else None,
         status='reviewing',
         draft_version=1,
         base_world_version=world.world_version,
         chapter_goal=chapter_goal,
-        outline_beats=[],
-        outline_context={},
+        outline_beats=outline_beats,
+        outline_context=outline_context,
         critique_report={},
         character_arc_report={},
         execution_context=context,
@@ -919,6 +1750,18 @@ def create_chapter_draft(
         'characters': [change.model_dump(exclude_none=True) for change in generation.proposed_character_changes],
         'foreshadows': [change.model_dump(exclude_none=True) for change in generation.proposed_foreshadow_changes],
     }
+    quality_report = (
+        _evaluate_opening_quality(
+            generation.draft_content,
+            generation.opening_evidence,
+            outline_context.get('opening_contract') or {},
+            1,
+            locked_character.name if locked_character else None,
+            {character.name for character in characters if character.name},
+        )
+        if outline_context.get('opening_contract')
+        else {}
+    )
     draft = ChapterDraft(
         chapter_id=chapter.id,
         draft_version=1,
@@ -928,6 +1771,7 @@ def create_chapter_draft(
         proposed_changes=proposed_changes,
         source_world_version=world.world_version,
         execution_context=context,
+        quality_report=quality_report,
     )
     db.add(draft)
     db.commit()
@@ -950,12 +1794,16 @@ def write_chapter_from_outline(
     effective_outline_beats = [beat.model_dump() for beat in outline_beats] if outline_beats is not None else chapter.outline_beats
     if not effective_outline_beats:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='OUTLINE_REQUIRED')
+    if _is_opening_context(chapter.execution_context) and not (chapter.outline_context or {}).get('opening_contract'):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='OPENING_CONTRACT_REQUIRED')
     source_world_version = world.world_version
     source_chapter_status = chapter.status
     source_draft_version = chapter.draft_version
     source_draft = _latest_draft(db, chapter)
     source_draft_id = source_draft.id if source_draft is not None else None
     characters, foreshadows = _load_world_context(db, world)
+    locked_character = _locked_pov_character(characters, chapter.execution_context, chapter.outline_context)
+    _validate_locked_beat_pov(effective_outline_beats, locked_character)
     client = _model_client(llm_client)
     try:
         generation = client.generate_chapter(
@@ -988,6 +1836,9 @@ def write_chapter_from_outline(
         validate_generation_ids(generation, characters, foreshadows)
         if outline_beats is not None:
             chapter.outline_beats = effective_outline_beats
+        locked_character = _locked_pov_character(characters, chapter.execution_context, chapter.outline_context)
+        _validate_locked_beat_pov(chapter.outline_beats, locked_character)
+        chapter.pov_character_id = locked_character.id if locked_character else None
         chapter.title = generation.title
         chapter.status = 'reviewing'
         proposed_changes = {
@@ -1011,6 +1862,18 @@ def write_chapter_from_outline(
         draft.source_world_version = world.world_version
         draft.execution_context = chapter.execution_context
         draft.rejection_feedback = None
+        draft.quality_report = (
+            _evaluate_opening_quality(
+                generation.draft_content,
+                generation.opening_evidence,
+                (chapter.outline_context or {}).get('opening_contract') or {},
+                draft.draft_version,
+                locked_character.name if locked_character else None,
+                {character.name for character in characters if character.name},
+            )
+            if (chapter.outline_context or {}).get('opening_contract')
+            else {}
+        )
         db.commit()
         db.refresh(chapter)
         db.refresh(draft)
@@ -1537,6 +2400,20 @@ def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
 
     change_set = _approval_change_set(db, world, draft)
     consistency = _evaluate_approval_consistency(change_set['character_changes'], change_set['foreshadow_changes'])
+    execution_context = draft.execution_context or chapter.execution_context
+    opening_pov_confirmation_target = {
+        'required': False,
+        'locked_character_id': None,
+        'locked_character_name': None,
+    }
+    if _is_opening_context(execution_context):
+        characters, _foreshadows = _load_world_context(db, world)
+        locked_character = _locked_pov_character(characters, execution_context, chapter.outline_context)
+        opening_pov_confirmation_target = {
+            'required': True,
+            'locked_character_id': locked_character.id if locked_character is not None else None,
+            'locked_character_name': locked_character.name if locked_character is not None else None,
+        }
 
     return {
         'chapter_id': chapter.id,
@@ -1547,6 +2424,7 @@ def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
         'world_version_before': world.world_version,
         'world_version_after': world.world_version + 1 if not version_conflict else world.world_version,
         'version_conflict': version_conflict,
+        'opening_pov_confirmation_target': opening_pov_confirmation_target,
         'character_changes': character_changes,
         'foreshadow_changes': foreshadow_changes,
         'warnings': ['WORLD_VERSION_MISMATCH'] if version_conflict else [],
@@ -1707,6 +2585,27 @@ def get_approval_readiness(db: Session, user: User, chapter_id: int) -> dict:
             )
         )
 
+    quality_report = draft.quality_report or {}
+    is_opening_chapter = _is_opening_context(draft.execution_context or chapter.execution_context)
+    if not is_opening_chapter:
+        checks.append(_readiness_check('opening_quality', '开篇质量', 'pass', '当前章节未启用开篇质量契约。', quality_report))
+    elif quality_report.get('profile') != 'opening_chapter':
+        checks.append(_readiness_check('opening_quality', '开篇质量', 'fail', '首章质量报告缺失或不适用，必须重新评估当前草稿。', quality_report))
+    elif quality_report.get('validation_version') != OPENING_QUALITY_VALIDATION_VERSION:
+        checks.append(_readiness_check(
+            'opening_quality',
+            '开篇质量',
+            'fail',
+            '开篇质量验证规则已更新，旧版或缺少验证版本的报告不可信，必须重新评估当前草稿。',
+            quality_report,
+        ))
+    elif quality_report.get('status') == 'pass' and quality_report.get('evaluated_draft_version') == draft.draft_version:
+        checks.append(_readiness_check('opening_quality', '开篇质量', 'pass', '开篇结构及模型提供的可定位证据已通过验证。', quality_report))
+    elif quality_report.get('status') == 'fail' and quality_report.get('evaluated_draft_version') == draft.draft_version:
+        checks.append(_readiness_check('opening_quality', '开篇质量', 'fail', '开篇结构或模型提供的可定位证据未通过验证。', quality_report))
+    else:
+        checks.append(_readiness_check('opening_quality', '开篇质量', 'fail', '开篇质量报告已过期，必须重新评估当前草稿。', quality_report))
+
     arc_report = chapter.character_arc_report or {}
     if not arc_report:
         checks.append(_readiness_check('character_arc_risk', '角色弧线风险', 'warning', '尚未生成角色弧线报告。', {}))
@@ -1806,6 +2705,20 @@ def build_revision_messages(
     foreshadow_lines = '\n'.join(
         f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}, description={f.description}' for f in foreshadows
     )
+    opening_contract = (chapter.outline_context or {}).get('opening_contract')
+    opening_evidence_schema = (
+        ',"opening_evidence":[{"check":"background|protagonist_identity|motivation|personality_evidence_plan|conflict_goal|locked_pov",'
+        '"paragraph_index":0,"quote":"正文中的原文短句"}]'
+        if opening_contract
+        else ''
+    )
+    opening_evidence_rule = (
+        '本章启用了 opening_contract。opening_evidence 必须完整且唯一地覆盖六项 check；paragraph_index 使用 0-based 自然段索引，'
+        'quote 必须逐字出现在对应自然段。locked_pov 的 quote 必须显式包含 opening_contract 锁定角色的全名。'
+        '修订后必须重新提供当前正文的证据，禁止沿用旧草稿证据。'
+        if opening_contract
+        else ''
+    )
     return [
         {
             'role': 'system',
@@ -1814,14 +2727,19 @@ def build_revision_messages(
                 '{"title":"章节标题","draft_content":"完整修订后正文","context_summary":"摘要",'
                 '"review_hints":["提示"],'
                 '"proposed_character_changes":[{"character_id":整数,"status":"新状态","current_goals":["目标"]}],'
-                '"proposed_foreshadow_changes":[{"foreshadow_id":整数,"status":"advanced|resolved|expired","description_note":"备注"}]}。'
+                '"proposed_foreshadow_changes":[{"foreshadow_id":整数,"status":"advanced|resolved|expired","description_note":"备注"}]'
+                f'{opening_evidence_schema}}}。'
                 '你必须输出完整新版正文，不要输出 diff、patch 或说明文字。'
                 '拟提交变化只是草稿建议，不能自动提交世界状态。不要编造不存在的角色 ID 或伏笔 ID。'
+                f'{opening_evidence_rule}'
             ),
         },
         {
             'role': 'user',
             'content': (
+                f'世界标题：{world.title}\n'
+                f'题材：{world.genre_template}\n'
+                f'语调：{world.tone_profile}\n'
                 f'世界设定：{world.truth_canon}\n'
                 f'世界版本：{world.world_version}\n'
                 f'角色：\n{character_lines}\n'
@@ -1888,6 +2806,16 @@ def revise_chapter_draft(
         'foreshadows': [change.model_dump(exclude_none=True) for change in generation.proposed_foreshadow_changes],
     }
     new_draft = _create_draft_version(db, chapter, draft, generation.draft_content, 'revision', instruction.strip())
+    if (chapter.outline_context or {}).get('opening_contract'):
+        locked_character = _locked_pov_character(characters, new_draft.execution_context or chapter.execution_context, chapter.outline_context)
+        new_draft.quality_report = _evaluate_opening_quality(
+            generation.draft_content,
+            generation.opening_evidence,
+            (chapter.outline_context or {}).get('opening_contract') or {},
+            new_draft.draft_version,
+            locked_character.name if locked_character else None,
+            {character.name for character in characters if character.name},
+        )
     chapter.title = generation.title
     chapter.status = 'reviewing'
     new_draft.context_summary = generation.context_summary
@@ -1938,7 +2866,10 @@ def revise_chapter_paragraph(
     messages = [
         {
             'role': 'system',
-            'content': '你是 WorldSim-Writer 的段落修订助手。只返回被修订后的单段文本。',
+            'content': (
+                '你是 WorldSim-Writer 的段落修订助手。只返回有效 JSON，格式严格为 '
+                '{"paragraph":"修订后的单段文本","revision_note":"简短修订说明或 null"}。'
+            ),
         },
         {
             'role': 'user',
@@ -1992,6 +2923,45 @@ def approve_chapter(db: Session, user: User, chapter_id: int, selection=None) ->
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='DRAFT_VERSION_MISMATCH')
         if draft.source_world_version != world.world_version:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='WORLD_VERSION_MISMATCH')
+        quality_report = draft.quality_report or {}
+        if _is_opening_context(draft.execution_context or chapter.execution_context):
+            report_is_current = (
+                quality_report.get('profile') == 'opening_chapter'
+                and quality_report.get('validation_version') == OPENING_QUALITY_VALIDATION_VERSION
+                and quality_report.get('evaluated_draft_version') == draft.draft_version
+            )
+            if report_is_current and quality_report.get('status') == 'fail':
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='OPENING_QUALITY_BLOCKED')
+            if not report_is_current or quality_report.get('status') != 'pass':
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='OPENING_QUALITY_RECHECK_REQUIRED')
+
+            characters, _foreshadows = _load_world_context(db, world)
+            locked_character = _locked_pov_character(
+                characters,
+                draft.execution_context or chapter.execution_context,
+                chapter.outline_context,
+            )
+            if locked_character is None:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='OPENING_POV_CONFIRMATION_MISMATCH')
+            confirmation = selection.opening_pov_confirmation if selection is not None else None
+            if confirmation is None or not confirmation.confirmed:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='OPENING_POV_CONFIRMATION_REQUIRED')
+            if confirmation.draft_version != draft.draft_version:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='OPENING_POV_CONFIRMATION_STALE')
+            if (
+                confirmation.locked_character_id != locked_character.id
+                or confirmation.locked_character_name != locked_character.name
+            ):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='OPENING_POV_CONFIRMATION_MISMATCH')
+            opening_pov_attestation = {
+                'confirmed': True,
+                'confirmed_draft_version': confirmation.draft_version,
+                'locked_character_id': locked_character.id,
+                'locked_character_name': locked_character.name,
+                'pov_mode': 'third_person_limited',
+            }
+        else:
+            opening_pov_attestation = None
 
         change_set = _approval_change_set(db, world, draft, selection)
         character_changes = change_set['character_changes']
@@ -2118,6 +3088,11 @@ def approve_chapter(db: Session, user: User, chapter_id: int, selection=None) ->
                     },
                     'consistency_summary': consistency['summary'],
                     'consistency_warnings': consistency['warnings'],
+                    **(
+                        {'approval_attestations': {'locked_pov': opening_pov_attestation}}
+                        if opening_pov_attestation is not None
+                        else {}
+                    ),
                 },
                 world_version_before=version_before,
                 world_version_after=version_after,

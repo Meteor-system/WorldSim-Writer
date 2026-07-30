@@ -1,8 +1,8 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { StyleHandbookReference, WorldCreateRequest, WorldCreationMaterialReference, WorldSeedSummary } from '../api/types';
+import type { StyleHandbookReference, WorldCreateRequest, WorldCreationDraftResponse, WorldCreationMaterialReference, WorldSeedSummary } from '../api/types';
 import { WorldCreationForm } from './WorldCreationForm';
 import { GENRE_PRESETS, starterGuidanceFromPayload } from './genrePresets';
 
@@ -76,8 +76,11 @@ describe('WorldCreationForm', () => {
     const onCreateSample = vi.fn().mockResolvedValue(undefined);
     render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={onCreateSample} />);
 
-    expect(screen.getByLabelText('Fantasy 初始故事提示')).toHaveTextContent('首章目标');
-    expect(screen.getByLabelText('Fantasy 初始故事提示')).toHaveTextContent('伏笔压力');
+    expect(screen.getByLabelText('奇幻 初始故事提示')).toHaveTextContent('首章目标');
+    expect(screen.getByLabelText('奇幻 初始故事提示')).toHaveTextContent('伏笔压力');
+    expect(screen.getByLabelText('题材')).toHaveValue('fantasy');
+    expect(screen.getByRole('option', { name: '奇幻' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'fantasy' })).not.toBeInTheDocument();
 
     await user.clear(screen.getByLabelText('世界标题'));
     await user.type(screen.getByLabelText('世界标题'), '自定义群星边境');
@@ -107,7 +110,7 @@ describe('WorldCreationForm', () => {
     const onCreate = vi.fn().mockResolvedValue(undefined);
     render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} />);
 
-    await user.click(screen.getByRole('button', { name: /Sci-Fi/ }));
+    await user.click(screen.getByRole('button', { name: /科幻/ }));
     await user.clear(screen.getByLabelText('世界标题'));
     await user.type(screen.getByLabelText('世界标题'), '修改后的群星边境');
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
@@ -120,6 +123,95 @@ describe('WorldCreationForm', () => {
     expect(submittedContext.firstChapterGoal).toContain('许砚');
     expect(submittedContext.firstChapterGoal).toContain('黑匣子脉冲');
     expect(submittedContext.firstChapterGoal).not.toBe(starterGuidanceFromPayload(GENRE_PRESETS[0]).first_chapter_goal);
+  });
+
+  it('restores the complete sci-fi preset when selecting its template card', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} />);
+
+    await user.clear(screen.getByLabelText('世界标题'));
+    await user.type(screen.getByLabelText('世界标题'), '临时标题');
+    await user.clear(screen.getByLabelText('真理库 / 世界底层设定'));
+    await user.type(screen.getByLabelText('真理库 / 世界底层设定'), '临时设定');
+    await user.clear(screen.getByLabelText('叙事风格'));
+    await user.type(screen.getByLabelText('叙事风格'), '临时风格');
+    await user.click(screen.getByRole('button', { name: /科幻/ }));
+    await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
+
+    const [submittedPayload] = onCreate.mock.calls[0];
+    expect(submittedPayload).toEqual(expect.objectContaining({
+      title: '群星边境',
+      genre_template: 'sci_fi',
+      truth_canon: expect.stringContaining('跃迁灯塔'),
+      tone_profile: expect.objectContaining({ style: '冷峻太空歌剧' }),
+      starter_assets: expect.objectContaining({
+        characters: expect.arrayContaining([expect.objectContaining({ name: '许砚' })]),
+        relations: expect.arrayContaining([expect.objectContaining({ relation_type: 'mutual_suspicion' })]),
+        foreshadows: expect.arrayContaining([expect.objectContaining({ title: '黑匣子脉冲' })]),
+      }),
+    }));
+  });
+
+  it('changes only the genre when selecting a built-in genre', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} />);
+
+    await user.clear(screen.getByLabelText('世界标题'));
+    await user.type(screen.getByLabelText('世界标题'), '保留的自定义标题');
+    await user.clear(screen.getByLabelText('真理库 / 世界底层设定'));
+    await user.type(screen.getByLabelText('真理库 / 世界底层设定'), '自定义世界真理仍须保留。');
+    await user.clear(screen.getByLabelText('叙事风格'));
+    await user.type(screen.getByLabelText('叙事风格'), '克制悬疑');
+    await user.clear(screen.getAllByLabelText('姓名')[0]);
+    await user.type(screen.getAllByLabelText('姓名')[0], '自定义主角');
+    await user.selectOptions(screen.getByLabelText('题材'), 'sci_fi');
+    await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
+
+    const [submittedPayload] = onCreate.mock.calls[0];
+    expect(submittedPayload).toEqual(expect.objectContaining({
+      title: '保留的自定义标题',
+      genre_template: 'sci_fi',
+      truth_canon: '自定义世界真理仍须保留。',
+      tone_profile: expect.objectContaining({ style: '克制悬疑' }),
+      starter_assets: expect.objectContaining({
+        characters: expect.arrayContaining([expect.objectContaining({ name: '自定义主角' })]),
+        relations: expect.arrayContaining([expect.objectContaining({ source_index: 0, target_index: 1, relation_type: 'strained_alliance' })]),
+        foreshadows: expect.arrayContaining([expect.objectContaining({ title: '裂开的塔心石', status: 'planted' })]),
+      }),
+    }));
+  });
+
+  it('blocks submission when the selected custom genre is empty', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} />);
+
+    await user.selectOptions(screen.getByLabelText('题材'), 'custom');
+    const customGenre = screen.getByLabelText('自定义题材名称') as HTMLInputElement;
+    await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
+
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(customGenre.validity.valueMissing).toBe(true);
+  });
+
+  it('accepts and submits a custom Chinese genre without retaining an old internal value', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} />);
+
+    await user.selectOptions(screen.getByLabelText('题材'), 'custom');
+    const customGenre = screen.getByLabelText('自定义题材名称');
+    expect(customGenre).toHaveFocus();
+    expect(customGenre).toHaveValue('');
+    await user.type(customGenre, '玄幻修真');
+    await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
+
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ genre_template: '玄幻修真' }),
+      expect.anything(),
+    );
   });
 
   it('calls the sample world shortcut without submitting the custom form', async () => {
@@ -157,7 +249,8 @@ describe('WorldCreationForm', () => {
     await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配死因的王国');
     await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
 
-    expect(onDraftFromBrief).toHaveBeenCalledWith('一个所有人出生时都会被分配死因的王国', null, 3);
+    expect(onDraftFromBrief).toHaveBeenCalledOnce();
+    expect(onDraftFromBrief).toHaveBeenCalledWith('一个所有人出生时都会被分配死因的王国', null, 1);
     expect(onCreate).not.toHaveBeenCalled();
     expect(await screen.findByText('世界创建草稿已填入下方表单')).toBeInTheDocument();
     expect(screen.getByText('确认前不会创建世界、写入正史或推进世界进度。')).toBeInTheDocument();
@@ -169,6 +262,143 @@ describe('WorldCreationForm', () => {
     expect(onCreate).toHaveBeenCalledWith(
       expect.objectContaining({ title: '死因王国', genre_template: 'fantasy' }),
       { firstChapterGoal: '让伊莱发现自己的死因记录被烧穿。' },
+    );
+  });
+
+  it('disables every world creation entry while a brief draft is pending', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const onCreateSample = vi.fn().mockResolvedValue(undefined);
+    const onCreateSeed = vi.fn().mockResolvedValue(undefined);
+    const onDraftFromBrief = vi.fn().mockImplementation(() => new Promise<WorldCreationDraftResponse>(() => {}));
+    const secondSeed: WorldSeedSummary = {
+      ...seedSummary,
+      key: 'ember-station',
+      label: '余烬站',
+    };
+    render(
+      <WorldCreationForm
+        creating={false}
+        onCreate={onCreate}
+        onCreateSample={onCreateSample}
+        onDraftFromBrief={onDraftFromBrief}
+        seeds={[seedSummary, secondSeed]}
+        selectedSeedKey={null}
+        onLoadSeed={vi.fn()}
+        onCreateSeed={onCreateSeed}
+      />,
+    );
+
+    await user.type(screen.getByLabelText('一句话故事想法'), '一个等待生成的世界脑洞');
+    await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
+
+    const customCreateButton = screen.getByRole('button', { name: '创建自定义世界' });
+    const sampleCreateButton = screen.getByRole('button', { name: '创建内置示例世界' });
+    const seedCreateButton = screen.getAllByRole('button', { name: '直接创建此模板' })[0];
+    expect(customCreateButton).toBeDisabled();
+    expect(sampleCreateButton).toBeDisabled();
+    for (const button of screen.getAllByRole('button', { name: '直接创建此模板' })) {
+      expect(button).toBeDisabled();
+    }
+
+    fireEvent.submit(customCreateButton.closest('form')!);
+    sampleCreateButton.removeAttribute('disabled');
+    fireEvent.click(sampleCreateButton);
+    seedCreateButton.removeAttribute('disabled');
+    fireEvent.click(seedCreateButton);
+
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(onCreateSample).not.toHaveBeenCalled();
+    expect(onCreateSeed).not.toHaveBeenCalled();
+  });
+
+  it('keeps waiting for a delayed draft response, prevents synchronous duplicate generation, and releases the lock afterwards', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const onCreateSample = vi.fn().mockResolvedValue(undefined);
+    const onCreateSeed = vi.fn().mockResolvedValue(undefined);
+    const draftResponse: WorldCreationDraftResponse = {
+      source_brief: '一个所有人出生时都会被分配死因的王国',
+      draft: draftPayload,
+      first_chapter_goal: '让伊莱发现自己的死因记录被烧穿。',
+      generation_notes: ['已生成可编辑草稿。'],
+      safety_notes: ['确认前不会创建世界、写入正史或推进世界进度。'],
+    };
+    const secondDraftResponse: WorldCreationDraftResponse = {
+      ...draftResponse,
+      draft: { ...draftPayload, title: '第二次死因王国' },
+    };
+    let resolveDraft: ((value: WorldCreationDraftResponse) => void) | undefined;
+    const onDraftFromBrief = vi.fn()
+      .mockImplementationOnce(() => new Promise<WorldCreationDraftResponse>((resolve) => {
+        resolveDraft = resolve;
+      }))
+      .mockResolvedValueOnce(secondDraftResponse);
+    render(
+      <WorldCreationForm
+        creating={false}
+        onCreate={onCreate}
+        onCreateSample={onCreateSample}
+        onDraftFromBrief={onDraftFromBrief}
+        seeds={[seedSummary]}
+        selectedSeedKey={null}
+        onLoadSeed={vi.fn()}
+        onCreateSeed={onCreateSeed}
+      />,
+    );
+
+    await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配死因的王国');
+    const draftButton = screen.getByRole('button', { name: '生成世界创建草稿' });
+    act(() => {
+      draftButton.click();
+      draftButton.click();
+    });
+
+    const generatingButton = screen.getByRole('button', { name: '正在生成创建草稿...' });
+    expect(generatingButton).toBeDisabled();
+    expect(screen.getByRole('status')).toHaveTextContent('模型正在生成，可能需要数分钟；请保持页面打开，系统会持续等待模型返回。');
+    expect(onDraftFromBrief).toHaveBeenCalledOnce();
+    expect(onCreate).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveDraft?.(draftResponse);
+    });
+
+    expect(await screen.findByText('世界创建草稿已填入下方表单')).toBeInTheDocument();
+    expect(screen.queryByText('模型正在生成，可能需要数分钟；请保持页面打开，系统会持续等待模型返回。')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('世界标题')).toHaveValue('死因王国');
+    expect(screen.getByRole('button', { name: '创建自定义世界' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '创建内置示例世界' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '直接创建此模板' })).toBeEnabled();
+    expect(onCreate).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
+    expect(onDraftFromBrief).toHaveBeenCalledTimes(2);
+    expect(await screen.findByDisplayValue('第二次死因王国')).toBeInTheDocument();
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it('preserves an unknown brief genre through the custom genre input and submission', async () => {
+    const user = userEvent.setup();
+    const onCreate = vi.fn().mockResolvedValue(undefined);
+    const unknownGenreDraft = { ...draftPayload, genre_template: '架空蒸汽幻想' };
+    const onDraftFromBrief = vi.fn().mockResolvedValue({
+      source_brief: '蒸汽与魔法共存的架空都市',
+      draft: unknownGenreDraft,
+      first_chapter_goal: '让伊莱发现蒸汽核心被篡改。',
+      generation_notes: [],
+      safety_notes: [],
+    });
+    render(<WorldCreationForm creating={false} onCreate={onCreate} onCreateSample={vi.fn()} onDraftFromBrief={onDraftFromBrief} />);
+
+    await user.type(screen.getByLabelText('一句话故事想法'), '蒸汽与魔法共存的架空都市');
+    await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
+
+    expect(await screen.findByLabelText('自定义题材名称')).toHaveValue('架空蒸汽幻想');
+    await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
+    expect(onCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ genre_template: '架空蒸汽幻想' }),
+      { firstChapterGoal: '让伊莱发现蒸汽核心被篡改。' },
     );
   });
 
@@ -225,7 +455,7 @@ describe('WorldCreationForm', () => {
     await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配死因的王国');
     await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
 
-    expect(onDraftFromBrief).toHaveBeenCalledWith('一个所有人出生时都会被分配死因的王国', null, 3);
+    expect(onDraftFromBrief).toHaveBeenCalledWith('一个所有人出生时都会被分配死因的王国', null, 1);
     const variants = await screen.findByLabelText('世界草稿候选方向');
     expect(within(variants).getByRole('button', { name: /主线高张力版/ })).toHaveTextContent('让伊莱发现自己的死因记录被烧穿。');
     expect(within(variants).getByRole('button', { name: /角色关系驱动版/ })).toHaveTextContent('确认创建前不会写入正史');
@@ -283,7 +513,7 @@ describe('WorldCreationForm', () => {
     await user.type(screen.getByLabelText('一句话故事想法'), '一个边境殖民地依赖濒临失控的跃迁灯塔');
     await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
 
-    expect(onDraftFromBrief).toHaveBeenCalledWith('一个边境殖民地依赖濒临失控的跃迁灯塔', styleHandbookReference, 3);
+    expect(onDraftFromBrief).toHaveBeenCalledWith('一个边境殖民地依赖濒临失控的跃迁灯塔', styleHandbookReference, 1);
   });
 
   it('passes selected import node material references when generating a brief draft', async () => {
@@ -315,7 +545,7 @@ describe('WorldCreationForm', () => {
     expect(onDraftFromBrief).toHaveBeenCalledWith(
       '一个边境殖民地依赖濒临失控的跃迁灯塔',
       null,
-      3,
+      1,
       [materialReferences[1]],
     );
     expect(await screen.findByLabelText('本次草稿引用的候选素材')).toHaveTextContent('失踪灯塔守望人');
@@ -345,6 +575,8 @@ describe('WorldCreationForm', () => {
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
 
     expect(screen.getByLabelText('世界标题')).toHaveValue('无日城');
+    expect(screen.getByLabelText('题材')).toHaveValue('weird_fantasy');
+    expect(screen.getByRole('option', { name: '诡秘奇幻' })).toBeInTheDocument();
     const [submittedPayload, submittedContext] = onCreate.mock.calls[0];
     expect(submittedPayload).toEqual(expect.objectContaining({ title: '无日城', genre_template: 'weird_fantasy' }));
     expect(submittedContext).toEqual({

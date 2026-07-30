@@ -181,6 +181,129 @@ textarea {
   color: #3f2b19;
 }
 
+.studio-workbench {
+  min-height: 100vh;
+  padding: 18px;
+}
+
+.studio-workbench-grid {
+  display: grid;
+  grid-template-columns: 255px minmax(0, 1fr) 345px;
+  gap: 0;
+  width: 100%;
+  min-height: calc(100vh - 36px);
+  border: 1px solid rgb(128 83 34 / 28%);
+  background: linear-gradient(90deg, rgb(125 82 37 / 7%), transparent 12%, transparent 88%, rgb(125 82 37 / 7%)), #fff8e8;
+}
+
+.studio-rail,
+.studio-main {
+  min-width: 0;
+  padding: 22px;
+}
+
+.studio-navigation {
+  border-right: 1px solid rgb(128 83 34 / 22%);
+}
+
+.studio-inspector {
+  border-left: 1px solid rgb(128 83 34 / 22%);
+}
+
+.studio-rail {
+  align-self: start;
+}
+
+.studio-navigation > *,
+.studio-inspector > * {
+  margin-bottom: 18px;
+}
+
+.studio-navigation-section {
+  border-top: 1px solid rgb(128 83 34 / 22%);
+  padding-top: 14px;
+}
+
+.studio-compact-list,
+.studio-quality-checks {
+  margin-top: 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.studio-compact-list li,
+.studio-quality-checks li {
+  border-bottom: 1px solid rgb(128 83 34 / 15%);
+  padding: 9px 0;
+  color: #5a4028;
+  font-size: 0.9rem;
+}
+
+.studio-quality-panel {
+  border-bottom: 1px solid rgb(128 83 34 / 22%);
+  padding-bottom: 16px;
+}
+
+.studio-main > .book-card,
+.studio-main > article,
+.studio-main > section {
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgb(83 53 18 / 9%);
+}
+
+.studio-workbench button.primary-button,
+.studio-workbench button.secondary-button,
+.studio-workbench button.ghost-button {
+  border-radius: 10px;
+}
+
+@media (min-width: 1100px) {
+  .studio-navigation,
+  .studio-inspector {
+    position: sticky;
+    top: 18px;
+    max-height: calc(100vh - 36px);
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 1099px) {
+  .studio-workbench-grid {
+    grid-template-columns: 250px minmax(0, 1fr);
+  }
+
+  .studio-inspector {
+    grid-column: 1 / -1;
+    border-top: 1px solid rgb(128 83 34 / 22%);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 700px) {
+  .studio-workbench {
+    padding: 0;
+  }
+
+  .studio-workbench-grid {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: 100vh;
+    border-right: 0;
+    border-left: 0;
+  }
+
+  .studio-navigation,
+  .studio-inspector {
+    border-right: 0;
+    border-left: 0;
+    border-bottom: 1px solid rgb(128 83 34 / 22%);
+  }
+
+  .studio-rail,
+  .studio-main {
+    padding: 18px 14px;
+  }
+}
+
 @media (max-width: 768px) {
   .book-app {
     padding: 18px 12px;

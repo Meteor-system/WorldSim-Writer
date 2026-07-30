@@ -4,18 +4,64 @@ from zipfile import ZipFile
 
 from sqlalchemy import func, select
 
-from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
+from app.llm.schemas import (
+    BeatCard,
+    ChapterGeneration,
+    ChapterOutline,
+    OpeningContract,
+    OpeningEvidence,
+    ProposedCharacterChange,
+    ProposedForeshadowChange,
+)
 from app.narrative import service as narrative_service
 from app.event.models import EventLog
 from app.snapshot_export.models import WorldSnapshot
 from app.world.models import World
 
 
+OPENING_CONTENT = '\n\n'.join(
+    [
+        '雨水压低了青岚城的屋檐，档案门廊尽头的废弃灵井吐出温热白雾。林砚替师门送药归来，掌心玉佩忽然发烫；城里人人都说灵脉衰退只是旱灾，他知道那是谎话。',
+        '他是欠着师门药债的外门弟子，今夜原该回去照看师妹。可城主府的文书写明天亮前要带走她问话，林砚只能追查玉佩与失踪师兄的名字。',
+        '门廊边的药箱被雨水冲翻，他先扑进泥水把药瓶一只只捡回，又把割裂的手藏进袖中。沈微霜问他为何不逃，林砚只说师妹还在等药。',
+        '灵井底下传来铁链拖地声，玉佩映出师兄惯用的云纹。林砚没有告诉沈微霜自己看见了什么，只沿着井壁摸到一道新鲜的靴印。',
+        '他必须在铜铃停在门廊前确认玉佩主人，否则师妹会被带走，师兄的失踪也会被埋进井里。林砚让沈微霜守住出口，自己系紧绳索下井。',
+        '林砚的靴底刚离开井沿，铜铃便在雨幕外停住。巡夜人喊出他的名字，他只能从井壁渗出的血色水痕判断，下面等着他的不是师兄，而是一场早已布好的局。',
+    ]
+)
+
+
 class SnapshotExportLLMClient:
-    def generate_chapter(self, messages):
+    def generate_outline(self, _messages):
+        return ChapterOutline(
+            core_conflict='林砚必须在巡夜人抵达前确认玉佩主人的身份。',
+            pov_suggestion='林砚',
+            pacing='雨夜悬疑，逐段增加巡夜压力。',
+            role_skill_targets=['林砚', '沈微霜'],
+            beats=[
+                BeatCard(
+                    beat_id='opening-1',
+                    summary='林砚在档案门廊的废弃灵井发现玉佩异动。',
+                    pov_character='林砚',
+                    location='青岚城档案门廊',
+                    emotional_arc='焦灼 -> 警觉',
+                    key_dialogue_hints=['师妹还在等药。'],
+                )
+            ],
+            opening_contract=OpeningContract(
+                background='青岚城灵脉衰退，档案门廊的废弃灵井在雨夜发出异响。',
+                protagonist_identity='林砚是为师门债务奔走的外门弟子。',
+                motivation='他必须查清玉佩为何牵连师门，避免师妹被城主府带走。',
+                personality_evidence_plan='让林砚先救下药箱，再隐瞒手伤继续追查。',
+                conflict_goal='在城主府巡夜人发现前，确认暗井中的玉佩是否属于失踪师兄。',
+                locked_pov='林砚限知第三人称。',
+            ),
+        )
+
+    def generate_chapter(self, _messages):
         return ChapterGeneration(
             title='第一章 档案门廊',
-            draft_content='林砚推开档案门廊，玉佩在掌心发亮。',
+            draft_content=OPENING_CONTENT,
             context_summary='林砚发现门廊中的玉佩线索。',
             review_hints=['确认玉佩线索是否进入伏笔台账'],
             proposed_character_changes=[
@@ -23,6 +69,14 @@ class SnapshotExportLLMClient:
             ],
             proposed_foreshadow_changes=[
                 ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='玉佩线索推进')
+            ],
+            opening_evidence=[
+                OpeningEvidence(check='background', paragraph_index=0, quote='档案门廊尽头的废弃灵井吐出温热白雾'),
+                OpeningEvidence(check='protagonist_identity', paragraph_index=1, quote='欠着师门药债的外门弟子'),
+                OpeningEvidence(check='motivation', paragraph_index=1, quote='只能追查玉佩与失踪师兄的名字'),
+                OpeningEvidence(check='personality_evidence_plan', paragraph_index=2, quote='先扑进泥水把药瓶一只只捡回'),
+                OpeningEvidence(check='conflict_goal', paragraph_index=4, quote='必须在铜铃停在门廊前确认玉佩主人'),
+                OpeningEvidence(check='locked_pov', paragraph_index=3, quote='林砚没有告诉沈微霜自己看见了什么'),
             ],
         )
 
@@ -38,9 +92,13 @@ def create_draft(client, token, world_id, monkeypatch):
     return response.json()
 
 
-def approve_chapter(client, token, world_id, monkeypatch):
+def approve_chapter(client, token, world_id, monkeypatch, opening_approval_payload):
     draft = create_draft(client, token, world_id, monkeypatch)
-    response = client.post(f"/chapters/{draft['chapter_id']}/approve", headers={'Authorization': f'Bearer {token}'})
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/approve",
+        json=opening_approval_payload(draft),
+        headers={'Authorization': f'Bearer {token}'},
+    )
     assert response.status_code == 200
     return response.json()
 
@@ -363,9 +421,9 @@ def test_compare_snapshots_rejects_cross_world_targets(client):
     assert response.json()['detail'] == 'FORBIDDEN'
 
 
-def test_export_markdown_returns_world_archive_files(client, monkeypatch):
+def test_export_markdown_returns_world_archive_files(client, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client, 'markdown-export@example.com')
-    approved = approve_chapter(client, token, world_id, monkeypatch)
+    approved = approve_chapter(client, token, world_id, monkeypatch, opening_approval_payload)
 
     response = client.post(f'/worlds/{world_id}/export/markdown', headers=auth_headers(token))
 
@@ -385,9 +443,9 @@ def test_export_markdown_returns_world_archive_files(client, monkeypatch):
     assert approved['approved_content'] in chapter_file['content']
 
 
-def test_export_markdown_returns_downloadable_obsidian_zip_bundle(client, monkeypatch):
+def test_export_markdown_returns_downloadable_obsidian_zip_bundle(client, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client, 'markdown-zip@example.com')
-    approved = approve_chapter(client, token, world_id, monkeypatch)
+    approved = approve_chapter(client, token, world_id, monkeypatch, opening_approval_payload)
 
     response = client.post(f'/worlds/{world_id}/export/markdown', headers=auth_headers(token))
 

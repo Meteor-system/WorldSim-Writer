@@ -1,7 +1,7 @@
 [project]
 name = "worldsim-writer-backend"
-version = "0.1.0"
-description = "FastAPI backend for the WorldSim-Writer MVP loop"
+version = "0.2.0b1"
+description = "FastAPI backend for the WorldSim-Writer beta narrative workflow"
 requires-python = ">=3.12"
 dependencies = [
   "alembic>=1.13.0",
@@ -28,5 +28,6 @@ pythonpath = ["."]
 testpaths = ["tests"]
 markers = [
   "postgres: tests that require a real PostgreSQL database",
-  "concurrency: tests that verify lock-based concurrent behavior"
+  "concurrency: tests that verify lock-based concurrent behavior",
+  "real_llm: opt-in canary tests that call a configured real LLM provider"
 ]

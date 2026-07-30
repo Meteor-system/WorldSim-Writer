@@ -76,7 +76,18 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8000';
 
+export const AUTH_TOKEN_KEY = 'worldsim_token';
+export const AUTH_EXPIRED_EVENT = 'worldsim:auth-expired';
+
 type ApiError = Error & { status?: number };
+type AuthFailureMode = 'ignore' | 'expire';
+type ApiRequestOptions = RequestInit & { authFailureMode?: AuthFailureMode };
+
+export function expireSession(): void {
+  if (!localStorage.getItem(AUTH_TOKEN_KEY)) return;
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+}
 
 function formatApiError(body: string): string {
   if (!body) return '请求失败';
@@ -99,8 +110,11 @@ function formatApiError(body: string): string {
   return body;
 }
 
-export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = localStorage.getItem('worldsim_token');
+export async function apiRequest<T>(
+  path: string,
+  { authFailureMode = 'expire', ...options }: ApiRequestOptions = {},
+): Promise<T> {
+  const token = localStorage.getItem(AUTH_TOKEN_KEY);
   const headers = new Headers(options.headers);
   headers.set('Content-Type', 'application/json');
   if (token) headers.set('Authorization', `Bearer ${token}`);
@@ -108,6 +122,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   if (!response.ok) {
     const error = new Error(formatApiError(await response.text())) as ApiError;
     error.status = response.status;
+    if (response.status === 401 && authFailureMode === 'expire') expireSession();
     throw error;
   }
   if (response.status === 204) return undefined as T;
@@ -124,6 +139,7 @@ export function register(data: AuthCredentials) {
   return apiRequest<AuthResponse>('/auth/register', {
     method: 'POST',
     body: JSON.stringify(cleanAuthCredentials(data)),
+    authFailureMode: 'ignore',
   });
 }
 
@@ -131,6 +147,7 @@ export function login(data: AuthCredentials) {
   return apiRequest<AuthResponse>('/auth/login', {
     method: 'POST',
     body: JSON.stringify(cleanAuthCredentials(data)),
+    authFailureMode: 'ignore',
   });
 }
 
@@ -620,6 +637,16 @@ function cleanApproveRequest(data: ApproveRequest = {}): ApproveRequest {
       : {}),
     ...(data.selected_foreshadow_change_indexes !== undefined
       ? { selected_foreshadow_change_indexes: [...data.selected_foreshadow_change_indexes] }
+      : {}),
+    ...(data.opening_pov_confirmation !== undefined
+      ? {
+          opening_pov_confirmation: {
+            confirmed: data.opening_pov_confirmation.confirmed,
+            draft_version: data.opening_pov_confirmation.draft_version,
+            locked_character_id: data.opening_pov_confirmation.locked_character_id,
+            locked_character_name: data.opening_pov_confirmation.locked_character_name,
+          },
+        }
       : {}),
   };
 }

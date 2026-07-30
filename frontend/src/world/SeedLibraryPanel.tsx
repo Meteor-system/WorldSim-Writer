@@ -1,4 +1,5 @@
 import type { WorldSeedSummary } from '../api/types';
+import { labelGenre } from './displayLabels';
 
 type Props = {
   seeds: WorldSeedSummary[];
@@ -7,6 +8,7 @@ type Props = {
   error?: string;
   onApplySeed: (seedKey: string) => void;
   onCreateSeed: (seedKey: string) => void;
+  createDisabled?: boolean;
 };
 
 function stringList(value: unknown): string[] {
@@ -18,7 +20,7 @@ function countText(seed: WorldSeedSummary): string {
   return `角色 ${summary.character_count ?? 0} · 关系 ${summary.relation_count ?? 0} · 伏笔 ${summary.foreshadow_count ?? 0}`;
 }
 
-export function SeedLibraryPanel({ seeds, selectedSeedKey, loading, error, onApplySeed, onCreateSeed }: Props) {
+export function SeedLibraryPanel({ seeds, selectedSeedKey, loading, error, onApplySeed, onCreateSeed, createDisabled = false }: Props) {
   if (loading) {
     return (
       <section className="book-card p-5">
@@ -59,7 +61,7 @@ export function SeedLibraryPanel({ seeds, selectedSeedKey, loading, error, onApp
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-xl font-black text-[#3b2511]">{seed.label}</h3>
-                  <p className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-[#8a5a2b]">{seed.genre_template}</p>
+                  <p className="mt-1 text-xs font-bold tracking-[0.18em] text-[#8a5a2b]">{labelGenre(seed.genre_template)}</p>
                 </div>
                 {selectedSeedKey === seed.key && <span className="rounded-full bg-amber-900 px-3 py-1 text-xs font-black text-amber-50">当前套用中</span>}
               </div>
@@ -81,7 +83,7 @@ export function SeedLibraryPanel({ seeds, selectedSeedKey, loading, error, onApp
               </div>
               <div className="mt-4 flex flex-wrap gap-2">
                 <button type="button" className="secondary-button" onClick={() => onApplySeed(seed.key)}>套用到表单</button>
-                <button type="button" className="primary-button" onClick={() => onCreateSeed(seed.key)}>直接创建此模板</button>
+                <button type="button" className="primary-button" disabled={createDisabled} onClick={() => onCreateSeed(seed.key)}>直接创建此模板</button>
               </div>
             </article>
           );

@@ -71,6 +71,51 @@ def test_liveness_does_not_check_database(monkeypatch):
     assert response.json() == {'status': 'ok'}
 
 
+@pytest.mark.parametrize(
+    ('configured_origin', 'alias_origin'),
+    [
+        ('http://localhost:5173', 'http://127.0.0.1:5173'),
+        ('http://127.0.0.1:5179', 'http://localhost:5179'),
+    ],
+)
+def test_cors_preflight_allows_loopback_frontend_origin_without_allowing_unknown_origins(
+    monkeypatch, configured_origin, alias_origin
+):
+    monkeypatch.setenv('FRONTEND_ORIGIN', configured_origin)
+    client = TestClient(create_app())
+    preflight_headers = {
+        'Origin': configured_origin,
+        'Access-Control-Request-Method': 'GET',
+        'Access-Control-Request-Headers': 'authorization,content-type',
+    }
+
+    configured_origin_response = client.options('/worlds', headers=preflight_headers)
+    alias_origin_response = client.options(
+        '/worlds', headers={**preflight_headers, 'Origin': alias_origin}
+    )
+    unknown_origin_response = client.options(
+        '/worlds',
+        headers={**preflight_headers, 'Origin': 'https://unknown.example'},
+    )
+
+    assert configured_origin_response.status_code == 200
+    assert configured_origin_response.headers['Access-Control-Allow-Origin'] == configured_origin
+    assert alias_origin_response.status_code == 200
+    assert alias_origin_response.headers['Access-Control-Allow-Origin'] == alias_origin
+    assert unknown_origin_response.status_code == 400
+    assert 'Access-Control-Allow-Origin' not in unknown_origin_response.headers
+
+
+def test_create_app_ignores_invalid_frontend_origin_port(monkeypatch):
+    monkeypatch.setenv('FRONTEND_ORIGIN', 'http://localhost:not-a-port')
+
+    client = TestClient(create_app())
+
+    response = client.get('/live')
+
+    assert response.status_code == 200
+
+
 def test_readiness_returns_ready_when_database_and_migration_are_current(monkeypatch):
     monkeypatch.setattr('app.main.get_migration_status', _migration_status)
     client = TestClient(app)
@@ -251,6 +296,97 @@ def test_settings_rejects_example_secret_key():
         )
 
 
+@pytest.mark.parametrize('timeout', [1, 300])
+def test_settings_accepts_llm_timeout_boundaries(timeout):
+    settings = Settings(
+        DATABASE_URL='postgresql+psycopg://test:test@localhost:5432/test',
+        SECRET_KEY='test-secret-key',
+        LLM_BASE_URL='https://example.com/v1',
+        LLM_API_KEY='test-api-key',
+        LLM_MODEL='test-model',
+        LLM_TIMEOUT_SECONDS=timeout,
+    )
+
+    assert settings.llm_timeout_seconds == timeout
+
+
+@pytest.mark.parametrize('timeout', [1, 300, 167])
+def test_settings_accepts_llm_read_timeout_boundaries_and_known_generation_duration(timeout):
+    settings = Settings(
+        DATABASE_URL='postgresql+psycopg://test:test@localhost:5432/test',
+        SECRET_KEY='test-secret-key',
+        LLM_BASE_URL='https://example.com/v1',
+        LLM_API_KEY='test-api-key',
+        LLM_MODEL='test-model',
+        LLM_READ_TIMEOUT_SECONDS=timeout,
+    )
+
+    assert settings.llm_read_timeout_seconds == timeout
+
+
+@pytest.mark.parametrize('timeout', [0, 1801])
+def test_settings_rejects_out_of_range_llm_read_timeout(timeout):
+    with pytest.raises(ValidationError):
+        Settings(
+            DATABASE_URL='postgresql+psycopg://test:test@localhost:5432/test',
+            SECRET_KEY='test-secret-key',
+            LLM_BASE_URL='https://example.com/v1',
+            LLM_API_KEY='test-api-key',
+            LLM_MODEL='test-model',
+            LLM_READ_TIMEOUT_SECONDS=timeout,
+        )
+
+
+def test_settings_loads_required_fields_from_bom_aware_dotenv(tmp_path, monkeypatch):
+    for name in ['DATABASE_URL', 'SECRET_KEY', 'LLM_BASE_URL', 'LLM_API_KEY', 'LLM_MODEL']:
+        monkeypatch.delenv(name, raising=False)
+
+    env_file = tmp_path / '.env'
+    env_file.write_text(
+        '\n'.join(
+            [
+                'DATABASE_URL=postgresql+psycopg://test:test@localhost:5432/test',
+                'SECRET_KEY=test-secret-key',
+                'LLM_BASE_URL=https://example.com/v1',
+                'LLM_API_KEY=test-api-key',
+                'LLM_MODEL=test-model',
+            ]
+        ),
+        encoding='utf-8-sig',
+    )
+
+    settings = Settings(_env_file=env_file)
+
+    assert settings.database_url == 'postgresql+psycopg://test:test@localhost:5432/test'
+    assert settings.secret_key == 'test-secret-key'
+    assert settings.llm_model == 'test-model'
+
+
+@pytest.mark.parametrize('timeout', [0, 301])
+def test_settings_rejects_out_of_range_llm_timeout(timeout):
+    with pytest.raises(ValidationError):
+        Settings(
+            DATABASE_URL='postgresql+psycopg://test:test@localhost:5432/test',
+            SECRET_KEY='test-secret-key',
+            LLM_BASE_URL='https://example.com/v1',
+            LLM_API_KEY='test-api-key',
+            LLM_MODEL='test-model',
+            LLM_TIMEOUT_SECONDS=timeout,
+        )
+
+
+def test_settings_rejects_invalid_llm_api_mode():
+    with pytest.raises(ValidationError):
+        Settings(
+            DATABASE_URL='postgresql+psycopg://test:test@localhost:5432/test',
+            SECRET_KEY='test-secret-key',
+            LLM_BASE_URL='https://example.com/v1',
+            LLM_API_KEY='test-api-key',
+            LLM_MODEL='test-model',
+            LLM_API_MODE='unsupported',
+        )
+
+
 def test_settings_normalizes_log_level():
     settings = Settings(
         DATABASE_URL='postgresql+psycopg://test:test@localhost:5432/test',
@@ -273,6 +409,7 @@ def test_settings_defaults_documented_api_runtime_fields():
         LLM_MODEL='test-model',
     )
 
+    assert settings.llm_api_mode == 'responses'
     assert settings.api_host == '127.0.0.1'
     assert settings.api_port == '8000'
     assert settings.api_workers == '1'
@@ -291,6 +428,7 @@ def test_settings_accepts_documented_api_runtime_fields():
         LLM_BASE_URL='https://example.com/v1',
         LLM_API_KEY='test-api-key',
         LLM_MODEL='test-model',
+        LLM_API_MODE='chat_completions',
         API_HOST='0.0.0.0',
         API_PORT='9000',
         API_WORKERS='4',
@@ -302,6 +440,7 @@ def test_settings_accepts_documented_api_runtime_fields():
         API_FORWARDED_ALLOW_IPS='10.0.0.0/8',
     )
 
+    assert settings.llm_api_mode == 'chat_completions'
     assert settings.api_host == '0.0.0.0'
     assert settings.api_port == '9000'
     assert settings.api_workers == '4'
@@ -320,6 +459,7 @@ def test_settings_loads_api_runtime_fields_from_shared_dotenv(tmp_path, monkeypa
         'LLM_BASE_URL',
         'LLM_API_KEY',
         'LLM_MODEL',
+        'LLM_API_MODE',
         'API_HOST',
         'API_PORT',
         'API_WORKERS',
@@ -342,6 +482,7 @@ def test_settings_loads_api_runtime_fields_from_shared_dotenv(tmp_path, monkeypa
                 'LLM_BASE_URL=https://example.com/v1',
                 'LLM_API_KEY=test-api-key',
                 'LLM_MODEL=test-model',
+                'LLM_API_MODE=chat_completions',
                 'API_HOST=0.0.0.0',
                 'API_PORT=9000',
                 'API_WORKERS=4',
@@ -358,6 +499,7 @@ def test_settings_loads_api_runtime_fields_from_shared_dotenv(tmp_path, monkeypa
 
     settings = Settings(_env_file=env_file)
 
+    assert settings.llm_api_mode == 'chat_completions'
     assert settings.api_host == '0.0.0.0'
     assert settings.api_port == '9000'
     assert settings.api_workers == '4'

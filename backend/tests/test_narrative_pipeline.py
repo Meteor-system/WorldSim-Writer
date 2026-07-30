@@ -7,11 +7,14 @@ from app.llm.schemas import (
     ChapterGeneration,
     ChapterOutline,
     CritiqueIssue,
+    OpeningContract,
+    OpeningEvidence,
     CritiqueReport,
     ProposedCharacterChange,
     ProposedForeshadowChange,
 )
 from app.narrative import service as narrative_service
+from app.narrative.schemas import ApproveRequest
 from app.narrative.models import Chapter, ChapterDraft
 from app.world.models import World
 
@@ -40,6 +43,39 @@ def create_chapter(client, token, world_id, goal='推进裂纹玉佩线索'):
     return response
 
 
+def opening_contract() -> OpeningContract:
+    return OpeningContract(
+        background='青岚城灵脉衰退，暗井在雨夜发出异响。',
+        protagonist_identity='林砚是为师门奔走的外门弟子。',
+        motivation='他必须查清玉佩线索以保护师妹。',
+        personality_evidence_plan='让林砚先救下药箱再继续追查。',
+        conflict_goal='在巡夜人抵达前确认玉佩的主人。',
+        locked_pov='林砚限知第三人称。',
+    )
+
+
+def opening_body() -> str:
+    return '\n\n'.join([
+        '林砚在暗井旁听见了第二个人的脚步声。雨水压低了青岚城的屋檐，废弃灵井却在巷尾吐出温热白雾；城里人人都说灵脉衰退只是旱灾，他知道那是谎话。',
+        '他是欠着师门药债的外门弟子，今夜原该回去照看师妹。可城主府的文书写明天亮前要带走她问话，林砚只能追查玉佩与失踪师兄的名字，哪怕这会把自己送进巡夜人的眼里。',
+        '巷口的药箱被雨水冲翻，他先扑进泥水把药瓶一只只捡回，又把割裂的手藏进袖中。沈微霜问他为何不逃，林砚只说师妹还在等药，这不是能算清的账。',
+        '灵井底下传来铁链拖地声，玉佩映出师兄惯用的云纹。林砚没有告诉沈微霜自己看见了什么，只沿着井壁摸到一道新鲜的靴印，听见城主府巡夜人的铜铃越来越近。',
+        '他必须在铜铃停在巷口前确认玉佩主人，否则师妹会被带走，师兄的失踪也会被埋进井里。林砚让沈微霜守住巷口，自己系紧绳索下井；他不确定她会不会出卖自己。',
+        '林砚的靴底刚离开井沿，铜铃便在雨幕外停住。巡夜人喊出他的名字，他只能从井壁渗出的血色水痕判断，下面等着他的不是师兄，而是一场早已布好的局。',
+    ])
+
+
+def opening_evidence() -> list[OpeningEvidence]:
+    return [
+        OpeningEvidence(check='background', paragraph_index=0, quote='废弃灵井却在巷尾吐出温热白雾'),
+        OpeningEvidence(check='protagonist_identity', paragraph_index=1, quote='欠着师门药债的外门弟子'),
+        OpeningEvidence(check='motivation', paragraph_index=1, quote='只能追查玉佩与失踪师兄的名字'),
+        OpeningEvidence(check='personality_evidence_plan', paragraph_index=2, quote='先扑进泥水把药瓶一只只捡回'),
+        OpeningEvidence(check='conflict_goal', paragraph_index=4, quote='必须在铜铃停在巷口前确认玉佩主人'),
+        OpeningEvidence(check='locked_pov', paragraph_index=3, quote='林砚没有告诉沈微霜自己看见了什么'),
+    ]
+
+
 def fake_outline() -> ChapterOutline:
     return ChapterOutline(
         core_conflict='林砚必须判断沈微霜是否可信。',
@@ -64,19 +100,21 @@ def fake_outline() -> ChapterOutline:
                 key_dialogue_hints=['你不该来这里。'],
             ),
         ],
+        opening_contract=opening_contract(),
     )
 
 
 def fake_generation() -> ChapterGeneration:
     return ChapterGeneration(
         title='第一章 暗井回声',
-        draft_content='林砚在暗井旁听见了第二个人的脚步声。沈微霜说：你不该来这里。',
+        draft_content=opening_body(),
         context_summary='林砚调查灵脉衰退，裂纹玉佩与暗井产生共振。',
         review_hints=['确认沈微霜动机是否一致', '确认玉佩伏笔是否推进'],
         proposed_character_changes=[ProposedCharacterChange(character_id=1, current_goals=['追查城主府叛乱'])],
         proposed_foreshadow_changes=[
             ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='玉佩线索被推进')
         ],
+        opening_evidence=opening_evidence(),
     )
 
 
@@ -210,13 +248,19 @@ def test_active_chapter_session_restores_latest_unapproved_progress_without_side
     assert db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id)) == before_events
 
 
-def test_active_chapter_session_returns_recent_approval_without_side_effects_and_prefers_new_work(client, db_session, monkeypatch):
+def test_active_chapter_session_returns_recent_approval_without_side_effects_and_prefers_new_work(
+    client, db_session, monkeypatch, opening_approval_payload
+):
     token, world_id = register_and_create_world(client)
     chapter_id = create_chapter(client, token, world_id).json()['id']
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: PipelineLLMClient())
     client.post(f'/chapters/{chapter_id}/outline', headers=auth(token), json={})
-    client.post(f'/chapters/{chapter_id}/write', headers=auth(token), json={})
-    client.post(f'/chapters/{chapter_id}/approve', headers=auth(token))
+    draft = client.post(f'/chapters/{chapter_id}/write', headers=auth(token), json={}).json()
+    client.post(
+        f'/chapters/{chapter_id}/approve',
+        headers=auth(token),
+        json=opening_approval_payload({'chapter_id': chapter_id, **draft}),
+    )
     before_event_count = db_session.scalar(select(func.count()).select_from(EventLog).where(EventLog.world_id == world_id))
 
     approval_response = client.get(f'/worlds/{world_id}/chapters/active', headers=auth(token))
@@ -268,7 +312,9 @@ def test_outline_generates_and_persists_beat_cards(client, db_session, monkeypat
     assert chapter.outline_beats[1]['summary'] == '沈微霜出现并隐瞒她知道密道入口。'
 
 
-def test_late_outline_cannot_restore_approved_chapter_to_outlined(client, db_session, monkeypatch):
+def test_late_outline_cannot_restore_approved_chapter_to_outlined(
+    client, db_session, monkeypatch, opening_approval_payload
+):
     token, world_id = register_and_create_world(client)
     chapter_id = create_chapter(client, token, world_id).json()['id']
     user = db_session.get(World, world_id).owner
@@ -278,7 +324,12 @@ def test_late_outline_cannot_restore_approved_chapter_to_outlined(client, db_ses
     class ApprovingOutlineLLM(PipelineLLMClient):
         def generate_outline(self, messages):
             outline = super().generate_outline(messages)
-            approved = narrative_service.approve_chapter(db_session, user, chapter_id)
+            approved = narrative_service.approve_chapter(
+                db_session,
+                user,
+                chapter_id,
+                ApproveRequest.model_validate(opening_approval_payload({'chapter_id': chapter_id})),
+            )
             assert approved.status == 'approved'
             return outline
 
@@ -567,7 +618,7 @@ def test_write_uses_edited_beats_and_creates_draft(client, db_session, monkeypat
     assert draft.source_world_version == 1
 
 
-def test_late_write_cannot_overwrite_approved_chapter(client, db_session):
+def test_late_write_cannot_overwrite_approved_chapter(client, db_session, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     chapter_id = create_chapter(client, token, world_id).json()['id']
     user = db_session.get(World, world_id).owner
@@ -576,7 +627,12 @@ def test_late_write_cannot_overwrite_approved_chapter(client, db_session):
 
     class ApprovingWriteLLM(PipelineLLMClient):
         def generate_chapter(self, messages):
-            approved = narrative_service.approve_chapter(db_session, user, chapter_id)
+            approved = narrative_service.approve_chapter(
+                db_session,
+                user,
+                chapter_id,
+                ApproveRequest.model_validate(opening_approval_payload({'chapter_id': chapter_id})),
+            )
             assert approved.status == 'approved'
             return late_generation()
 
@@ -884,16 +940,20 @@ def test_archived_world_rejects_pipeline_mutations(client, db_session, monkeypat
     assert draft_count == 0
 
 
-def test_pipeline_approve_preserves_existing_world_update_invariant(client, monkeypatch):
+def test_pipeline_approve_preserves_existing_world_update_invariant(client, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     chapter_id = create_chapter(client, token, world_id).json()['id']
     monkeypatch.setattr(narrative_service, 'LLMClient', lambda: PipelineLLMClient())
 
     client.post(f'/chapters/{chapter_id}/outline', headers=auth(token), json={})
-    client.post(f'/chapters/{chapter_id}/write', headers=auth(token), json={})
+    draft = client.post(f'/chapters/{chapter_id}/write', headers=auth(token), json={}).json()
     client.post(f'/chapters/{chapter_id}/critique', headers=auth(token), json={})
     before = client.get(f'/worlds/{world_id}/overview', headers=auth(token)).json()
-    approve_response = client.post(f'/chapters/{chapter_id}/approve', headers=auth(token))
+    approve_response = client.post(
+        f'/chapters/{chapter_id}/approve',
+        headers=auth(token),
+        json=opening_approval_payload({'chapter_id': chapter_id, **draft}),
+    )
     after = client.get(f'/worlds/{world_id}/overview', headers=auth(token)).json()
 
     assert before['world_version'] == 1

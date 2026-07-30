@@ -683,7 +683,7 @@ describe('WorldPage world creation', () => {
     expect(draftWorldFromBrief).toHaveBeenCalledWith(
       '一个边境殖民地依赖濒临失控的跃迁灯塔',
       null,
-      3,
+      1,
       [
         {
           source: 'import_node',
@@ -1139,6 +1139,90 @@ describe('WorldPage bookshelf', () => {
     await user.click(screen.getByRole('button', { name: '返回作品书架' }));
 
     expect(screen.getByText('作品书架')).toBeInTheDocument();
+  });
+
+  it('clears a previous world active session before creating a built-in sample from the bookshelf', async () => {
+    const user = userEvent.setup();
+    const onEnterStudio = vi.fn();
+    const activeSession = {
+      chapter: {
+        id: 11,
+        world_id: 7,
+        title: '第二章 保留中的章节',
+        status: 'drafting',
+        draft_version: 1,
+        approved_version: null,
+        base_world_version: 2,
+        approved_content: null,
+        chapter_goal: '继续追查湿信来源',
+        outline_beats: [],
+        outline_context: {},
+        critique_report: {},
+        execution_context: null,
+      },
+      draft: null,
+      draft_versions: [],
+    };
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(world)
+      .mockResolvedValueOnce(secondWorld);
+    vi.mocked(getActiveChapterSession).mockResolvedValueOnce(activeSession);
+    vi.mocked(createSampleWorld).mockResolvedValueOnce({ id: 8 });
+
+    render(<WorldPage onEnterStudio={onEnterStudio} autoFocusTitle={false} />);
+
+    expect(await screen.findByLabelText('进行中章节入口')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '返回作品书架' }));
+    await user.click(screen.getByRole('button', { name: '创建新小说' }));
+    await user.click(await screen.findByRole('button', { name: '创建内置示例世界' }));
+
+    expect(await screen.findByText('星舰余烬')).toBeInTheDocument();
+    expect(screen.queryByLabelText('进行中章节入口')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /继续(?:下一章|进行中的章节)/ }));
+    expect(onEnterStudio).toHaveBeenCalledWith(secondWorld, expect.anything());
+    expect(onEnterStudio.mock.calls[0][1]).not.toHaveProperty('resumeSession');
+  });
+
+  it('clears a previous world active session before creating a world from a Seed', async () => {
+    const user = userEvent.setup();
+    const activeSession = {
+      chapter: {
+        id: 11,
+        world_id: 7,
+        title: '第二章 保留中的章节',
+        status: 'drafting',
+        draft_version: 1,
+        approved_version: null,
+        base_world_version: 2,
+        approved_content: null,
+        chapter_goal: '继续追查湿信来源',
+        outline_beats: [],
+        outline_context: {},
+        critique_report: {},
+        execution_context: null,
+      },
+      draft: null,
+      draft_versions: [],
+    };
+    vi.mocked(apiRequest).mockReset();
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce([{ id: 7 }])
+      .mockResolvedValueOnce(world)
+      .mockResolvedValueOnce(secondWorld);
+    vi.mocked(getActiveChapterSession).mockResolvedValueOnce(activeSession);
+    vi.mocked(createWorldFromSeed).mockResolvedValueOnce({ id: 8 });
+
+    render(<WorldPage onEnterStudio={vi.fn()} autoFocusTitle={false} />);
+
+    expect(await screen.findByLabelText('进行中章节入口')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '返回作品书架' }));
+    await user.click(screen.getByRole('button', { name: '创建新小说' }));
+    await user.click(await screen.findByRole('button', { name: '直接创建此模板' }));
+
+    expect(await screen.findByText('星舰余烬')).toBeInTheDocument();
+    expect(screen.queryByLabelText('进行中章节入口')).not.toBeInTheDocument();
   });
 
   it('shows archive entry copy on the current world page', async () => {

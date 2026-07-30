@@ -1,5 +1,5 @@
 import type { FormEvent } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   StarterCharacterCreate,
   StarterForeshadowCreate,
@@ -14,6 +14,7 @@ import type {
 } from '../api/types';
 import { clonePreset, GENRE_PRESETS, starterGuidanceFromPayload } from './genrePresets';
 import { SeedLibraryPanel } from './SeedLibraryPanel';
+import { GENRE_TEMPLATE_OPTIONS, isKnownGenreTemplate } from './displayLabels';
 
 type Props = {
   creating: boolean;
@@ -92,6 +93,7 @@ export function WorldCreationForm({
   const [form, setForm] = useState<WorldCreateRequest>(() => clonePreset(GENRE_PRESETS[0]));
   const [brief, setBrief] = useState('');
   const [drafting, setDrafting] = useState(false);
+  const draftGenerationInFlightRef = useRef(false);
   const [draftError, setDraftError] = useState('');
   const [selectedMaterialReferenceKeys, setSelectedMaterialReferenceKeys] = useState<string[]>(() =>
     materialReferences.slice(0, 3).map((reference, index) => materialReferenceKey(reference, index)),
@@ -99,10 +101,18 @@ export function WorldCreationForm({
   const [draftMeta, setDraftMeta] = useState<Pick<WorldCreationDraftResponse, 'first_chapter_goal' | 'generation_notes' | 'safety_notes' | 'followup_questions' | 'material_references'> | null>(null);
   const [draftVariants, setDraftVariants] = useState<WorldCreationDraftVariant[]>([]);
   const [selectedDraftVariantId, setSelectedDraftVariantId] = useState<string | null>(null);
+  const customGenreInputRef = useRef<HTMLInputElement>(null);
+  const genreSelection = isKnownGenreTemplate(form.genre_template) ? form.genre_template : 'custom';
+  const worldCreationLocked = drafting || creating;
+
+  function worldCreationInFlight() {
+    return creating || draftGenerationInFlightRef.current;
+  }
 
   useEffect(() => {
     setSelectedMaterialReferenceKeys(materialReferences.slice(0, 3).map((reference, index) => materialReferenceKey(reference, index)));
   }, [materialReferences]);
+
 
   function applyDraftVariant(variant: WorldCreationDraftVariant) {
     setSelectedPresetKey('');
@@ -151,6 +161,11 @@ export function WorldCreationForm({
     setSelectedDraftVariantId(null);
     setDraftError('');
     setForm(JSON.parse(JSON.stringify(seed.payload)) as WorldCreateRequest);
+  }
+
+  function updateGenreSelection(value: string) {
+    setForm((current) => ({ ...current, genre_template: value === 'custom' ? '' : value }));
+    if (value === 'custom') requestAnimationFrame(() => customGenreInputRef.current?.focus());
   }
 
   function updateToneField(key: string, value: string) {
@@ -323,16 +338,17 @@ export function WorldCreationForm({
 
   async function generateDraftFromBrief() {
     const normalizedBrief = brief.trim();
-    if (!normalizedBrief || !onDraftFromBrief) return;
+    if (!normalizedBrief || !onDraftFromBrief || draftGenerationInFlightRef.current) return;
+    draftGenerationInFlightRef.current = true;
     setDrafting(true);
     setDraftError('');
     try {
       const selectedReferences = selectedMaterialReferences();
       const response = selectedReferences.length > 0
-        ? await onDraftFromBrief(normalizedBrief, activeStyleHandbook, 3, selectedReferences)
+        ? await onDraftFromBrief(normalizedBrief, activeStyleHandbook, 1, selectedReferences)
         : activeStyleHandbook
-          ? await onDraftFromBrief(normalizedBrief, activeStyleHandbook, 3)
-          : await onDraftFromBrief(normalizedBrief, null, 3);
+          ? await onDraftFromBrief(normalizedBrief, activeStyleHandbook, 1)
+          : await onDraftFromBrief(normalizedBrief, null, 1);
       const variants = response.variants?.length
         ? response.variants.map((variant) => ({
             ...variant,
@@ -353,14 +369,26 @@ export function WorldCreationForm({
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : '生成世界创建草稿失败');
     } finally {
+      draftGenerationInFlightRef.current = false;
       setDrafting(false);
     }
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (worldCreationInFlight()) return;
     const firstChapterGoal = draftMeta?.first_chapter_goal ?? starterGuidanceFromPayload(form).first_chapter_goal;
     await onCreate(form, { firstChapterGoal });
+  }
+
+  function createSample() {
+    if (worldCreationInFlight()) return;
+    void onCreateSample();
+  }
+
+  function createSeed(seedKey: string) {
+    if (worldCreationInFlight()) return;
+    void onCreateSeed?.(seedKey);
   }
 
   return (
@@ -432,11 +460,16 @@ export function WorldCreationForm({
             />
           </label>
           <div className="mt-4 flex flex-wrap items-center gap-3">
-            <button className="primary-button" disabled={drafting || creating || !brief.trim()} type="button" onClick={() => void generateDraftFromBrief()}>
+            <button className="primary-button" disabled={worldCreationLocked || !brief.trim()} type="button" onClick={() => void generateDraftFromBrief()}>
               {drafting ? '正在生成创建草稿...' : '生成世界创建草稿'}
             </button>
             <p className="text-xs font-bold text-[#5e3b1c]">自动填表后仍可继续编辑；只有点击“创建自定义世界”才会创建世界。</p>
           </div>
+          {drafting && (
+            <p className="mt-3 text-sm font-bold text-[#5e3b1c]" role="status" aria-live="polite">
+              模型正在生成，可能需要数分钟；请保持页面打开，系统会持续等待模型返回。
+            </p>
+          )}
           {draftError && <p className="paper-error mt-4" role="alert">{draftError}</p>}
           {draftVariants.length > 1 && (
             <div className="mt-5 grid gap-3 md:grid-cols-3" aria-label="世界草稿候选方向">
@@ -495,7 +528,7 @@ export function WorldCreationForm({
         <p className="manuscript mx-auto mt-4 max-w-2xl">
           从官方题材模板开始，编辑真理库、角色关系与伏笔，然后冻结为你的初始世界状态。
         </p>
-        <button className="secondary-button mt-5" disabled={creating} type="button" onClick={onCreateSample}>
+        <button className="secondary-button mt-5" disabled={worldCreationLocked} type="button" onClick={createSample}>
           创建内置示例世界
         </button>
       </div>
@@ -507,8 +540,9 @@ export function WorldCreationForm({
             selectedSeedKey={activeSeedKey}
             loading={seedLoading}
             error={seedError}
+            createDisabled={worldCreationLocked}
             onApplySeed={applySeed}
-            onCreateSeed={(seedKey) => void onCreateSeed?.(seedKey)}
+            onCreateSeed={createSeed}
           />
         </section>
       ) : null}
@@ -543,10 +577,33 @@ export function WorldCreationForm({
           <span className="text-sm font-semibold text-[#4a321e]">世界标题</span>
           <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required />
         </label>
-        <label className="block">
-          <span className="text-sm font-semibold text-[#4a321e]">题材标识</span>
-          <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={form.genre_template} onChange={(event) => setForm({ ...form, genre_template: event.target.value })} required />
-        </label>
+        <div className="block">
+          <label className="block" htmlFor="genre-template">
+            <span className="text-sm font-semibold text-[#4a321e]">题材</span>
+          </label>
+          <select
+            id="genre-template"
+            className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3"
+            value={genreSelection}
+            onChange={(event) => updateGenreSelection(event.target.value)}
+          >
+            {GENRE_TEMPLATE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            <option value="custom">自定义题材</option>
+          </select>
+          {genreSelection === 'custom' && (
+            <label className="mt-3 block" htmlFor="custom-genre-template">
+              <span className="text-sm font-semibold text-[#4a321e]">自定义题材名称</span>
+              <input
+                ref={customGenreInputRef}
+                id="custom-genre-template"
+                className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3"
+                value={form.genre_template}
+                onChange={(event) => setForm((current) => ({ ...current, genre_template: event.target.value }))}
+                required
+              />
+            </label>
+          )}
+        </div>
         <label className="block">
           <span className="text-sm font-semibold text-[#4a321e]">叙事风格</span>
           <input className="mt-1 w-full rounded-2xl border border-amber-900/20 bg-white/70 px-4 py-3" value={toneText(form, 'style')} onChange={(event) => updateToneField('style', event.target.value)} />
@@ -689,7 +746,7 @@ export function WorldCreationForm({
       </section>
 
       <div className="mt-8 text-center">
-        <button className="primary-button" disabled={creating} type="submit">
+        <button className="primary-button" disabled={worldCreationLocked} type="submit">
           {creating ? '正在冻结初始真理库...' : '创建自定义世界'}
         </button>
       </div>

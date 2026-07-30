@@ -3,9 +3,19 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 
 from app.event.models import EventLog
-from app.llm.schemas import ChapterGeneration, CritiqueReport, ProposedCharacterChange, ProposedForeshadowChange
+from app.llm.schemas import (
+    BeatCard,
+    ChapterGeneration,
+    ChapterOutline,
+    CritiqueReport,
+    OpeningContract,
+    OpeningEvidence,
+    ProposedCharacterChange,
+    ProposedForeshadowChange,
+)
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter
+from app.narrative.schemas import ApproveRequest
 from app.world.models import World
 
 
@@ -20,15 +30,69 @@ CRITIC_DIMENSIONS = [
 ]
 
 
+def opening_contract() -> OpeningContract:
+    return OpeningContract(
+        background='青岚城灵脉衰退，废弃灵井在雨夜发出异响。',
+        protagonist_identity='林砚是为师门奔走的外门弟子。',
+        motivation='他必须查清玉佩线索以保护师妹。',
+        personality_evidence_plan='让林砚先救下药箱再继续追查。',
+        conflict_goal='在巡夜人抵达前确认玉佩的主人。',
+        locked_pov='林砚限知第三人称。',
+    )
+
+
+def opening_body() -> str:
+    return '\n\n'.join([
+        '林砚在灵井旁听见了第二个人的脚步声。雨水压低了青岚城的屋檐，废弃灵井却在巷尾吐出温热白雾；城里人人都说灵脉衰退只是旱灾，他知道那是谎话。',
+        '他是欠着师门药债的外门弟子，今夜原该回去照看师妹。可城主府的文书写明天亮前要带走她问话，林砚只能追查玉佩与失踪师兄的名字，哪怕这会把自己送进巡夜人的眼里。',
+        '巷口的药箱被雨水冲翻，他先扑进泥水把药瓶一只只捡回，又把割裂的手藏进袖中。沈微霜问他为何不逃，林砚只说师妹还在等药，这不是能算清的账。',
+        '灵井底下传来铁链拖地声，玉佩映出师兄惯用的云纹。林砚没有告诉沈微霜自己看见了什么，只沿着井壁摸到一道新鲜的靴印，听见城主府巡夜人的铜铃越来越近。',
+        '他必须在铜铃停在巷口前确认玉佩主人，否则师妹会被带走，师兄的失踪也会被埋进井里。林砚让沈微霜守住巷口，自己系紧绳索下井；他不确定她会不会出卖自己。',
+        '林砚的靴底刚离开井沿，铜铃便在雨幕外停住。巡夜人喊出他的名字，他只能从井壁渗出的血色水痕判断，下面等着他的不是师兄，而是一场早已布好的局。',
+    ])
+
+
+def opening_evidence() -> list[OpeningEvidence]:
+    return [
+        OpeningEvidence(check='background', paragraph_index=0, quote='废弃灵井却在巷尾吐出温热白雾'),
+        OpeningEvidence(check='protagonist_identity', paragraph_index=1, quote='欠着师门药债的外门弟子'),
+        OpeningEvidence(check='motivation', paragraph_index=1, quote='只能追查玉佩与失踪师兄的名字'),
+        OpeningEvidence(check='personality_evidence_plan', paragraph_index=2, quote='先扑进泥水把药瓶一只只捡回'),
+        OpeningEvidence(check='conflict_goal', paragraph_index=4, quote='必须在铜铃停在巷口前确认玉佩主人'),
+        OpeningEvidence(check='locked_pov', paragraph_index=3, quote='林砚没有告诉沈微霜自己看见了什么'),
+    ]
+
+
 class CriticReportLLMClient:
     def __init__(self):
+        self.outline_calls = 0
         self.critique_calls = 0
         self.critic_report_calls = 0
+
+    def generate_outline(self, messages):
+        self.outline_calls += 1
+        return ChapterOutline(
+            beats=[
+                BeatCard(
+                    beat_id='opening-1',
+                    summary='林砚抵达灵井并追查玉佩线索。',
+                    pov_character='林砚',
+                    location='灵井',
+                    emotional_arc='疑惑到警觉',
+                    key_dialogue_hints=['湿信是谁留下的？'],
+                )
+            ],
+            core_conflict='林砚必须在巡夜人抵达前确认玉佩主人。',
+            pov_suggestion='林砚',
+            pacing='紧凑推进',
+            role_skill_targets=['保持线索压力'],
+            opening_contract=opening_contract(),
+        )
 
     def generate_chapter(self, messages):
         return ChapterGeneration(
             title='第一章 雨巷密谈',
-            draft_content='第一段：林砚停在雨巷口。\n\n第二段：沈微霜递来一封湿透的信。',
+            draft_content=opening_body(),
             context_summary='林砚与沈微霜在雨巷交换线索。',
             review_hints=['确认第二段的信息揭示是否过快'],
             proposed_character_changes=[
@@ -37,6 +101,7 @@ class CriticReportLLMClient:
             proposed_foreshadow_changes=[
                 ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='湿信推进玉佩线索')
             ],
+            opening_evidence=opening_evidence(),
         )
 
     def critique_chapter(self, messages):
@@ -332,7 +397,7 @@ def test_get_critic_report_returns_404_when_report_is_missing(client, monkeypatc
     assert response.json()['detail'] == 'NOT_FOUND'
 
 
-def test_late_critique_cannot_write_after_chapter_approval(client, db_session, monkeypatch):
+def test_late_critique_cannot_write_after_chapter_approval(client, db_session, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)
     user = db_session.get(World, world_id).owner
@@ -340,7 +405,12 @@ def test_late_critique_cannot_write_after_chapter_approval(client, db_session, m
     class ApprovingCritiqueLLM(CriticReportLLMClient):
         def critique_chapter(self, messages):
             report = super().critique_chapter(messages)
-            approved = narrative_service.approve_chapter(db_session, user, draft['chapter_id'])
+            approved = narrative_service.approve_chapter(
+                db_session,
+                user,
+                draft['chapter_id'],
+                ApproveRequest.model_validate(opening_approval_payload(draft)),
+            )
             assert approved.status == 'approved'
             return report
 

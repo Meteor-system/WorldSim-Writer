@@ -1,6 +1,7 @@
 from sqlalchemy import func, select
 
 from app.event.models import EventLog
+from app.narrative import service as narrative_service
 from app.world.models import World
 
 
@@ -68,6 +69,41 @@ def test_create_world_from_seed_uses_formal_world_creation_pipeline(client):
     assert overview['recent_events'][0]['event_type'] == 'WORLD_CREATED'
     assert overview['recent_events'][0]['source_type'] == 'world_creation'
     assert overview['recent_events'][0]['payload']['starter_counts']['characters'] == len(overview['characters'])
+
+
+def test_forgotten_sun_seed_mock_draft_uses_seed_context_and_passes_opening_quality(client, monkeypatch):
+    token = register(client, 'seed-mock-draft@example.com')
+    headers = auth(token)
+    seed = client.get('/worlds/seeds/forgotten-sun-city', headers=headers).json()
+    world = client.post('/worlds/from-seed/forgotten-sun-city', headers=headers).json()
+    overview = client.get(f"/worlds/{world['id']}/overview", headers=headers).json()
+    character_ids = {character['id'] for character in overview['characters']}
+    foreshadow_ids = {foreshadow['id'] for foreshadow in overview['foreshadows']}
+
+    monkeypatch.setenv('LLM_MOCK', 'true')
+    narrative_service.get_settings.cache_clear()
+    try:
+        response = client.post(
+            f"/worlds/{world['id']}/chapters/draft",
+            headers=headers,
+            json={'chapter_goal': seed['starter_guidance']['first_chapter_goal']},
+        )
+    finally:
+        narrative_service.get_settings.cache_clear()
+
+    assert response.status_code == 200
+    draft = response.json()
+    assert draft['quality_report']['status'] == 'pass'
+    assert all(check['status'] == 'pass' for check in draft['quality_report']['checks'])
+    assert draft['quality_report']['character_count'] >= 300
+    assert '沈昼' in draft['outline_context']['opening_contract']['locked_pov']
+    assert '无日城' in draft['content']
+    assert '沈昼' in draft['content']
+    assert '陆鸦' in draft['content']
+    assert '空白日晷' in draft['content']
+    assert {change['character_id'] for change in draft['proposed_changes']['characters']} <= character_ids
+    assert {change['foreshadow_id'] for change in draft['proposed_changes']['foreshadows']} <= foreshadow_ids
+    assert client.get(f"/worlds/{world['id']}", headers=headers).json()['world_version'] == 1
 
 
 def test_create_world_from_seed_rejects_extra_body_fields_without_side_effects(client, db_session):

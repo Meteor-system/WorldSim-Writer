@@ -38,6 +38,13 @@ type Props = {
 
 type AbandonConfirmState = 'idle' | 'confirming' | 'submitting';
 
+type OpeningPovConfirmationBinding = {
+  chapterId: number;
+  draftVersion: number;
+  lockedCharacterId: number;
+  lockedCharacterName: string;
+};
+
 type WorldSettlement = {
   worldBefore: number;
   worldAfter: number;
@@ -70,6 +77,7 @@ function names(values: Array<{ name?: string; title?: string }>): string {
 }
 
 const ACTIVE_CHAPTER_RECOVERY_MESSAGE = '这个世界已有进行中的章节。请返回世界页恢复该章节，完成审阅或处理后再开始下一章。';
+const OPENING_QUALITY_VALIDATION_VERSION = 5;
 
 function isActiveChapterConflict(error: unknown): boolean {
   return error instanceof Error && error.message === 'ACTIVE_CHAPTER_EXISTS';
@@ -144,6 +152,81 @@ function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionConte
   );
 }
 
+function openingQualityStatus(status?: string, passed?: boolean, stale = false): string {
+  if (stale) return '已过期';
+  if (typeof passed === 'boolean') return passed ? '通过' : '需修订';
+  if (status === 'pass' || status === 'passed' || status === 'ok') return '通过';
+  if (status === 'warning' || status === 'needs_review') return '需复核';
+  if (status === 'fail' || status === 'failed' || status === 'blocked') return '需修订';
+  return status ?? '未标注';
+}
+
+function openingQualityIsCurrent(draft: DraftResponse | null): boolean {
+  const report = draft?.quality_report;
+  if (!draft || report?.profile !== 'opening_chapter') return true;
+  return report.status === 'pass'
+    && report.evaluated_draft_version === draft.draft_version
+    && report.validation_version === OPENING_QUALITY_VALIDATION_VERSION;
+}
+
+function OpeningQualityPanel({ draft }: { draft: DraftResponse | null }) {
+  const report = draft?.quality_report;
+  const checks = report?.checks ?? report?.opening_chapter?.checks ?? [];
+  const currentDraftVersion = draft?.draft_version;
+  const validationVersionOutdated = report?.profile === 'opening_chapter'
+    && report.validation_version !== OPENING_QUALITY_VALIDATION_VERSION;
+  const stale = Boolean(
+    report?.profile === 'opening_chapter'
+    && (report.status === 'stale' || report.evaluated_draft_version !== currentDraftVersion || validationVersionOutdated),
+  );
+
+  return (
+    <section className="studio-quality-panel" aria-labelledby="opening-quality-title">
+      <div className="studio-panel-heading">
+        <p className="chapter-kicker">Opening Quality</p>
+        <h2 id="opening-quality-title" className="text-2xl font-black text-[#34210f]">首章质量</h2>
+      </div>
+      {!report ? (
+        <p className="manuscript text-sm">尚未评估首章质量。生成或载入草稿后，质量报告会在此显示。</p>
+      ) : (
+        <>
+          <p className="manuscript text-sm">状态：{openingQualityStatus(report.status, undefined, stale)}{report.profile ? ` · ${report.profile}` : ''}</p>
+          {stale && (
+            <div className="paper-error mt-3">
+              <p className="font-bold">{validationVersionOutdated ? '验证规则已更新，需重新评估' : '当前草稿未验证'}</p>
+              {validationVersionOutdated ? (
+                <p className="mt-1 text-sm">当前审批要求验证规则 v{OPENING_QUALITY_VALIDATION_VERSION}；该报告的规则版本缺失或不匹配。</p>
+              ) : typeof report.evaluated_draft_version === 'number' && typeof currentDraftVersion === 'number' && (
+                <p className="mt-1 text-sm">基于 v{report.evaluated_draft_version}，不适用于当前 v{currentDraftVersion}</p>
+              )}
+            </div>
+          )}
+          {(typeof report.character_count === 'number' || typeof report.paragraph_count === 'number') && (
+            <p className="manuscript text-sm">字数：{report.character_count ?? '未提供'} · 段落：{report.paragraph_count ?? '未提供'}</p>
+          )}
+          {typeof report.evaluated_draft_version === 'number' && <p className="manuscript text-sm">评估草稿：v{report.evaluated_draft_version}</p>}
+          {checks.length > 0 ? (
+            <ul className="studio-quality-checks">
+              {checks.map((check, index) => (
+                <li key={`${check.check ?? check.label}-${index}`}>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <strong>{check.label}</strong>
+                    <span className="text-sm font-bold text-[#80501f]">{openingQualityStatus(check.status, check.passed, stale)}</span>
+                  </div>
+                  {check.message && <p className="manuscript mt-1 text-sm">{check.message}</p>}
+                  {(typeof check.paragraph_index === 'number' || check.quote) && <p className="manuscript mt-1 text-xs ink-muted">{typeof check.paragraph_index === 'number' ? `第 ${check.paragraph_index + 1} 段` : ''}{check.paragraph_index !== undefined && check.quote ? ' · ' : ''}{check.quote ? `证据：${check.quote}` : ''}</p>}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="manuscript text-sm">报告未包含可展示的检查项。</p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 export function StudioPage({ world, launchContext, onBack, onApproved, onAbandoned = onBack }: Props) {
   const resumedChapter = launchContext?.resumeSession?.chapter ?? null;
   const resumedDraft = launchContext?.resumeSession?.draft ?? null;
@@ -181,6 +264,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
   const [approvalCommitState, setApprovalCommitState] = useState<'idle' | 'unknown' | 'committed'>('idle');
   const [settlementSyncError, setSettlementSyncError] = useState('');
   const [latestDraftVersion, setLatestDraftVersion] = useState<number | null>(resumedDraft?.draft_version ?? null);
+  const [openingPovConfirmation, setOpeningPovConfirmation] = useState<OpeningPovConfirmationBinding | null>(null);
   const [revisionInstruction, setRevisionInstruction] = useState('');
   const [working, setWorking] = useState(false);
   const [autoDrafting, setAutoDrafting] = useState(false);
@@ -252,6 +336,67 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
     return { ...nextDraft, draft_version: resolveDraftVersion(nextDraft) };
   }
 
+  function parseOpeningPovConfirmationTarget(): {
+    target: { chapterId: number; draftVersion: number; lockedCharacterId: number; lockedCharacterName: string } | null;
+    unresolved: boolean;
+  } {
+    if (!approvalPreview) return { target: null, unresolved: false };
+
+    const rawTarget: unknown = approvalPreview.opening_pov_confirmation_target;
+    if (!rawTarget || typeof rawTarget !== 'object' || Array.isArray(rawTarget)) {
+      return { target: null, unresolved: true };
+    }
+
+    const target = rawTarget as Record<string, unknown>;
+    if (typeof target.required !== 'boolean') return { target: null, unresolved: true };
+
+    const { chapter_id: chapterId, draft_version: draftVersion } = approvalPreview;
+    if (!draft || chapterId !== draft.chapter_id || draftVersion !== resolveDraftVersion(draft)) {
+      return { target: null, unresolved: true };
+    }
+
+    if (!target.required) {
+      return target.locked_character_id === null && target.locked_character_name === null
+        ? { target: null, unresolved: false }
+        : { target: null, unresolved: true };
+    }
+
+    const lockedCharacterId = target.locked_character_id;
+    const rawLockedCharacterName = target.locked_character_name;
+    if (!Number.isInteger(lockedCharacterId)
+      || typeof lockedCharacterId !== 'number'
+      || lockedCharacterId <= 0
+      || typeof rawLockedCharacterName !== 'string') {
+      return { target: null, unresolved: true };
+    }
+
+    const lockedCharacterName = rawLockedCharacterName.trim();
+    if (!lockedCharacterName) return { target: null, unresolved: true };
+    return { target: { chapterId, draftVersion, lockedCharacterId, lockedCharacterName }, unresolved: false };
+  }
+
+  const openingPovTargetResolution = parseOpeningPovConfirmationTarget();
+  const openingPovTarget = openingPovTargetResolution.target;
+  const openingPovConfirmationUnresolved = openingPovTargetResolution.unresolved;
+  const openingPovConfirmed = Boolean(
+    openingPovTarget
+      && openingPovConfirmation?.chapterId === openingPovTarget.chapterId
+      && openingPovConfirmation.draftVersion === openingPovTarget.draftVersion
+      && openingPovConfirmation.lockedCharacterId === openingPovTarget.lockedCharacterId
+      && openingPovConfirmation.lockedCharacterName === openingPovTarget.lockedCharacterName,
+  );
+
+  useEffect(() => {
+    if (!openingPovConfirmation) return;
+    if (!openingPovTarget
+      || openingPovConfirmation.chapterId !== openingPovTarget.chapterId
+      || openingPovConfirmation.draftVersion !== openingPovTarget.draftVersion
+      || openingPovConfirmation.lockedCharacterId !== openingPovTarget.lockedCharacterId
+      || openingPovConfirmation.lockedCharacterName !== openingPovTarget.lockedCharacterName) {
+      setOpeningPovConfirmation(null);
+    }
+  }, [openingPovConfirmation, openingPovTarget?.chapterId, openingPovTarget?.draftVersion, openingPovTarget?.lockedCharacterId, openingPovTarget?.lockedCharacterName]);
+
   function previewIndex(change: { change_index?: number }, fallback: number): number {
     return typeof change.change_index === 'number' ? change.change_index : fallback;
   }
@@ -292,15 +437,20 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
 
   async function refreshApprovalConsistency(nextDraft: DraftResponse, characterIndexes: number[], foreshadowIndexes: number[]) {
     const requestId = ++consistencyRequestRef.current;
+    const expectedVersion = resolveDraftVersion(nextDraft);
     setConsistencyChecking(true);
     setConsistencyValidated(false);
     try {
       const result = await checkApprovalConsistency(nextDraft.chapter_id, {
-        draft_version: resolveDraftVersion(nextDraft),
+        draft_version: expectedVersion,
         selected_character_change_indexes: characterIndexes,
         selected_foreshadow_change_indexes: foreshadowIndexes,
       });
       if (consistencyRequestRef.current !== requestId) return;
+      if (result.draft_version !== expectedVersion) {
+        clearApprovalConsistency();
+        throw new Error(`一致性检查版本不一致：当前草稿为 v${expectedVersion}，返回为 v${result.draft_version}。请重试。`);
+      }
       setConsistencySummary(result.consistency_summary);
       setConsistencyWarnings(result.consistency_warnings);
       setConsistencyValidated(true);
@@ -335,6 +485,13 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
         getApprovalReadiness(nextDraft.chapter_id),
       ]);
       if (reviewPanelsRequestRef.current !== requestId) return;
+      if (preview.draft_version !== version || readiness.draft_version !== version) {
+        setApprovalPreview(null);
+        setApprovalReadiness(null);
+        clearApprovalConsistency();
+        setReviewPanelsError(`审批检查版本不一致：当前草稿为 v${version}，预览为 v${preview.draft_version}，准备度为 v${readiness.draft_version}。请重试。`);
+        return;
+      }
       setApprovalPreview(preview);
       setApprovalReadiness(readiness);
       if (!shouldPreserveSelection) initializeApprovalSelection(preview);
@@ -391,6 +548,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
         execution_context: frozenContext,
       });
       setChapter(created);
+      setOpeningPovConfirmation(null);
       setOutlineBeats(created.outline_beats);
       setOutlineContext(created.outline_context);
       setDraft(null);
@@ -426,6 +584,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
           execution_context: frozenContext,
         });
         setChapter(activeChapter);
+        setOpeningPovConfirmation(null);
         setOutlineBeats(activeChapter.outline_beats);
         setOutlineContext(activeChapter.outline_context);
         setDraft(null);
@@ -681,6 +840,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
     } catch (err) {
       if (apiErrorStatus(err) === 409) {
         setApprovalCommitState('idle');
+        setOpeningPovConfirmation(null);
         setError('服务器确认本章尚未写入正史，已重新加载审批检查，可确认后再次批准。');
         await refreshReviewStudioPanels(draft, true);
       } else {
@@ -693,7 +853,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
   }
 
   async function approveDraft() {
-    if (approvalCommitState !== 'idle' || !draft || !approvalPreview || !approvalReadiness || reviewPanelsLoading || reviewPanelsError || consistencyChecking || !consistencyValidated || consistencySummary?.status === 'blocked' || approvalPreview.version_conflict || approvalReadiness.status === 'blocked' || !isViewingLatestDraft()) return;
+    if (approvalCommitState !== 'idle' || !draft || !openingQualityIsCurrent(draft) || openingPovConfirmationUnresolved || (openingPovTarget && !openingPovConfirmed) || !approvalPreview || !approvalReadiness || reviewPanelsLoading || reviewPanelsError || consistencyChecking || !consistencyValidated || consistencySummary?.status === 'blocked' || approvalPreview.version_conflict || approvalReadiness.status === 'blocked' || !isViewingLatestDraft()) return;
     setWorking(true);
     setOperationHint('正在写入正史…');
     setError('');
@@ -703,6 +863,16 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
         draft_version: resolveDraftVersion(draft),
         selected_character_change_indexes: selectedCharacterChangeIndexes,
         selected_foreshadow_change_indexes: selectedForeshadowChangeIndexes,
+        ...(openingPovTarget && openingPovConfirmed && openingPovConfirmation
+          ? {
+              opening_pov_confirmation: {
+                confirmed: true,
+                draft_version: openingPovConfirmation.draftVersion,
+                locked_character_id: openingPovConfirmation.lockedCharacterId,
+                locked_character_name: openingPovConfirmation.lockedCharacterName,
+              },
+            }
+          : {}),
       });
       setApprovalCommitState('committed');
       await loadApprovalSettlement();
@@ -713,6 +883,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
         setError('正史写入请求的结果暂时未知。为避免重复写入，已锁定本章；请先核对写入结果。');
       } else if (status === 409) {
         setApprovalCommitState('idle');
+        setOpeningPovConfirmation(null);
         setApprovalPreview(null);
         setApprovalReadiness(null);
         clearApprovalConsistency();
@@ -753,6 +924,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
     setLocalWorld(settlement.overview);
     setGoal('');
     setChapter(null);
+    setOpeningPovConfirmation(null);
     setOutlineBeats([]);
     setOutlineContext({});
     setDraft(null);
@@ -933,14 +1105,16 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
   const totalPreviewChanges = approvalPreview ? approvalPreview.character_changes.length + approvalPreview.foreshadow_changes.length : 0;
   const selectedPreviewChanges = selectedCharacterChangeIndexes.length + selectedForeshadowChangeIndexes.length;
   const approvalBlockedByConsistency = consistencySummary?.status === 'blocked';
-  const approvalBlockedByReview = !approvalPreview || !approvalReadiness || Boolean(reviewPanelsError) || approvalPreview.version_conflict || approvalReadiness.status === 'blocked';
+  const approvalBlockedByOpeningQuality = !openingQualityIsCurrent(draft);
+  const approvalBlockedByOpeningPov = openingPovConfirmationUnresolved || Boolean(openingPovTarget && !openingPovConfirmed);
+  const approvalBlockedByReview = !approvalPreview || !approvalReadiness || Boolean(reviewPanelsError) || approvalPreview.version_conflict || approvalReadiness.status === 'blocked' || approvalBlockedByOpeningQuality;
   const approvalResultLocked = approvalCommitState !== 'idle';
   const settlementOnly = Boolean(recentApproval && settlement);
 
   return (
-    <section className="mx-auto max-w-6xl">
-      <div className="book-spread grid gap-8 p-6 md:grid-cols-[300px_1fr] md:p-8">
-        <aside className="space-y-6 md:border-r md:border-amber-900/15 md:pr-8">
+    <section className="studio-workbench">
+      <div className="studio-workbench-grid">
+        <aside className="studio-rail studio-navigation" role="region" aria-label="世界与章节导航">
           <button className="ghost-button -ml-4" onClick={onBack}>← 返回世界页</button>
           {chapter && !settlementOnly && (
             <button
@@ -956,9 +1130,10 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
               放弃当前章节
             </button>
           )}
-          <div>
+          <div className="studio-world-title">
             <p className="chapter-kicker">Writing Desk</p>
-            <h1 ref={titleRef} tabIndex={-1} className="mt-3 text-3xl font-black text-[#34210f]">创作台</h1>
+            <h1 ref={titleRef} tabIndex={-1} className="mt-2 text-2xl font-black text-[#34210f]">{localWorld.title}</h1>
+            <p className="ink-muted text-sm">世界版本 v{localWorld.world_version}</p>
           </div>
           {!settlementOnly && (
             <div className="book-card p-5">
@@ -971,21 +1146,30 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
               </ol>
             </div>
           )}
-          <div className="book-card p-5">
+          <section className="studio-navigation-section">
             <h2 className="font-black text-[#3b2511]">当前上下文</h2>
-            <p className="mt-3 ink-muted">世界进度：{localWorld.world_version}</p>
-            <p className="mt-2 ink-muted">POV：{localWorld.characters[0]?.name ?? '未设置'}</p>
-            <p className="mt-2 ink-muted">故事大纲进度：下一章第 {localWorld.approved_chapter_count + 1} 章</p>
-          </div>
+            <p className="mt-2 ink-muted">世界进度：{localWorld.world_version}</p>
+            <h2 className="mt-4 font-black text-[#3b2511]">章节与故事弧</h2>
+            <ul className="studio-compact-list">
+              <li>当前章节：{chapter ? chapter.title : `第 ${localWorld.approved_chapter_count + 1} 章待创建`}</li>
+              <li>故事弧：{localWorld.story_arc.find((item) => item.chapter_number === localWorld.approved_chapter_count + 1)?.summary ?? '尚无下一章摘要'}</li>
+            </ul>
+          </section>
+          <section className="studio-navigation-section">
+            <h2 className="font-black text-[#3b2511]">角色</h2>
+            <ul className="studio-compact-list">
+              {localWorld.characters.map((character) => <li key={character.id}><strong>{character.name}</strong> · {character.role_type}{character.role_type === 'protagonist' ? '（主角 / 推荐 POV）' : ''}</li>)}
+            </ul>
+          </section>
           {!settlementOnly && <ExecutionContextSummary context={chapter?.execution_context ?? executionContext} frozen={Boolean(chapter?.execution_context)} />}
-          <div className="book-card p-5">
-            <h3 className="font-black text-[#3b2511]">紧迫伏笔</h3>
-            <div className="mt-3 space-y-2">
-              {localWorld.foreshadows.map((item) => <p className="manuscript" key={item.id}>{item.title} · {item.status}</p>)}
-            </div>
-          </div>
+          <section className="studio-navigation-section">
+            <h2 className="font-black text-[#3b2511]">开放伏笔</h2>
+            <ul className="studio-compact-list">
+              {localWorld.foreshadows.filter((item) => item.status !== 'resolved' && item.status !== 'expired').map((item) => <li key={item.id}>{item.title} · {item.status}</li>)}
+            </ul>
+          </section>
         </aside>
-        <div className="space-y-5">
+        <main className="studio-main" role="region" aria-label="大纲与正文编辑">
           {!settlementOnly && (
           <div className="book-card p-5">
             <div className="mb-2 flex items-center justify-between">
@@ -1198,7 +1382,6 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
                   </button>
                 </div>
               )}
-              {approvalReadiness && <ApprovalReadinessPanel readiness={approvalReadiness} />}
               <section className="space-y-3 rounded-2xl bg-white/35 p-4">
                 <h3 className="font-black text-[#3b2511]">版本差异</h3>
                 {draftDiff ? (
@@ -1217,6 +1400,16 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
                   <p className="manuscript text-sm">当前草稿暂无上一版差异。</p>
                 )}
               </section>
+              <section className="space-y-3 rounded-2xl border border-amber-900/15 bg-amber-50/45 p-4">
+                <h3 className="font-black text-[#3b2511]">拟议变化</h3>
+                {draft.proposed_changes && Object.keys(draft.proposed_changes).length > 0 ? <pre className="manuscript overflow-auto whitespace-pre-wrap text-xs">{JSON.stringify(draft.proposed_changes, null, 2)}</pre> : <p className="manuscript text-sm">当前草稿没有拟议的世界状态变化。</p>}
+              </section>
+            </article>
+          )}
+        </main>
+        <aside className="studio-rail studio-inspector" role="region" aria-label="质量与 Canon 审批">
+          <OpeningQualityPanel draft={draft} />
+          {approvalReadiness && <ApprovalReadinessPanel readiness={approvalReadiness} />}
               {approvalPreview && (
                 <section className="space-y-3 rounded-2xl border border-amber-900/15 bg-amber-50/45 p-4">
                   <h3 className="font-black text-[#3b2511]">写入正史前确认</h3>
@@ -1238,6 +1431,36 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
                   )}
                   {approvalBlockedByConsistency && <p className="paper-error">存在阻塞项，请取消相关变化或重新修订草稿。</p>}
                   {approvalPreview.version_conflict && <p className="paper-error">世界版本已变化，请重新生成草稿。</p>}
+                  {openingPovConfirmationUnresolved && (
+                    <section className="paper-error" role="alert">
+                      首章 POV 确认目标无效或与当前章节/草稿版本不匹配，无法安全写入正史。请重新加载审批检查或修订草稿后重试。
+                    </section>
+                  )}
+                  {openingPovTarget && (
+                    <section className="rounded-xl bg-white/45 p-3 manuscript text-sm">
+                      <p>本章锁定 POV：{openingPovTarget.lockedCharacterName}</p>
+                      <p className="mt-1">当前草稿版本：v{openingPovTarget.draftVersion}</p>
+                      <label className="mt-3 flex items-start gap-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1 accent-amber-800"
+                          checked={openingPovConfirmed}
+                          disabled={approvalResultLocked || !isViewingLatestDraft()}
+                          onChange={(event) => {
+                            setOpeningPovConfirmation(event.target.checked
+                              ? {
+                                  chapterId: openingPovTarget.chapterId,
+                                  draftVersion: openingPovTarget.draftVersion,
+                                  lockedCharacterId: openingPovTarget.lockedCharacterId,
+                                  lockedCharacterName: openingPovTarget.lockedCharacterName,
+                                }
+                              : null);
+                          }}
+                        />
+                        <span>我确认本章锁定 POV：{openingPovTarget.lockedCharacterName}（限知第三人称），并以当前草稿版本 v{openingPovTarget.draftVersion} 写入正史</span>
+                      </label>
+                    </section>
+                  )}
                   {approvalPreview.character_changes.map((change, index) => {
                     const changeIndex = previewIndex(change, index);
                     return (
@@ -1270,48 +1493,6 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
                   })}
                 </section>
               )}
-              {draft.proposed_changes && (Object.keys(draft.proposed_changes).length > 0) && (
-                <div className="space-y-3">
-                  <h3 className="font-black text-[#3b2511]">📋 世界状态变化</h3>
-                  {/* Character updates */}
-                  {Array.isArray((draft.proposed_changes as any).characters) && (draft.proposed_changes as any).characters.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-bold text-[#5e3b1c]">🎭 角色变化</h4>
-                      {(draft.proposed_changes as any).characters.map((c: any, i: number) => {
-                        const charName = localWorld.characters?.find((ch: any) => ch.id === c.character_id)?.name ?? `角色#${c.character_id}`;
-                        return (
-                          <div key={i} className="rounded-xl bg-amber-50/60 p-3">
-                            <p className="font-bold text-[#3b2511]">{charName} <span className="text-xs font-normal text-amber-700">({c.status})</span></p>
-                            {c.current_goals && c.current_goals.length > 0 && (
-                              <ul className="mt-1 list-inside list-disc text-sm text-[#4a321e]">
-                                {c.current_goals.map((g: string, gi: number) => <li key={gi}>{g}</li>)}
-                              </ul>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {/* Foreshadow updates */}
-                  {Array.isArray((draft.proposed_changes as any).foreshadows) && (draft.proposed_changes as any).foreshadows.length > 0 && (
-                    <div className="space-y-2">
-                      <h4 className="text-sm font-bold text-[#5e3b1c]">🔮 伏笔推进</h4>
-                      {(draft.proposed_changes as any).foreshadows.map((f: any, i: number) => {
-                        const fsName = localWorld.foreshadows?.find((fs: any) => fs.id === f.foreshadow_id)?.title ?? `伏笔#${f.foreshadow_id}`;
-                        return (
-                          <div key={i} className="rounded-xl bg-purple-50/60 p-3">
-                            <p className="font-bold text-[#3b2511]">{fsName} <span className="text-xs font-normal text-purple-700">({f.status})</span></p>
-                            {f.description_note && <p className="manuscript mt-1 text-sm text-[#4a321e]">{f.description_note}</p>}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </article>
-          )}
-
           {critique && (
             <CriticReportPanel report={critique} working={working || !isViewingLatestDraft()} onReviseParagraph={reviseDraftParagraph} />
           )}
@@ -1322,12 +1503,12 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
 
           {draft && (
             <div className="flex flex-wrap gap-3">
-              <button className="primary-button" disabled={working || approvalResultLocked || reviewPanelsLoading || consistencyChecking || !consistencyValidated || !isViewingLatestDraft() || approvalBlockedByConsistency || approvalBlockedByReview} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '写入正史并更新世界'}</button>
-              <button className="secondary-button" disabled={working || approvalResultLocked || editMode || !isViewingLatestDraft()} onClick={rejectDraft}>驳回</button>
-              <button className="secondary-button" disabled={working || approvalResultLocked || editMode || !isViewingLatestDraft()} onClick={startEdit}>编辑正文</button>
+              <button className="primary-button" disabled={working || approvalResultLocked || reviewPanelsLoading || consistencyChecking || !consistencyValidated || !isViewingLatestDraft() || approvalBlockedByConsistency || approvalBlockedByReview || approvalBlockedByOpeningPov} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '写入正史并更新世界'}</button>
+              <button className="secondary-button" aria-label="驳回" disabled={working || approvalResultLocked || editMode || !isViewingLatestDraft()} onClick={rejectDraft}>驳回当前草稿</button>
+              <button className="secondary-button" aria-label="编辑正文" disabled={working || approvalResultLocked || editMode || !isViewingLatestDraft()} onClick={startEdit}>编辑当前正文</button>
             </div>
           )}
-        </div>
+        </aside>
       </div>
       {abandonConfirmState !== 'idle' && (
         <div

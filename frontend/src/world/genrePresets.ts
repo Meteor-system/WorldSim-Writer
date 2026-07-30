@@ -9,7 +9,7 @@ export type GenrePreset = WorldCreateRequest & {
 export const GENRE_PRESETS: GenrePreset[] = [
   {
     key: 'fantasy',
-    label: 'Fantasy',
+    label: '奇幻',
     description: '王权、魔法与古老预言交织的群像奇幻。',
     title: '雾冠王国',
     genre_template: 'fantasy',
@@ -52,7 +52,7 @@ export const GENRE_PRESETS: GenrePreset[] = [
   },
   {
     key: 'sci_fi',
-    label: 'Sci-Fi',
+    label: '科幻',
     description: '边境殖民地、企业秩序与失控科技构成的太空悬疑。',
     title: '群星边境',
     genre_template: 'sci_fi',
@@ -95,7 +95,7 @@ export const GENRE_PRESETS: GenrePreset[] = [
   },
   {
     key: 'modern',
-    label: 'Modern',
+    label: '现代都市',
     description: '都市现实、人情债与隐藏利益网络驱动的现代剧情。',
     title: '霓虹旧账',
     genre_template: 'modern',

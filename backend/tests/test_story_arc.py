@@ -57,7 +57,8 @@ def test_llm_client_mock_generates_ten_chapter_story_arc():
 
 
 def test_story_arc_client_call_does_not_force_json_object_response(monkeypatch):
-    captured_payloads = []
+    captured_requests = []
+    messages = [{'role': 'user', 'content': '返回数组'}]
 
     class FakeResponse:
         def raise_for_status(self):
@@ -65,21 +66,31 @@ def test_story_arc_client_call_does_not_force_json_object_response(monkeypatch):
 
         def json(self):
             return {
-                'choices': [
-                    {'message': {'content': json.dumps(valid_story_arc_payload())}}
+                'output': [
+                    {
+                        'type': 'message',
+                        'content': [
+                            {'type': 'output_text', 'text': json.dumps(valid_story_arc_payload())}
+                        ],
+                    }
                 ]
             }
 
-    def fake_post(*args, **kwargs):
-        captured_payloads.append(kwargs['json'])
+    def fake_post(url, *args, **kwargs):
+        captured_requests.append({'url': url, 'payload': kwargs['json']})
         return FakeResponse()
 
     monkeypatch.setattr('app.llm.client.httpx.post', fake_post)
 
-    chapters = LLMClient(mock=False).generate_story_arc([{'role': 'user', 'content': '返回数组'}])
+    chapters = LLMClient(mock=False).generate_story_arc(messages)
 
+    request = captured_requests[0]
     assert len(chapters) == 10
-    assert 'response_format' not in captured_payloads[0]
+    assert request['url'].endswith('/responses')
+    assert 'text' not in request['payload']
+    assert request['payload']['store'] is False
+    assert request['payload']['input'] == messages
+    assert 'response_format' not in request['payload']
 
 
 from app.event.models import EventLog

@@ -52,5 +52,6 @@ class ChapterDraft(Base):
     change_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     parent_draft_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     execution_context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    quality_report: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
 
     chapter: Mapped['Chapter'] = relationship('Chapter', back_populates='drafts')

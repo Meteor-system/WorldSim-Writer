@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { abandonChapter, apiRequest, approveChapter, checkApprovalConsistency, createChapter, editDraft, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalPreview, getApprovalReadiness, getChapterHistoryDetail, getDraftVersion, rejectDraft, reviseDraft, reviseParagraph, stashDraft, writeChapter } from '../api/client';
@@ -20,6 +20,15 @@ const executionContext: ChapterExecutionContext = {
   recent_events: [{ id: 4, event_type: 'chapter_approved', world_version_before: 1, world_version_after: 2, created_at: '2026-05-30T00:00:00Z' }],
   material_references: [],
 };
+
+const approvalPanelVersion = vi.hoisted(() => ({ current: 1 }));
+const approvalOpeningPovTarget = vi.hoisted(() => ({
+  current: {
+    required: false,
+    locked_character_id: null as number | null,
+    locked_character_name: null as string | null,
+  },
+}));
 
 const draftResponse: DraftResponse = {
   chapter_id: 11,
@@ -192,18 +201,21 @@ vi.mock('../api/client', () => ({
     change_summary: '重写第 1 段',
     parent_draft_version: 1,
   })),
-  reviseDraft: vi.fn(async () => ({
-    ...draftResponse,
-    draft_id: 102,
-    draft_version: 2,
-    title: '第一章 雨巷密谈（修订版）',
-    content: '修订版第一段：林砚没有立刻信任沈微霜，而是先以湿信试探她。\n\n第二段：沈微霜递来一封湿透的信。',
-    context_summary: '修订版补足林砚试探过程。',
-    review_hints: ['重新生成 Critic 报告确认高风险是否解除'],
-    change_type: 'revision',
-    change_summary: '补足林砚试探沈微霜的过程',
-    parent_draft_version: 1,
-  })),
+  reviseDraft: vi.fn(async () => {
+    approvalPanelVersion.current = 2;
+    return {
+      ...draftResponse,
+      draft_id: 102,
+      draft_version: 2,
+      title: '第一章 雨巷密谈（修订版）',
+      content: '修订版第一段：林砚没有立刻信任沈微霜，而是先以湿信试探她。\n\n第二段：沈微霜递来一封湿透的信。',
+      context_summary: '修订版补足林砚试探过程。',
+      review_hints: ['重新生成 Critic 报告确认高风险是否解除'],
+      change_type: 'revision',
+      change_summary: '补足林砚试探沈微霜的过程',
+      parent_draft_version: 1,
+    };
+  }),
   getDraftVersion: vi.fn(async (_chapterId: number, draftVersion: number) => (
     draftVersion === 1
       ? draftResponse
@@ -231,7 +243,8 @@ vi.mock('../api/client', () => ({
   })),
   getApprovalPreview: vi.fn(async () => ({
     chapter_id: 11,
-    draft_version: 1,
+    draft_version: approvalPanelVersion.current,
+    opening_pov_confirmation_target: approvalOpeningPovTarget.current,
     source_world_version: 1,
     current_world_version: 1,
     will_increment_world_version: true,
@@ -264,7 +277,7 @@ vi.mock('../api/client', () => ({
   })),
   getApprovalReadiness: vi.fn(async () => ({
     chapter_id: 11,
-    draft_version: 1,
+    draft_version: approvalPanelVersion.current,
     status: 'needs_review',
     summary: '存在建议复核项，请确认后再批准。',
     world_version: { source_world_version: 1, current_world_version: 1, matches: true },
@@ -352,8 +365,90 @@ function renderResumedStudio(
   );
 }
 
+const openingPovExecutionContext: ChapterExecutionContext = {
+  ...executionContext,
+  next_chapter_number: 1,
+};
+
+function openingPovDraft(draftVersion = 1): DraftResponse {
+  return {
+    ...draftResponse,
+    draft_id: draftVersion === 1 ? 101 : 102,
+    draft_version: draftVersion,
+    title: draftVersion === 1 ? '第一章 雨巷密谈' : '第一章 雨巷密谈（修订版）',
+    content: draftVersion === 1
+      ? draftResponse.content
+      : '修订版第一段：林砚在雨巷口审视湿信，没有越过自己的所知。\n\n第二段：沈微霜递来一封湿透的信。',
+    change_type: draftVersion === 1 ? 'generated' : 'revision',
+    change_summary: draftVersion === 1 ? null : '补足林砚限知视角',
+    parent_draft_version: draftVersion === 1 ? null : 1,
+    execution_context: openingPovExecutionContext,
+    outline_context: {
+      opening_contract: {
+        locked_pov: '林砚限知第三人称。',
+      },
+    },
+    quality_report: {
+      profile: 'opening_chapter',
+      status: 'pass',
+      validation_version: 5,
+      evaluated_draft_version: draftVersion,
+      current_draft_version: draftVersion,
+      checks: [
+        { label: '背景建立', status: 'pass' },
+        { label: '稳定 POV', status: 'pass' },
+      ],
+    },
+  };
+}
+
+function renderResumedOpeningPovStudio(
+  resumedDraft: DraftResponse = openingPovDraft(),
+  draftVersions: number[] = [resumedDraft.draft_version],
+) {
+  approvalOpeningPovTarget.current = {
+    required: true,
+    locked_character_id: 1,
+    locked_character_name: '林砚',
+  };
+  return render(
+    <StudioPage
+      world={world}
+      launchContext={{
+        resumeSession: {
+          chapter: {
+            id: resumedDraft.chapter_id,
+            world_id: 7,
+            title: resumedDraft.title,
+            status: 'reviewing',
+            draft_version: resumedDraft.draft_version,
+            approved_version: null,
+            base_world_version: 1,
+            approved_content: null,
+            chapter_goal: '推进雨巷密谈',
+            outline_beats: [],
+            outline_context: resumedDraft.outline_context ?? {},
+            critique_report: {},
+            execution_context: openingPovExecutionContext,
+          },
+          draft: resumedDraft,
+          draft_versions: draftVersions,
+        },
+      }}
+      onBack={vi.fn()}
+      onApproved={vi.fn()}
+    />,
+  );
+}
+
 afterEach(() => {
   cleanup();
+  approvalPanelVersion.current = 1;
+  approvalOpeningPovTarget.current = {
+    required: false,
+    locked_character_id: null,
+    locked_character_name: null,
+  };
   vi.mocked(apiRequest).mockClear();
   vi.mocked(abandonChapter).mockReset();
   vi.mocked(abandonChapter).mockResolvedValue({
@@ -391,6 +486,320 @@ afterEach(() => {
 });
 
 describe('StudioPage Review Studio 2.0 controls', () => {
+  it('renders the opening-chapter quality review in the three-column studio landmarks', () => {
+    const resumedDraft = {
+      ...draftResponse,
+      quality_report: {
+        opening_chapter: {
+          checks: [
+            { label: '背景建立', passed: true },
+            { label: '主角身份与动机', passed: true },
+            { label: '性格选择', passed: true },
+            { label: '冲突目标', passed: true },
+            { label: '稳定 POV', passed: true },
+            { label: '悬念钩子', passed: true },
+          ],
+        },
+      },
+    } as DraftResponse;
+
+    renderResumedStudio(resumedDraft);
+
+    expect(screen.getByRole('region', { name: '世界与章节导航' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '大纲与正文编辑' })).toBeInTheDocument();
+    const approvalRegion = screen.getByRole('region', { name: '质量与 Canon 审批' });
+    expect(approvalRegion).toBeInTheDocument();
+    expect(screen.getByText('首章质量')).toBeInTheDocument();
+    expect(screen.getByText('背景建立')).toBeInTheDocument();
+    expect(screen.getByText('主角身份与动机')).toBeInTheDocument();
+    expect(screen.getByText('性格选择')).toBeInTheDocument();
+    expect(screen.getByText('冲突目标')).toBeInTheDocument();
+    expect(screen.getByText('稳定 POV')).toBeInTheDocument();
+    expect(approvalRegion).toContainElement(screen.getByRole('button', { name: '写入正史并更新世界' }));
+  });
+
+  it('requires an explicit locked-POV confirmation before a resumed passing opening draft can be approved', async () => {
+    const user = userEvent.setup();
+    renderResumedOpeningPovStudio();
+
+    const approvalRegion = screen.getByRole('region', { name: '质量与 Canon 审批' });
+    expect(await within(approvalRegion).findByText('本章锁定 POV：林砚')).toBeInTheDocument();
+    expect(within(approvalRegion).getByText('当前草稿版本：v1')).toBeInTheDocument();
+    const confirmation = within(approvalRegion).getByRole('checkbox', {
+      name: '我确认本章锁定 POV：林砚（限知第三人称），并以当前草稿版本 v1 写入正史',
+    });
+    expect(confirmation).not.toBeChecked();
+
+    const approveButton = within(approvalRegion).getByRole('button', { name: '写入正史并更新世界' });
+    expect(approveButton).toBeDisabled();
+    await user.click(approveButton);
+
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
+  it('fail-closes approval when a required opening-POV target cannot be resolved', async () => {
+    approvalOpeningPovTarget.current = {
+      required: true,
+      locked_character_id: null,
+      locked_character_name: null,
+    };
+    renderResumedStudio(openingPovDraft());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('首章 POV 确认目标无效或与当前章节/草稿版本不匹配');
+    const approveButton = screen.getByRole('button', { name: '写入正史并更新世界' });
+    expect(approveButton).toBeDisabled();
+    await userEvent.setup().click(approveButton);
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
+  it('fail-closes approval without throwing when the opening-POV target required flag has an invalid runtime type', async () => {
+    approvalOpeningPovTarget.current = {
+      required: 'true',
+      locked_character_id: 1,
+      locked_character_name: '林砚',
+    } as never;
+    renderResumedStudio(openingPovDraft());
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('首章 POV 确认目标无效或与当前章节/草稿版本不匹配');
+    const approveButton = screen.getByRole('button', { name: '写入正史并更新世界' });
+    expect(approveButton).toBeDisabled();
+    await userEvent.setup().click(approveButton);
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
+  it('submits the locked-POV confirmation bound to the current resumed opening draft version', async () => {
+    const user = userEvent.setup();
+    renderResumedOpeningPovStudio();
+
+    const confirmation = await screen.findByRole('checkbox', {
+      name: '我确认本章锁定 POV：林砚（限知第三人称），并以当前草稿版本 v1 写入正史',
+    });
+    await user.click(confirmation);
+    await waitFor(() => expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: '写入正史并更新世界' }));
+
+    expect(approveChapter).toHaveBeenCalledWith(11, {
+      draft_version: 1,
+      selected_character_change_indexes: [0],
+      selected_foreshadow_change_indexes: [0],
+      opening_pov_confirmation: {
+        confirmed: true,
+        draft_version: 1,
+        locked_character_id: 1,
+        locked_character_name: '林砚',
+      },
+    });
+  });
+
+  it('invalidates an existing locked-POV confirmation when only the target name changes and submits the new name after reconfirmation', async () => {
+    const user = userEvent.setup();
+    renderResumedOpeningPovStudio();
+
+    const originalConfirmation = await screen.findByRole('checkbox', {
+      name: '我确认本章锁定 POV：林砚（限知第三人称），并以当前草稿版本 v1 写入正史',
+    });
+    await user.click(originalConfirmation);
+    expect(originalConfirmation).toBeChecked();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeEnabled();
+
+    approvalOpeningPovTarget.current = {
+      required: true,
+      locked_character_id: 1,
+      locked_character_name: '林砚·新名',
+    };
+    vi.mocked(reviseDraft).mockResolvedValueOnce(openingPovDraft());
+    await user.type(screen.getByLabelText('修订指令'), '重新加载锁定 POV 确认');
+    await user.click(screen.getByRole('button', { name: '生成修订版' }));
+
+    const renamedConfirmation = await screen.findByRole('checkbox', {
+      name: '我确认本章锁定 POV：林砚·新名（限知第三人称），并以当前草稿版本 v1 写入正史',
+    });
+    expect(renamedConfirmation).not.toBeChecked();
+    const approveButton = screen.getByRole('button', { name: '写入正史并更新世界' });
+    expect(approveButton).toBeDisabled();
+
+    await user.click(renamedConfirmation);
+    await waitFor(() => expect(approveButton).toBeEnabled());
+    await user.click(approveButton);
+
+    expect(approveChapter).toHaveBeenCalledWith(11, {
+      draft_version: 1,
+      selected_character_change_indexes: [0],
+      selected_foreshadow_change_indexes: [0],
+      opening_pov_confirmation: {
+        confirmed: true,
+        draft_version: 1,
+        locked_character_id: 1,
+        locked_character_name: '林砚·新名',
+      },
+    });
+  });
+
+  it('clears locked-POV confirmation after a v1 opening draft is revised into v2', async () => {
+    const user = userEvent.setup();
+    renderResumedOpeningPovStudio();
+
+    const v1Confirmation = await screen.findByRole('checkbox', {
+      name: '我确认本章锁定 POV：林砚（限知第三人称），并以当前草稿版本 v1 写入正史',
+    });
+    await user.click(v1Confirmation);
+    expect(v1Confirmation).toBeChecked();
+
+    approvalPanelVersion.current = 2;
+    vi.mocked(reviseDraft).mockResolvedValueOnce(openingPovDraft(2));
+    await user.type(screen.getByLabelText('修订指令'), '补足林砚限知视角');
+    await user.click(screen.getByRole('button', { name: '生成修订版' }));
+
+    expect(await screen.findByText('当前草稿：v2')).toBeInTheDocument();
+    const v2Confirmation = screen.getByRole('checkbox', {
+      name: '我确认本章锁定 POV：林砚（限知第三人称），并以当前草稿版本 v2 写入正史',
+    });
+    expect(v2Confirmation).not.toBeChecked();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeDisabled();
+  });
+
+  it('marks stale opening quality checks as inapplicable to the current draft and locally blocks approval', async () => {
+    const resumedDraft = {
+      ...draftResponse,
+      draft_id: 102,
+      draft_version: 2,
+      title: '第一章 雨巷密谈（修订版）',
+      content: '修订版第一段：林砚没有立刻信任沈微霜，而是先以湿信试探她。\n\n第二段：沈微霜递来一封湿透的信。',
+      change_type: 'revision',
+      change_summary: '补足林砚试探沈微霜的过程',
+      parent_draft_version: 1,
+      quality_report: {
+        profile: 'opening_chapter',
+        status: 'stale',
+        validation_version: 5,
+        evaluated_draft_version: 1,
+        current_draft_version: 2,
+        checks: [
+          { label: '背景建立', status: 'pass' },
+          { label: '主角身份与动机', status: 'pass' },
+          { label: '性格选择', status: 'pass' },
+          { label: '冲突目标', status: 'pass' },
+          { label: '稳定 POV', status: 'pass' },
+          { label: '悬念钩子', status: 'pass' },
+        ],
+      },
+    } as DraftResponse;
+    vi.mocked(getApprovalPreview).mockResolvedValueOnce({
+      chapter_id: 11,
+      draft_version: 2,
+      opening_pov_confirmation_target: {
+        required: false,
+        locked_character_id: null,
+        locked_character_name: null,
+      },
+      source_world_version: 1,
+      current_world_version: 1,
+      will_increment_world_version: true,
+      world_version_before: 1,
+      world_version_after: 2,
+      version_conflict: false,
+      warnings: [],
+      consistency_summary: { status: 'needs_review', total: 1, info_count: 0, warning_count: 1, blocking_count: 0 },
+      consistency_warnings: [],
+      character_changes: [],
+      foreshadow_changes: [],
+    });
+    vi.mocked(getApprovalReadiness).mockResolvedValueOnce({
+      chapter_id: 11,
+      draft_version: 2,
+      status: 'ready',
+      summary: '审批检查已就绪。',
+      world_version: { source_world_version: 1, current_world_version: 1, matches: true },
+      checks: [],
+      high_risk_items: [],
+    });
+
+    renderResumedStudio(resumedDraft, [1, 2]);
+
+    const approvalRegion = screen.getByRole('region', { name: '质量与 Canon 审批' });
+    expect(await within(approvalRegion).findByText('当前草稿未验证')).toBeInTheDocument();
+    expect(within(approvalRegion).getByText('基于 v1，不适用于当前 v2')).toBeInTheDocument();
+    expect(within(approvalRegion).queryByText('通过')).not.toBeInTheDocument();
+    expect(within(approvalRegion).getByRole('button', { name: '写入正史并更新世界' })).toBeDisabled();
+  });
+
+  it('treats a current-draft opening quality report without validation version as requiring reevaluation and prevents approval', async () => {
+    const user = userEvent.setup();
+    const resumedDraft = {
+      ...draftResponse,
+      quality_report: {
+        profile: 'opening_chapter',
+        status: 'pass',
+        evaluated_draft_version: 1,
+        checks: [
+          { label: '背景建立', status: 'pass' },
+          { label: '主角身份与动机', status: 'pass' },
+        ],
+      },
+    } as DraftResponse;
+
+    renderResumedStudio(resumedDraft);
+
+    const approvalRegion = screen.getByRole('region', { name: '质量与 Canon 审批' });
+    expect(await within(approvalRegion).findByText(/验证规则已更新|需重新评估/)).toBeInTheDocument();
+    expect(within(approvalRegion).queryByText('状态：通过 · opening_chapter')).not.toBeInTheDocument();
+    const approveButton = within(approvalRegion).getByRole('button', { name: '写入正史并更新世界' });
+    expect(approveButton).toBeDisabled();
+
+    await user.click(approveButton);
+
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
+  it('shows a pass opening-quality report for another draft version as expired and blocks approval', async () => {
+    const resumedDraft = {
+      ...draftResponse,
+      draft_id: 102,
+      draft_version: 2,
+      parent_draft_version: 1,
+      quality_report: {
+        profile: 'opening_chapter',
+        status: 'pass',
+        validation_version: 4,
+        evaluated_draft_version: 1,
+        current_draft_version: 1,
+        checks: [
+          { label: '背景建立', status: 'pass' },
+          { label: '主角身份与动机', status: 'pass' },
+        ],
+      },
+    } as DraftResponse;
+    vi.mocked(getApprovalPreview).mockResolvedValueOnce({ ...await getApprovalPreview(11), draft_version: 2 });
+    vi.mocked(getApprovalReadiness).mockResolvedValueOnce({ ...await getApprovalReadiness(11), draft_version: 2 });
+
+    renderResumedStudio(resumedDraft, [1, 2]);
+
+    const approvalRegion = screen.getByRole('region', { name: '质量与 Canon 审批' });
+    expect(await within(approvalRegion).findByText('状态：已过期 · opening_chapter')).toBeInTheDocument();
+    expect(within(approvalRegion).getAllByText('已过期')).toHaveLength(2);
+    expect(within(approvalRegion).getByRole('button', { name: '写入正史并更新世界' })).toBeDisabled();
+  });
+
+  it.each([
+    ['preview', 'approval preview'],
+    ['readiness', 'approval readiness'],
+  ] as const)('fails closed when %s belongs to a different draft version', async (mismatchedPanel, _panelLabel) => {
+    if (mismatchedPanel === 'preview') {
+      vi.mocked(getApprovalPreview).mockResolvedValueOnce({ ...await getApprovalPreview(11), draft_version: 2 });
+    } else {
+      vi.mocked(getApprovalReadiness).mockResolvedValueOnce({ ...await getApprovalReadiness(11), draft_version: 2 });
+    }
+
+    renderResumedStudio();
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('审批检查版本不一致');
+    expect(screen.queryByText('Approval Readiness')).not.toBeInTheDocument();
+    expect(screen.queryByText('写入正史前确认')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '写入正史并更新世界' })).toBeDisabled();
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
   it('requires explicit confirmation before abandoning and keeps the chapter when cancelled', async () => {
     const user = userEvent.setup();
     renderResumedStudio();
@@ -1354,6 +1763,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
   });
 
   it('generates a full-draft revision from review context and shows parent diff', async () => {
+    approvalPanelVersion.current = 2;
     const user = userEvent.setup();
     render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
 
@@ -1376,6 +1786,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
   });
 
   it('switches to parent draft as a read-only historical version and disables approval', async () => {
+    approvalPanelVersion.current = 2;
     const user = userEvent.setup();
     render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
 
@@ -1473,6 +1884,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
   });
 
   it('ignores a stale consistency response after switching away and back to the latest draft', async () => {
+    approvalPanelVersion.current = 2;
     const user = userEvent.setup();
     let resolveConsistency!: (value: Awaited<ReturnType<typeof checkApprovalConsistency>>) => void;
     vi.mocked(checkApprovalConsistency).mockImplementationOnce(async () => new Promise<Awaited<ReturnType<typeof checkApprovalConsistency>>>((resolve) => {
@@ -1511,6 +1923,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
   });
 
   it('keeps approval closed when consistency validation for the current selection fails', async () => {
+    approvalPanelVersion.current = 1;
     const user = userEvent.setup();
     vi.mocked(checkApprovalConsistency).mockRejectedValueOnce(new Error('一致性检查暂时失败'));
     render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
@@ -1528,7 +1941,32 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(approveChapter).not.toHaveBeenCalled();
   });
 
+  it('keeps approval closed when consistency response belongs to another draft version', async () => {
+    const user = userEvent.setup();
+    vi.mocked(checkApprovalConsistency).mockResolvedValueOnce({
+      chapter_id: 11,
+      draft_version: 2,
+      selected_change_indexes: { characters: [0], foreshadows: [] },
+      consistency_summary: { status: 'clear', total: 0, info_count: 0, warning_count: 0, blocking_count: 0 },
+      consistency_warnings: [],
+    });
+    render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
+
+    await user.type(screen.getByLabelText('章节目标'), '推进雨巷密谈');
+    await user.click(screen.getByRole('button', { name: '创建章节' }));
+    await user.click(await screen.findByRole('button', { name: '生成大纲' }));
+    await user.click(await screen.findByRole('button', { name: '基于大纲生成正文' }));
+    await user.click(await screen.findByRole('checkbox', { name: /伏笔：裂纹玉佩/ }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('一致性检查版本不一致：当前草稿为 v1，返回为 v2。请重试。');
+    const approveButton = screen.getByRole('button', { name: '写入正史并更新世界' });
+    expect(approveButton).toBeDisabled();
+    await user.click(approveButton);
+    expect(approveChapter).not.toHaveBeenCalled();
+  });
+
   it('keeps the current review panels when switching draft versions fails', async () => {
+    approvalPanelVersion.current = 2;
     const user = userEvent.setup();
     render(<StudioPage world={world} onBack={vi.fn()} onApproved={vi.fn()} />);
 
@@ -1568,6 +2006,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
   });
 
   it('submits only selected approval change indexes with the current draft version', async () => {
+    approvalPanelVersion.current = 1;
     const user = userEvent.setup();
     const onApproved = vi.fn();
     render(<StudioPage world={world} onBack={vi.fn()} onApproved={onApproved} />);

@@ -5,23 +5,55 @@ from sqlalchemy import select
 from app.character.models import Character
 from app.event.models import EventLog
 from app.foreshadow.models import Foreshadow, ForeshadowEvent
-from app.llm.schemas import ChapterGeneration, ProposedCharacterChange, ProposedForeshadowChange
+from app.llm.schemas import BeatCard, ChapterGeneration, ChapterOutline, OpeningContract, OpeningEvidence, ProposedCharacterChange, ProposedForeshadowChange
 from app.narrative import service as narrative_service
 from app.narrative.models import Chapter, ChapterDraft
+from app.narrative.schemas import ApproveRequest
 from app.world.models import World
+
+
+def opening_body() -> str:
+    return '\n\n'.join([
+        '林砚在灵井旁听见了第二个人的脚步声。雨水压低了青岚城的屋檐，废弃灵井却在巷尾吐出温热白雾；城里人人都说灵脉衰退只是旱灾，他知道那是谎话。',
+        '他是欠着师门药债的外门弟子，今夜原该回去照看师妹。可城主府的文书写明天亮前要带走她问话，林砚只能追查玉佩与失踪师兄的名字，哪怕这会把自己送进巡夜人的眼里。',
+        '巷口的药箱被雨水冲翻，他先扑进泥水把药瓶一只只捡回，又把割裂的手藏进袖中。沈微霜问他为何不逃，林砚只说师妹还在等药，这不是能算清的账。',
+        '灵井底下传来铁链拖地声，玉佩映出师兄惯用的云纹。林砚没有告诉沈微霜自己看见了什么，只沿着井壁摸到一道新鲜的靴印，听见城主府巡夜人的铜铃越来越近。',
+        '他必须在铜铃停在巷口前确认玉佩主人，否则师妹会被带走，师兄的失踪也会被埋进井里。林砚让沈微霜守住巷口，自己系紧绳索下井；他不确定她会不会出卖自己。',
+        '林砚的靴底刚离开井沿，铜铃便在雨幕外停住。巡夜人喊出他的名字，他只能从井壁渗出的血色水痕判断，下面等着他的不是师兄，而是一场早已布好的局。',
+    ])
+
+
+def opening_evidence() -> list[OpeningEvidence]:
+    return [
+        OpeningEvidence(check='background', paragraph_index=0, quote='废弃灵井却在巷尾吐出温热白雾'),
+        OpeningEvidence(check='protagonist_identity', paragraph_index=1, quote='欠着师门药债的外门弟子'),
+        OpeningEvidence(check='motivation', paragraph_index=1, quote='只能追查玉佩与失踪师兄的名字'),
+        OpeningEvidence(check='personality_evidence_plan', paragraph_index=2, quote='先扑进泥水把药瓶一只只捡回'),
+        OpeningEvidence(check='conflict_goal', paragraph_index=4, quote='必须在铜铃停在巷口前确认玉佩主人'),
+        OpeningEvidence(check='locked_pov', paragraph_index=3, quote='林砚没有告诉沈微霜自己看见了什么'),
+    ]
 
 
 class DraftVersioningLLMClient:
     def __init__(self):
         self.revision_calls = 0
         self.paragraph_calls = 0
+        self.outline_messages = []
+        self.generation_messages = []
         self.revision_messages = []
         self.paragraph_messages = []
 
+    def generate_outline(self, messages):
+        # Keep planning traffic separate from writer traffic so call-order tests
+        # can distinguish the first-chapter outline from generation/revision calls.
+        self.outline_messages.append(messages)
+        return opening_outline()
+
     def generate_chapter(self, messages):
+        self.generation_messages.append(messages)
         return ChapterGeneration(
             title='第一章 雨巷密谈',
-            draft_content='第一段：林砚停在雨巷口。\n\n第二段：沈微霜递来一封湿透的信。\n\n第三段：远处城主府钟声响起。',
+            draft_content=opening_body(),
             context_summary='林砚与沈微霜在雨巷交换线索。',
             review_hints=['确认第二段的信息揭示是否过快'],
             proposed_character_changes=[
@@ -30,6 +62,7 @@ class DraftVersioningLLMClient:
             proposed_foreshadow_changes=[
                 ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='湿信推进玉佩线索')
             ],
+            opening_evidence=opening_evidence(),
         )
 
     def revise_paragraph(self, messages):
@@ -47,19 +80,17 @@ class DraftVersioningLLMClient:
     def revise_chapter(self, messages):
         self.revision_calls += 1
         self.revision_messages = messages
-        joined = '\n'.join(message['content'] for message in messages)
-        return ChapterGeneration(
-            title='第一章 雨巷密谈（修订版）',
-            draft_content=f'修订版正文：{joined[:24]}',
-            context_summary='根据审稿意见强化林砚的试探过程。',
-            review_hints=['确认修订后 Critic 高风险是否解除'],
-            proposed_character_changes=[
-                ProposedCharacterChange(character_id=1, status='谨慎试探沈微霜', current_goals=['验证湿信来源'])
-            ],
-            proposed_foreshadow_changes=[
-                ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='修订版继续推进玉佩线索')
-            ],
-        )
+        generation = self.generate_chapter(messages)
+        generation.title = '第一章 雨巷密谈（修订版）'
+        generation.context_summary = '根据审稿意见强化林砚的试探过程。'
+        generation.review_hints = ['确认修订后 Critic 高风险是否解除']
+        generation.proposed_character_changes = [
+            ProposedCharacterChange(character_id=1, status='谨慎试探沈微霜', current_goals=['验证湿信来源'])
+        ]
+        generation.proposed_foreshadow_changes = [
+            ProposedForeshadowChange(foreshadow_id=1, status='advanced', description_note='修订版继续推进玉佩线索')
+        ]
+        return generation
 
 
 def register_and_create_world(client):
@@ -70,8 +101,8 @@ def register_and_create_world(client):
     return token, world['id']
 
 
-def create_reviewing_draft(client, token, world_id, monkeypatch):
-    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: DraftVersioningLLMClient())
+def create_reviewing_draft(client, token, world_id, monkeypatch, llm_client=None):
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: llm_client or DraftVersioningLLMClient())
     response = client.post(
         f'/worlds/{world_id}/chapters/draft',
         json={'chapter_goal': '推进雨巷密谈'},
@@ -86,6 +117,33 @@ def get_drafts_for_chapter(db_session, chapter_id):
         db_session.scalars(
             select(ChapterDraft).where(ChapterDraft.chapter_id == chapter_id).order_by(ChapterDraft.draft_version)
         )
+    )
+
+
+def opening_outline() -> ChapterOutline:
+    return ChapterOutline(
+        beats=[
+            BeatCard(
+                beat_id='opening-1',
+                summary='林砚在雨夜灵井追查裂纹玉佩。',
+                pov_character='林砚',
+                location='青岚城灵井',
+                emotional_arc='焦灼 -> 警觉',
+                key_dialogue_hints=['师妹还在等药。'],
+            )
+        ],
+        core_conflict='林砚必须在巡夜人抵达前确认玉佩主人的身份。',
+        pov_suggestion='林砚',
+        pacing='雨夜悬疑，逐段增加巡夜压力。',
+        role_skill_targets=['林砚'],
+        opening_contract=OpeningContract(
+            background='青岚城灵脉衰退，废弃灵井在雨夜发出异响。',
+            protagonist_identity='林砚是为师门债务奔走的外门弟子。',
+            motivation='他必须查清裂纹玉佩为何牵连师门，避免师妹被城主府带走。',
+            personality_evidence_plan='让林砚先救下被雨水冲走的药箱，再隐瞒手伤继续追查。',
+            conflict_goal='在巡夜人发现前确认暗井中的玉佩是否属于失踪师兄。',
+            locked_pov='林砚限知第三人称。',
+        ),
     )
 
 
@@ -190,7 +248,8 @@ def test_stash_creates_snapshot_version_with_same_content(client, db_session, mo
 
 def test_paragraph_rewrite_only_changes_target_paragraph_and_versions_draft(client, db_session, monkeypatch):
     token, world_id = register_and_create_world(client)
-    draft = create_reviewing_draft(client, token, world_id, monkeypatch)
+    fake_client = DraftVersioningLLMClient()
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch, fake_client)
 
     response = client.post(
         f"/chapters/{draft['chapter_id']}/draft/paragraph",
@@ -200,16 +259,18 @@ def test_paragraph_rewrite_only_changes_target_paragraph_and_versions_draft(clie
 
     assert response.status_code == 200
     payload = response.json()
-    expected_content = (
-        '第一段：林砚停在雨巷口。\n\n'
-        '第二段：沈微霜没有立刻交出湿信，而是先问林砚是否愿意承担真相的代价。\n\n'
-        '第三段：远处城主府钟声响起。'
-    )
+    expected_paragraphs = draft['content'].split('\n\n')
+    expected_paragraphs[1] = '第二段：沈微霜没有立刻交出湿信，而是先问林砚是否愿意承担真相的代价。'
+    expected_content = '\n\n'.join(expected_paragraphs)
     assert payload['draft_version'] == 2
     assert payload['content'] == expected_content
     assert payload['change_type'] == 'paragraph_rewrite'
     assert payload['parent_draft_version'] == 1
     assert '增强第二段的悬念与人物试探' in payload['change_summary']
+    system_prompt = fake_client.paragraph_messages[0]['content']
+    assert '有效 JSON' in system_prompt
+    assert '"paragraph"' in system_prompt
+    assert '"revision_note"' in system_prompt
 
     db_session.expire_all()
     chapter = db_session.get(Chapter, draft['chapter_id'])
@@ -220,6 +281,45 @@ def test_paragraph_rewrite_only_changes_target_paragraph_and_versions_draft(clie
     assert world.world_version == 1
     assert drafts[0].content == draft['content']
     assert drafts[1].content == expected_content
+
+
+def test_mock_paragraph_rewrite_api_versions_and_preserves_non_target_paragraphs(client, db_session, monkeypatch):
+    monkeypatch.setenv('LLM_MOCK', 'true')
+    narrative_service.get_settings.cache_clear()
+    token, world_id = register_and_create_world(client)
+    source_world_version = db_session.get(World, world_id).world_version
+    draft = client.post(
+        f'/worlds/{world_id}/chapters/draft',
+        json={'chapter_goal': '推进当前冲突'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+    assert draft.status_code == 200
+    draft_payload = draft.json()
+    original_paragraphs = draft_payload['content'].split('\n\n')
+    target_index = len(original_paragraphs) // 2
+    current_paragraph = original_paragraphs[target_index]
+    instruction = '提高这一段的紧张感，同时保留已有信息。'
+
+    response = client.post(
+        f"/chapters/{draft_payload['chapter_id']}/draft/paragraph",
+        json={'paragraph_index': target_index, 'mode': 'rewrite', 'instruction': instruction},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    revised_paragraphs = payload['content'].split('\n\n')
+    assert payload['draft_version'] == draft_payload['draft_version'] + 1
+    assert payload['parent_draft_version'] == draft_payload['draft_version']
+    assert payload['change_type'] == 'paragraph_rewrite'
+    assert revised_paragraphs[:target_index] == original_paragraphs[:target_index]
+    assert revised_paragraphs[target_index + 1:] == original_paragraphs[target_index + 1:]
+    assert revised_paragraphs[target_index] != current_paragraph
+    assert current_paragraph in revised_paragraphs[target_index]
+    assert instruction in revised_paragraphs[target_index]
+
+    db_session.expire_all()
+    assert db_session.get(World, world_id).world_version == source_world_version
 
 
 def test_archived_world_rejects_draft_lifecycle_mutations(client, db_session, monkeypatch):
@@ -401,8 +501,8 @@ def test_abandon_releases_active_session_preserves_draft_history_and_blocks_chap
     assert diff_response.status_code == 200
     assert diff_response.json()['from_content'] == draft['content']
     assert diff_response.json()['to_content'] == edited_content
-    assert {'type': 'removed', 'text': '第一段：林砚停在雨巷口。'} in diff_response.json()['diff_lines']
-    assert {'type': 'added', 'text': '第一段：林砚停在雨巷口，掌心的玉佩微微发烫。'} in diff_response.json()['diff_lines']
+    assert {'type': 'removed', 'text': draft['content'].split('\n\n')[0]} in diff_response.json()['diff_lines']
+    assert {'type': 'added', 'text': edited_content.split('\n\n')[0]} in diff_response.json()['diff_lines']
 
     blocked_responses = [
         client.get(f"/chapters/{draft['chapter_id']}/approval-preview", headers=headers),
@@ -412,7 +512,11 @@ def test_abandon_releases_active_session_preserves_draft_history_and_blocks_chap
             json={'draft_version': 2},
             headers=headers,
         ),
-        client.post(f"/chapters/{draft['chapter_id']}/approve", headers=headers, json={}),
+        client.post(
+            f"/chapters/{draft['chapter_id']}/approve",
+            headers=headers,
+            json={},
+        ),
         client.post(
             f"/chapters/{draft['chapter_id']}/reject",
             json={'feedback': '废弃后不应驳回'},
@@ -508,8 +612,8 @@ def test_draft_diff_endpoint_returns_line_changes_between_versions(client, monke
     assert payload['to_version'] == 2
     assert payload['from_content'] == draft['content']
     assert payload['to_content'] == edited_content
-    assert {'type': 'removed', 'text': '第一段：林砚停在雨巷口。'} in payload['diff_lines']
-    assert {'type': 'added', 'text': '第一段：林砚停在雨巷口，掌心的玉佩微微发烫。'} in payload['diff_lines']
+    assert {'type': 'removed', 'text': draft['content'].split('\n\n')[0]} in payload['diff_lines']
+    assert {'type': 'added', 'text': edited_content.split('\n\n')[0]} in payload['diff_lines']
 
 
 def test_approval_preview_describes_world_state_changes_before_commit(client, monkeypatch):
@@ -632,6 +736,106 @@ def test_full_draft_revision_creates_new_version_from_review_context_without_mut
     assert '本章执行上下文' in joined_messages
 
 
+def test_full_revision_of_opening_chapter_requires_fresh_opening_evidence(client, db_session, monkeypatch):
+    class OpeningRevisionLLM(DraftVersioningLLMClient):
+        def generate_outline(self, messages):
+            return opening_outline()
+
+        def generate_chapter(self, messages):
+            from test_narrative_approval import opening_body
+
+            generation = super().generate_chapter(messages)
+            generation.draft_content = opening_body()
+            generation.opening_evidence = [
+                OpeningEvidence(check='background', paragraph_index=0, quote='废弃灵井却在巷尾吐出温热白雾'),
+                OpeningEvidence(check='protagonist_identity', paragraph_index=1, quote='欠着师门药债的外门弟子'),
+                OpeningEvidence(check='motivation', paragraph_index=1, quote='只能追查玉佩与失踪师兄的名字'),
+                OpeningEvidence(check='personality_evidence_plan', paragraph_index=2, quote='先扑进泥水把药瓶一只只捡回'),
+                OpeningEvidence(check='conflict_goal', paragraph_index=4, quote='必须在铜铃停在巷口前确认玉佩主人'),
+                OpeningEvidence(check='locked_pov', paragraph_index=3, quote='林砚没有告诉沈微霜自己看见了什么'),
+            ]
+            return generation
+
+        def revise_chapter(self, messages):
+            self.revision_calls += 1
+            self.revision_messages = messages
+            generation = self.generate_chapter(messages)
+            generation.title = '第一章 暗井回声（修订版）'
+            return generation
+
+    token, world_id = register_and_create_world(client)
+    fake_client = OpeningRevisionLLM()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: fake_client)
+    draft = create_reviewing_draft(
+        client,
+        token,
+        world_id,
+        monkeypatch,
+        fake_client,
+    )
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/draft/revise",
+        json={'instruction': '在不改变开篇承诺的前提下润色全文。'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['draft_version'] == 2
+    assert payload['quality_report']['profile'] == 'opening_chapter'
+    assert payload['quality_report']['status'] == 'pass'
+    assert payload['quality_report']['evaluated_draft_version'] == 2
+    joined_messages = '\n'.join(message['content'] for message in fake_client.revision_messages)
+    assert 'opening_evidence' in joined_messages
+
+
+def test_full_revision_of_opening_chapter_without_evidence_cannot_reuse_old_pass(client, monkeypatch):
+    class MissingOpeningEvidenceRevisionLLM(DraftVersioningLLMClient):
+        def generate_outline(self, messages):
+            return opening_outline()
+
+        def generate_chapter(self, messages):
+            from test_narrative_approval import opening_body
+
+            generation = super().generate_chapter(messages)
+            generation.draft_content = opening_body()
+            generation.opening_evidence = [
+                OpeningEvidence(check='background', paragraph_index=0, quote='废弃灵井却在巷尾吐出温热白雾'),
+                OpeningEvidence(check='protagonist_identity', paragraph_index=1, quote='欠着师门药债的外门弟子'),
+                OpeningEvidence(check='motivation', paragraph_index=1, quote='只能追查玉佩与失踪师兄的名字'),
+                OpeningEvidence(check='personality_evidence_plan', paragraph_index=2, quote='先扑进泥水把药瓶一只只捡回'),
+                OpeningEvidence(check='conflict_goal', paragraph_index=4, quote='必须在铜铃停在巷口前确认玉佩主人'),
+                OpeningEvidence(check='locked_pov', paragraph_index=3, quote='林砚没有告诉沈微霜自己看见了什么'),
+            ]
+            return generation
+
+        def revise_chapter(self, messages):
+            self.revision_calls += 1
+            self.revision_messages = messages
+            generation = self.generate_chapter(messages)
+            generation.opening_evidence = []
+            return generation
+
+    token, world_id = register_and_create_world(client)
+    fake_client = MissingOpeningEvidenceRevisionLLM()
+    monkeypatch.setattr(narrative_service, 'LLMClient', lambda: fake_client)
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch, fake_client)
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/draft/revise",
+        json={'instruction': '重写全文，但不要改变开篇信息。'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['draft_version'] == 2
+    assert payload['quality_report']['profile'] == 'opening_chapter'
+    assert payload['quality_report']['status'] == 'fail'
+    assert payload['quality_report']['evaluated_draft_version'] == 2
+
+
 def test_get_exact_draft_version_returns_requested_version(client, monkeypatch):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)
@@ -659,7 +863,7 @@ def test_get_exact_draft_version_returns_requested_version(client, monkeypatch):
     assert missing.status_code == 404
 
 
-def test_late_revision_cannot_create_draft_after_chapter_is_approved(client, db_session, monkeypatch):
+def test_late_revision_cannot_create_draft_after_chapter_is_approved(client, db_session, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)
     user = db_session.get(World, world_id).owner
@@ -667,7 +871,12 @@ def test_late_revision_cannot_create_draft_after_chapter_is_approved(client, db_
     class ApprovingRevisionLLM(DraftVersioningLLMClient):
         def revise_chapter(self, messages):
             generation = super().revise_chapter(messages)
-            approved = narrative_service.approve_chapter(db_session, user, draft['chapter_id'])
+            approved = narrative_service.approve_chapter(
+                db_session,
+                user,
+                draft['chapter_id'],
+                ApproveRequest.model_validate(opening_approval_payload(draft)),
+            )
             assert approved.status == 'approved'
             return generation
 
@@ -698,7 +907,7 @@ def test_late_revision_cannot_create_draft_after_chapter_is_approved(client, db_
     assert db_session.query(EventLog).filter_by(world_id=world_id, event_type='chapter_approved').count() == 1
 
 
-def test_late_paragraph_revision_cannot_create_draft_after_chapter_is_approved(client, db_session, monkeypatch):
+def test_late_paragraph_revision_cannot_create_draft_after_chapter_is_approved(client, db_session, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)
     user = db_session.get(World, world_id).owner
@@ -706,7 +915,12 @@ def test_late_paragraph_revision_cannot_create_draft_after_chapter_is_approved(c
     class ApprovingParagraphLLM(DraftVersioningLLMClient):
         def revise_paragraph(self, messages):
             revision = super().revise_paragraph(messages)
-            approved = narrative_service.approve_chapter(db_session, user, draft['chapter_id'])
+            approved = narrative_service.approve_chapter(
+                db_session,
+                user,
+                draft['chapter_id'],
+                ApproveRequest.model_validate(opening_approval_payload(draft)),
+            )
             assert approved.status == 'approved'
             return revision
 
@@ -737,10 +951,14 @@ def test_late_paragraph_revision_cannot_create_draft_after_chapter_is_approved(c
     assert db_session.query(EventLog).filter_by(world_id=world_id, event_type='chapter_approved').count() == 1
 
 
-def test_revision_rejects_approved_chapter(client, monkeypatch):
+def test_revision_rejects_approved_chapter(client, monkeypatch, opening_approval_payload):
     token, world_id = register_and_create_world(client)
     draft = create_reviewing_draft(client, token, world_id, monkeypatch)
-    approve = client.post(f"/chapters/{draft['chapter_id']}/approve", headers={'Authorization': f'Bearer {token}'})
+    approve = client.post(
+        f"/chapters/{draft['chapter_id']}/approve",
+        json=opening_approval_payload(draft),
+        headers={'Authorization': f'Bearer {token}'},
+    )
     assert approve.status_code == 200
 
     response = client.post(

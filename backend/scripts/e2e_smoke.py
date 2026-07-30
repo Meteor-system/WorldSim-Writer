@@ -405,9 +405,47 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
         preview = _step_json(summary, 'approval_preview', lambda: client.get(f'/chapters/{chapter_id}/approval-preview', headers=headers))
         if _has_failed(summary):
             return summary
-        if not _require_fields(summary, 'approval_preview', preview, ['version_conflict']):
+        if not _require_fields(summary, 'approval_preview', preview, ['version_conflict', 'opening_pov_confirmation_target']):
             return summary
         if not _require_bool_fields(summary, 'approval_preview', preview, ['version_conflict']):
+            return summary
+        opening_pov_confirmation_target = preview.get('opening_pov_confirmation_target')
+        if not isinstance(opening_pov_confirmation_target, dict):
+            summary['failed_step'] = 'approval_preview'
+            summary['error'] = 'INVALID_FIELD_TYPES'
+            summary['invalid_fields'] = ['opening_pov_confirmation_target']
+            return summary
+        if not _require_paths(
+            summary,
+            'approval_preview',
+            preview,
+            [
+                'opening_pov_confirmation_target.required',
+                'opening_pov_confirmation_target.locked_character_id',
+                'opening_pov_confirmation_target.locked_character_name',
+            ],
+        ):
+            return summary
+        if not _require_bool_paths(summary, 'approval_preview', preview, ['opening_pov_confirmation_target.required']):
+            return summary
+        if opening_pov_confirmation_target.get('required') is not True:
+            summary['failed_step'] = 'approval_preview'
+            summary['error'] = 'INVALID_FIELD_VALUES'
+            summary['invalid_fields'] = ['opening_pov_confirmation_target.required']
+            return summary
+        if not _require_int_path(summary, 'approval_preview', preview, 'opening_pov_confirmation_target.locked_character_id'):
+            return summary
+        locked_character_id = opening_pov_confirmation_target.get('locked_character_id')
+        if locked_character_id <= 0:
+            summary['failed_step'] = 'approval_preview'
+            summary['error'] = 'INVALID_FIELD_VALUES'
+            summary['invalid_fields'] = ['opening_pov_confirmation_target.locked_character_id']
+            return summary
+        locked_character_name = opening_pov_confirmation_target.get('locked_character_name')
+        if not isinstance(locked_character_name, str) or not locked_character_name.strip():
+            summary['failed_step'] = 'approval_preview'
+            summary['error'] = 'INVALID_FIELD_TYPES'
+            summary['invalid_fields'] = ['opening_pov_confirmation_target.locked_character_name']
             return summary
         if not _require_list_of_dicts(summary, 'approval_preview', preview, 'character_changes'):
             return summary
@@ -422,6 +460,11 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             'character_changes': character_change_count,
             'foreshadow_changes': foreshadow_change_count,
             'proposed_change_count': proposed_change_count,
+            'opening_pov_confirmation_target': {
+                'required': opening_pov_confirmation_target.get('required'),
+                'locked_character_id': locked_character_id,
+                'locked_character_name': locked_character_name,
+            },
             'blocked': preview_blocked,
         }
         if preview_blocked:
@@ -490,7 +533,23 @@ def run_smoke(client: httpx.Client | None = None, email: str | None = None, pass
             summary['error'] = 'APPROVAL_CONSISTENCY_BLOCKED'
             return summary
 
-        approved = _step_json(summary, 'approve', lambda: client.post(f'/chapters/{chapter_id}/approve', json={'draft_version': draft_version}, headers=headers))
+        approved = _step_json(
+            summary,
+            'approve',
+            lambda: client.post(
+                f'/chapters/{chapter_id}/approve',
+                json={
+                    'draft_version': draft_version,
+                    'opening_pov_confirmation': {
+                        'confirmed': True,
+                        'draft_version': draft_version,
+                        'locked_character_id': locked_character_id,
+                        'locked_character_name': locked_character_name,
+                    },
+                },
+                headers=headers,
+            ),
+        )
         if _has_failed(summary):
             return summary
         if not _require_fields(summary, 'approve', approved, ['status', 'approved_version']):

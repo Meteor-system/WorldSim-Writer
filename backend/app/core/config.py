@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='forbid')
+    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8-sig', extra='forbid')
 
     database_url: str = Field(alias='DATABASE_URL')
     secret_key: str = Field(alias='SECRET_KEY')
@@ -14,7 +14,9 @@ class Settings(BaseSettings):
     llm_base_url: AnyHttpUrl = Field(alias='LLM_BASE_URL')
     llm_api_key: str = Field(alias='LLM_API_KEY')
     llm_model: str = Field(alias='LLM_MODEL')
-    llm_timeout_seconds: int = Field(default=60, alias='LLM_TIMEOUT_SECONDS')
+    llm_api_mode: Literal['responses', 'chat_completions'] = Field(default='responses', alias='LLM_API_MODE')
+    llm_timeout_seconds: int = Field(default=60, ge=1, le=300, alias='LLM_TIMEOUT_SECONDS')
+    llm_read_timeout_seconds: int = Field(default=300, ge=1, le=1800, alias='LLM_READ_TIMEOUT_SECONDS')
     llm_mock: bool = Field(default=False, alias='LLM_MOCK')
     frontend_origin: str = Field(default='http://localhost:5173', alias='FRONTEND_ORIGIN')
     log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = Field(default='INFO', alias='LOG_LEVEL')

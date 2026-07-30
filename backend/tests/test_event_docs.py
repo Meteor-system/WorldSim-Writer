@@ -18,7 +18,10 @@ def test_event_type_docs_use_lower_snake_case_for_chapter_approval():
 def test_env_example_documents_mock_llm_mode_for_e2e_smoke():
     env_example = (REPO_ROOT / 'backend' / '.env.example').read_text(encoding='utf-8')
 
-    assert 'LLM_MOCK=false' in env_example
+    assert 'LLM_MOCK=true' in env_example
+    assert 'LLM_API_MODE=responses' in env_example
+    assert 'LLM_TIMEOUT_SECONDS=60' in env_example
+    assert 'LLM_READ_TIMEOUT_SECONDS=300' in env_example
 
 
 def test_production_api_runtime_docs_lock_safe_defaults_and_proxy_boundary():

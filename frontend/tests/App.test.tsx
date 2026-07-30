@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AUTH_EXPIRED_EVENT, AUTH_TOKEN_KEY } from '../src/api/client';
 import { App } from '../src/App';
 
 vi.mock('../src/auth/AuthPage', () => ({
@@ -51,6 +52,50 @@ describe('App', () => {
     expect(screen.getByText('WorldSim-Writer')).toBeInTheDocument();
     expect(screen.getByText('登录')).toBeInTheDocument();
     expect(screen.getByText('注册')).toBeInTheDocument();
+  });
+
+  it('returns from the authenticated bookshelf or Studio to AuthPage on an authentication expiration event', async () => {
+    localStorage.setItem(AUTH_TOKEN_KEY, 'fake-token');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: '进入测试 Studio' }));
+    window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+
+    expect(await screen.findByText('登录')).toBeInTheDocument();
+    expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBeNull();
+    expect(screen.queryByRole('button', { name: '退出登录' })).not.toBeInTheDocument();
+  });
+
+  it('does not leave the authenticated view for a non-authentication event', () => {
+    localStorage.setItem(AUTH_TOKEN_KEY, 'fake-token');
+    render(<App />);
+
+    window.dispatchEvent(new CustomEvent('worldsim:request-failed'));
+
+    expect(screen.getByRole('button', { name: '进入测试 Studio' })).toBeInTheDocument();
+    expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBe('fake-token');
+  });
+
+  it('manually logs out and clears authenticated UI state', async () => {
+    localStorage.setItem(AUTH_TOKEN_KEY, 'fake-token');
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole('button', { name: '退出登录' }));
+
+    expect(await screen.findByText('登录')).toBeInTheDocument();
+    expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBeNull();
+  });
+
+  it('removes the expiration listener when unmounted', () => {
+    localStorage.setItem(AUTH_TOKEN_KEY, 'fake-token');
+    const { unmount } = render(<App />);
+
+    unmount();
+    window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
+
+    expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBe('fake-token');
   });
 
   it('exits Studio and forwards an abandon refresh signal for the same world', async () => {

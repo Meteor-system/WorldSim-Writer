@@ -13,7 +13,10 @@ import type {
   WorldCreationMaterialReference,
 } from './types';
 import {
+  AUTH_EXPIRED_EVENT,
+  AUTH_TOKEN_KEY,
   abandonChapter,
+  apiRequest,
   approveChapter,
   checkApprovalConsistency,
   compareWorldSnapshots,
@@ -138,6 +141,70 @@ describe('auth API helpers', () => {
     ]);
     expect(bodies[0].raw_text).toBeUndefined();
     expect(bodies[1].raw_text).toBeUndefined();
+  });
+});
+
+describe('authentication expiration lifecycle', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.restoreAllMocks();
+  });
+
+  it('expires a protected session once on concurrent 401 responses while preserving error details', async () => {
+    localStorage.setItem(AUTH_TOKEN_KEY, 'fake-token');
+    const onExpired = vi.fn();
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(new Response(JSON.stringify({ detail: 'UNAUTHORIZED' }), { status: 401 }))));
+
+    const results = await Promise.allSettled([apiRequest('/worlds'), apiRequest('/worlds')]);
+
+    expect(results).toEqual([
+      expect.objectContaining({ status: 'rejected', reason: expect.objectContaining({ message: 'UNAUTHORIZED', status: 401 }) }),
+      expect.objectContaining({ status: 'rejected', reason: expect.objectContaining({ message: 'UNAUTHORIZED', status: 401 }) }),
+    ]);
+    await expect(apiRequest('/worlds')).rejects.toMatchObject({ message: 'UNAUTHORIZED', status: 401 });
+    expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBeNull();
+    expect(onExpired).toHaveBeenCalledTimes(1);
+    window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+  });
+
+  it.each([403, 409, 422, 500])('retains the token and does not emit expiration for HTTP %i', async (status) => {
+    localStorage.setItem(AUTH_TOKEN_KEY, 'fake-token');
+    const onExpired = vi.fn();
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: `HTTP ${status}` }), { status })));
+
+    await expect(apiRequest('/worlds')).rejects.toMatchObject({ message: `HTTP ${status}`, status });
+    expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBe('fake-token');
+    expect(onExpired).not.toHaveBeenCalled();
+    window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+  });
+
+  it('retains the token and does not emit expiration for network errors', async () => {
+    localStorage.setItem(AUTH_TOKEN_KEY, 'fake-token');
+    const onExpired = vi.fn();
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Network unavailable')));
+
+    await expect(apiRequest('/worlds')).rejects.toThrow('Network unavailable');
+    expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBe('fake-token');
+    expect(onExpired).not.toHaveBeenCalled();
+    window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+  });
+
+  it.each([
+    ['login', login],
+    ['register', register],
+  ])('%s 401 retains an existing session without expiration event', async (_name, request) => {
+    localStorage.setItem(AUTH_TOKEN_KEY, 'fake-token');
+    const onExpired = vi.fn();
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: '凭据无效' }), { status: 401 })));
+
+    await expect(request({ email: 'writer@example.com', password: 'wrong-password' })).rejects.toMatchObject({ message: '凭据无效', status: 401 });
+    expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBe('fake-token');
+    expect(onExpired).not.toHaveBeenCalled();
+    window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   });
 });
 

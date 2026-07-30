@@ -1,4 +1,5 @@
 import json
+import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
@@ -13,12 +14,50 @@ class BeatCard(BaseModel):
     key_dialogue_hints: list[str]
 
 
+class OpeningContract(BaseModel):
+    background: str
+    protagonist_identity: str
+    motivation: str
+    personality_evidence_plan: str
+    conflict_goal: str
+    locked_pov: str
+
+    @field_validator(
+        'background',
+        'protagonist_identity',
+        'motivation',
+        'personality_evidence_plan',
+        'conflict_goal',
+        'locked_pov',
+    )
+    @classmethod
+    def validate_required_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError('must not be blank')
+        return stripped
+
+
+class OpeningEvidence(BaseModel):
+    check: Literal[
+        'background',
+        'protagonist_identity',
+        'motivation',
+        'personality_evidence_plan',
+        'conflict_goal',
+        'locked_pov',
+    ]
+    paragraph_index: int = Field(ge=0)
+    quote: str = Field(min_length=1)
+
+
 class ChapterOutline(BaseModel):
     beats: list[BeatCard]
     core_conflict: str
     pov_suggestion: str | None = None
     pacing: str
     role_skill_targets: list[str]
+    opening_contract: OpeningContract | None = None
 
 
 class StoryArcChapter(BaseModel):
@@ -65,6 +104,120 @@ class WorldCreationDraftPayload(BaseModel):
     @classmethod
     def validate_followup_questions(cls, value: list[str]) -> list[str]:
         return [question.strip() for question in value if question.strip()][:3]
+
+
+WORLD_CREATION_DRAFT_JSON_SCHEMA = {
+    'type': 'object',
+    'additionalProperties': False,
+    'properties': {
+        'draft': {
+            'type': 'object',
+            'additionalProperties': False,
+            'properties': {
+                'title': {'type': 'string'},
+                'genre_template': {'type': 'string'},
+                'truth_canon': {'type': 'string'},
+                'tone_profile': {
+                    'type': 'object',
+                    'additionalProperties': False,
+                    'properties': {
+                        'style': {'type': 'string'},
+                        'pacing': {'type': 'string'},
+                        'theme': {'type': 'string'},
+                    },
+                    'required': ['style', 'pacing', 'theme'],
+                },
+                'starter_assets': {
+                    'type': 'object',
+                    'additionalProperties': False,
+                    'properties': {
+                        'characters': {
+                            'type': 'array',
+                            'items': {
+                                'type': 'object',
+                                'additionalProperties': False,
+                                'properties': {
+                                    'name': {'type': 'string'},
+                                    'role_type': {'type': 'string'},
+                                    'status': {'type': 'string'},
+                                    'public_profile': {
+                                        'type': 'object',
+                                        'additionalProperties': False,
+                                        'properties': {
+                                            'identity': {'type': 'string'},
+                                            'skill': {'type': 'string'},
+                                            'public_motivation': {'type': 'string'},
+                                        },
+                                        'required': ['identity', 'skill', 'public_motivation'],
+                                    },
+                                    'hidden_traits': {
+                                        'type': 'object',
+                                        'additionalProperties': False,
+                                        'properties': {
+                                            'secret': {'type': 'string'},
+                                            'fear': {'type': 'string'},
+                                            'private_agenda': {'type': 'string'},
+                                            'weakness': {'type': 'string'},
+                                        },
+                                        'required': ['secret', 'fear', 'private_agenda', 'weakness'],
+                                    },
+                                    'destiny_flag': {'type': 'string'},
+                                    'current_goals': {'type': 'array', 'items': {'type': 'string'}},
+                                },
+                                'required': [
+                                    'name', 'role_type', 'status', 'public_profile', 'hidden_traits',
+                                    'destiny_flag', 'current_goals',
+                                ],
+                            },
+                        },
+                        'relations': {
+                            'type': 'array',
+                            'items': {
+                                'type': 'object',
+                                'additionalProperties': False,
+                                'properties': {
+                                    'source_index': {'type': 'integer'},
+                                    'target_index': {'type': 'integer'},
+                                    'relation_type': {'type': 'string'},
+                                    'intensity': {'type': 'integer', 'enum': [1, 2, 3, 4, 5]},
+                                    'visibility': {'type': 'string'},
+                                },
+                                'required': ['source_index', 'target_index', 'relation_type', 'intensity', 'visibility'],
+                            },
+                        },
+                        'foreshadows': {
+                            'type': 'array',
+                            'items': {
+                                'type': 'object',
+                                'additionalProperties': False,
+                                'properties': {
+                                    'title': {'type': 'string'},
+                                    'description': {'type': 'string'},
+                                    'foreshadow_type': {'type': 'string'},
+                                    'status': {'type': 'string', 'enum': ['planted', 'advanced', 'resolved', 'expired']},
+                                    'urgency_level': {'type': 'integer', 'enum': [1, 2, 3, 4, 5]},
+                                    'related_character_indexes': {'type': 'array', 'items': {'type': 'integer'}},
+                                    'expected_resolution_window': {'type': 'string'},
+                                },
+                                'required': [
+                                    'title', 'description', 'foreshadow_type', 'status', 'urgency_level',
+                                    'related_character_indexes', 'expected_resolution_window',
+                                ],
+                            },
+                        },
+                    },
+                    'required': ['characters', 'relations', 'foreshadows'],
+                },
+            },
+            'required': ['title', 'genre_template', 'truth_canon', 'tone_profile', 'starter_assets'],
+        },
+        'first_chapter_goal': {'type': 'string'},
+        'generation_notes': {'type': 'array', 'items': {'type': 'string'}},
+        'safety_notes': {'type': 'array', 'items': {'type': 'string'}},
+        'followup_questions': {'type': 'array', 'items': {'type': 'string'}},
+    },
+    'required': ['draft', 'first_chapter_goal', 'generation_notes', 'safety_notes', 'followup_questions'],
+}
 
 
 class CritiqueIssue(BaseModel):
@@ -171,13 +324,39 @@ class ChapterGeneration(BaseModel):
     review_hints: list[str]
     proposed_character_changes: list[ProposedCharacterChange]
     proposed_foreshadow_changes: list[ProposedForeshadowChange]
+    opening_evidence: list[OpeningEvidence] = Field(default_factory=list)
+
+
+class ParagraphRevision(BaseModel):
+    paragraph: str = Field(min_length=1)
+    revision_note: str | None = None
+
+    @field_validator('paragraph')
+    @classmethod
+    def validate_paragraph(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError('must not be blank')
+        if re.search(r'\r?\n[ \t]*\r?\n', stripped):
+            raise ValueError('must contain exactly one paragraph')
+        return stripped
 
 
 def _load_json(raw_text: str) -> Any:
+    text = raw_text.strip()
+    if not text:
+        raise ValueError('MODEL_RESPONSE_INVALID')
+
     try:
-        return json.loads(raw_text)
-    except json.JSONDecodeError as exc:
-        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+        return json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        fence_match = re.fullmatch(r'```(?:json|JSON)?\n(.+?)\n```', text, flags=re.DOTALL)
+        if not fence_match:
+            raise ValueError('MODEL_RESPONSE_INVALID') from None
+        try:
+            return json.loads(fence_match.group(1))
+        except (TypeError, json.JSONDecodeError):
+            raise ValueError('MODEL_RESPONSE_INVALID') from None
 
 
 def parse_chapter_generation(raw_text: str) -> ChapterGeneration:
@@ -185,6 +364,14 @@ def parse_chapter_generation(raw_text: str) -> ChapterGeneration:
         payload = _load_json(raw_text)
         return ChapterGeneration.model_validate(payload)
     except ValidationError as exc:
+        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+
+
+def parse_paragraph_revision(raw_text: str) -> ParagraphRevision:
+    try:
+        payload = _load_json(raw_text)
+        return ParagraphRevision.model_validate(payload)
+    except (ValidationError, ValueError) as exc:
         raise ValueError('MODEL_RESPONSE_INVALID') from exc
 
 

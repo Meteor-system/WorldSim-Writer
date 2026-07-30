@@ -634,6 +634,8 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
   const [creationMaterialError, setCreationMaterialError] = useState('');
   const [worldCreationDraftGoal, setWorldCreationDraftGoal] = useState('');
   const [activeChapterSession, setActiveChapterSession] = useState<ActiveChapterSessionResponse | null>(null);
+  const [activeChapterSessionWorldId, setActiveChapterSessionWorldId] = useState<number | null>(null);
+  const currentActiveChapterSession = activeChapterSessionWorldId === world?.id ? activeChapterSession : null;
   const [expandedStoryArcChapters, setExpandedStoryArcChapters] = useState<number[]>([]);
   const [tab, setTab] = useState<Tab>('overview');
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -663,6 +665,17 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
     setSerialPlanLoading(false);
     setSerialPlanError('');
     setAnalysisLoaded(false);
+  }
+
+  function clearActiveChapterSession() {
+    setActiveChapterSession(null);
+    setActiveChapterSessionWorldId(null);
+  }
+
+  function storeActiveChapterSession(worldId: number, session: ActiveChapterSessionResponse) {
+    const resumableSession = session.chapter || session.recent_approval ? session : null;
+    setActiveChapterSession(resumableSession);
+    setActiveChapterSessionWorldId(resumableSession ? worldId : null);
   }
 
   async function refreshNextPrep(worldId: number) {
@@ -783,7 +796,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
     ]);
     resetNarrativeData();
     setWorld(overview);
-    setActiveChapterSession(activeSession?.chapter || activeSession?.recent_approval ? activeSession : null);
+    storeActiveChapterSession(worldId, activeSession);
     setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
     setShowCreationForm(false);
     setSelectedExecutionContext(null);
@@ -803,6 +816,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
         : loadedWorlds.find((item) => item.id === preferredWorldId);
       if (loadedWorlds.length === 0) {
         setWorld(null);
+        clearActiveChapterSession();
         setShowCreationForm(true);
         void loadSeedLibrary();
       } else if (preferredWorld) {
@@ -811,6 +825,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
         await openWorld(loadedWorlds[0].id);
       } else {
         setWorld(null);
+        clearActiveChapterSession();
         setShowCreationForm(false);
       }
     } catch (err) {
@@ -830,7 +845,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
       setWorld(overview);
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
-      setActiveChapterSession(null);
+      clearActiveChapterSession();
       setSelectedExecutionContext(null);
       setCreationMaterialReferences([]);
       setCreationMaterialError('');
@@ -852,6 +867,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
       setWorld(overview);
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
+      clearActiveChapterSession();
       setCreationMaterialReferences([]);
       setCreationMaterialError('');
       setWorldCreationDraftGoal('');
@@ -873,6 +889,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
       setWorld(overview);
       setWorlds((current) => [...current.filter((item) => item.id !== overview.id), overview]);
       setShowCreationForm(false);
+      clearActiveChapterSession();
       setCreationMaterialReferences([]);
       setCreationMaterialError('');
       setWorldCreationDraftGoal(firstChapterGoal);
@@ -920,6 +937,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
 
   function returnToBookshelf() {
     setWorld(null);
+    clearActiveChapterSession();
     setShowCreationForm(false);
     setArchiveError('');
     setCreationMaterialReferences([]);
@@ -929,6 +947,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
 
   function startNewWorld() {
     setWorld(null);
+    clearActiveChapterSession();
     setShowCreationForm(true);
     setCreationMaterialReferences([]);
     setCreationMaterialError('');
@@ -949,6 +968,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
       }
       setCreationMaterialReferences(references);
       setWorld(null);
+      clearActiveChapterSession();
       setShowCreationForm(true);
       setWorldCreationDraftGoal('');
       void loadSeedLibrary();
@@ -980,7 +1000,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
   }
 
   function resumeActiveChapterIfPresent(): boolean {
-    if (!activeChapterSession?.chapter) return false;
+    if (!currentActiveChapterSession?.chapter) return false;
     resumeActiveChapter();
     return true;
   }
@@ -1028,19 +1048,19 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
   }
 
   function resumeActiveChapter() {
-    if (!world || !activeChapterSession?.chapter) return;
-    const activeChapter = activeChapterSession.chapter;
+    if (!world || !currentActiveChapterSession?.chapter) return;
+    const activeChapter = currentActiveChapterSession.chapter;
     onEnterStudio(world, {
       initialChapterGoal: activeChapter.chapter_goal ?? undefined,
       executionContext: activeChapter.execution_context ?? undefined,
-      autoDraftFirstChapter: !activeChapterSession.draft,
-      resumeSession: activeChapterSession,
+      autoDraftFirstChapter: !currentActiveChapterSession.draft,
+      resumeSession: currentActiveChapterSession,
     });
   }
 
   function viewRecentApprovalSettlement() {
-    if (!world || !activeChapterSession?.recent_approval) return;
-    onEnterStudio(world, { recentApproval: activeChapterSession.recent_approval });
+    if (!world || !currentActiveChapterSession?.recent_approval) return;
+    onEnterStudio(world, { recentApproval: currentActiveChapterSession.recent_approval });
   }
 
   useEffect(() => {
@@ -1200,23 +1220,23 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
                 {labelWorldVersion(world.world_version)} · {labelGenre(world.genre_template)} · {labelStatus(world.status)}
               </p>
               <p className="manuscript mt-8 text-lg">{world.truth_canon}</p>
-              {activeChapterSession?.chapter && !isArchivedWorld && (
+              {currentActiveChapterSession?.chapter && !isArchivedWorld && (
                 <article className="mt-6 rounded-3xl border-2 border-amber-900/20 bg-amber-100/80 p-5 shadow-sm" aria-label="进行中章节入口">
                   <p className="chapter-kicker">Studio 草稿已保留</p>
-                  <h2 className="mt-2 text-2xl font-black text-[#34210f]">继续{activeChapterSession.draft ? '审阅' : '生成'}「{activeChapterSession.chapter.title}」</h2>
-                  <p className="manuscript mt-2 text-sm text-[#5e3b1c]">已恢复到 {activeChapterSession.chapter.status} 阶段；不会创建重复章节，也不会自动写入正史或推进世界进度。</p>
+                  <h2 className="mt-2 text-2xl font-black text-[#34210f]">继续{currentActiveChapterSession.draft ? '审阅' : '生成'}「{currentActiveChapterSession.chapter.title}」</h2>
+                  <p className="manuscript mt-2 text-sm text-[#5e3b1c]">已恢复到 {currentActiveChapterSession.chapter.status} 阶段；不会创建重复章节，也不会自动写入正史或推进世界进度。</p>
                   <button className="primary-button mt-4" type="button" onClick={resumeActiveChapter}>继续进入 Studio</button>
                 </article>
               )}
-              {activeChapterSession?.recent_approval && !activeChapterSession.chapter && (
+              {currentActiveChapterSession?.recent_approval && !currentActiveChapterSession.chapter && (
                 <article className="mt-6 rounded-3xl border-2 border-emerald-700/20 bg-emerald-50/80 p-5 shadow-sm" aria-label="最近世界推进结算入口">
                   <p className="chapter-kicker">最近正史结算</p>
-                  <h2 className="mt-2 text-2xl font-black text-[#203b20]">查看「{activeChapterSession.recent_approval.title}」的世界推进结算</h2>
-                  <p className="manuscript mt-2 text-sm text-emerald-950">本章已写入正史并推进到第 {activeChapterSession.recent_approval.world_version_after} 版。这里只恢复只读结算，不会再次批准或写入任何世界变化。</p>
+                  <h2 className="mt-2 text-2xl font-black text-[#203b20]">查看「{currentActiveChapterSession.recent_approval.title}」的世界推进结算</h2>
+                  <p className="manuscript mt-2 text-sm text-emerald-950">本章已写入正史并推进到第 {currentActiveChapterSession.recent_approval.world_version_after} 版。这里只恢复只读结算，不会再次批准或写入任何世界变化。</p>
                   <button className="primary-button mt-4" type="button" onClick={viewRecentApprovalSettlement}>查看最近世界推进结算</button>
                 </article>
               )}
-              {worldCreationDraftGoal && !activeChapterSession?.chapter && !isArchivedWorld && (
+              {worldCreationDraftGoal && !currentActiveChapterSession?.chapter && !isArchivedWorld && (
                 <article className="mt-6 rounded-3xl border-2 border-amber-900/20 bg-amber-100/80 p-5 shadow-sm" aria-label="创建草稿第一章入口">
                   <p className="chapter-kicker">创建草稿</p>
                   <h2 className="mt-2 text-2xl font-black text-[#34210f]">生成第一章草稿并进入 Studio</h2>
@@ -1225,7 +1245,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
                   <button className="primary-button mt-4" type="button" onClick={launchFirstChapterQuickStart}>生成第一章草稿并进入 Studio</button>
                 </article>
               )}
-              {shouldShowFirstChapterOnboarding && !worldCreationDraftGoal && !activeChapterSession?.chapter && (
+              {shouldShowFirstChapterOnboarding && !worldCreationDraftGoal && !currentActiveChapterSession?.chapter && (
                 <FirstChapterOnboardingCard
                   arcLoading={arcLoading}
                   quickStartGoal={firstChapterQuickStartGoal}
@@ -1237,7 +1257,7 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
               <WorldOperationsDashboard
                 world={world}
                 isArchivedWorld={isArchivedWorld}
-                hasActiveChapter={Boolean(activeChapterSession?.chapter)}
+                hasActiveChapter={Boolean(currentActiveChapterSession?.chapter)}
                 onContinue={() => {
                   if (resumeActiveChapterIfPresent()) return;
                   const baseContext = selectedExecutionContext

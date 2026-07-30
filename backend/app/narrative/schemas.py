@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.llm.schemas import BeatCard
 
@@ -180,6 +180,24 @@ class DraftResponse(BaseModel):
     outline_context: dict | None = None
     critique_report: dict | None = None
     execution_context: dict | None = None
+    quality_report: dict = Field(default_factory=dict)
+
+
+class OpeningPovConfirmation(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    confirmed: bool
+    draft_version: int = Field(ge=1)
+    locked_character_id: int = Field(ge=1)
+    locked_character_name: str = Field(min_length=1)
+
+    @field_validator('locked_character_name')
+    @classmethod
+    def strip_locked_character_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError('locked_character_name must not be blank')
+        return value
 
 
 class ApproveRequest(BaseModel):
@@ -188,6 +206,7 @@ class ApproveRequest(BaseModel):
     draft_version: int | None = None
     selected_character_change_indexes: list[int] | None = None
     selected_foreshadow_change_indexes: list[int] | None = None
+    opening_pov_confirmation: OpeningPovConfirmation | None = None
 
 
 class ConsistencyWarning(BaseModel):

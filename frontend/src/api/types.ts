@@ -1074,6 +1074,30 @@ export type CritiqueResponse = {
   status: string;
 };
 
+export type QualityReportCheck = {
+  check?: string;
+  label: string;
+  status?: string;
+  message?: string | null;
+  paragraph_index?: number | null;
+  quote?: string | null;
+  passed?: boolean;
+};
+
+export type QualityReport = {
+  profile?: string;
+  status?: string;
+  validation_version?: number;
+  evaluated_draft_version?: number;
+  current_draft_version?: number;
+  paragraph_count?: number;
+  character_count?: number;
+  checks?: QualityReportCheck[];
+  opening_chapter?: {
+    checks: QualityReportCheck[];
+  };
+};
+
 export type DraftResponse = {
   chapter_id: number;
   draft_id: number;
@@ -1093,6 +1117,7 @@ export type DraftResponse = {
   outline_beats?: BeatCard[];
   outline_context?: Record<string, unknown>;
   critique_report?: CritiqueReport;
+  quality_report?: QualityReport;
   execution_context?: ChapterExecutionContext | null;
 };
 
@@ -1127,10 +1152,18 @@ export type ApprovalPreviewChange = {
   after: Record<string, unknown>;
 };
 
+export type OpeningPovConfirmation = {
+  confirmed: boolean;
+  draft_version: number;
+  locked_character_id: number;
+  locked_character_name: string;
+};
+
 export type ApproveRequest = {
   draft_version?: number;
   selected_character_change_indexes?: number[];
   selected_foreshadow_change_indexes?: number[];
+  opening_pov_confirmation?: OpeningPovConfirmation;
 };
 
 export type ConsistencySeverity = 'info' | 'warning' | 'blocking';
@@ -1165,6 +1198,11 @@ export type ApprovalConsistencyResponse = {
 export type ApprovalPreviewResponse = {
   chapter_id: number;
   draft_version: number;
+  opening_pov_confirmation_target: {
+    required: boolean;
+    locked_character_id: number | null;
+    locked_character_name: string | null;
+  };
   source_world_version: number;
   current_world_version: number;
   will_increment_world_version: boolean;
