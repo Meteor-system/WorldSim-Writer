@@ -172,6 +172,7 @@ function openingQualityIsCurrent(draft: DraftResponse | null): boolean {
 function OpeningQualityPanel({ draft }: { draft: DraftResponse | null }) {
   const report = draft?.quality_report;
   const checks = report?.checks ?? report?.opening_chapter?.checks ?? [];
+  const advisories = report?.advisories ?? [];
   const currentDraftVersion = draft?.draft_version;
   const validationVersionOutdated = report?.profile === 'opening_chapter'
     && report.validation_version !== OPENING_QUALITY_VALIDATION_VERSION;
@@ -214,12 +215,31 @@ function OpeningQualityPanel({ draft }: { draft: DraftResponse | null }) {
                     <span className="text-sm font-bold text-[#80501f]">{openingQualityStatus(check.status, check.passed, stale)}</span>
                   </div>
                   {check.message && <p className="manuscript mt-1 text-sm">{check.message}</p>}
-                  {(typeof check.paragraph_index === 'number' || check.quote) && <p className="manuscript mt-1 text-xs ink-muted">{typeof check.paragraph_index === 'number' ? `第 ${check.paragraph_index + 1} 段` : ''}{check.paragraph_index !== undefined && check.quote ? ' · ' : ''}{check.quote ? `证据：${check.quote}` : ''}</p>}
+                  {(typeof check.paragraph_index === 'number' || check.quote) && <p className="manuscript mt-1 text-xs ink-muted">{typeof check.paragraph_index === 'number' ? `第 ${check.paragraph_index + 1} 段` : ''}{typeof check.paragraph_index === 'number' && check.quote ? ' · ' : ''}{check.quote ? `证据：${check.quote}` : ''}</p>}
+                  {typeof check.corrected_index === 'number' && <p className="manuscript mt-1 text-xs ink-muted">自动校正：第 {check.corrected_index + 1} 段</p>}
                 </li>
               ))}
             </ul>
           ) : (
             <p className="manuscript text-sm">报告未包含可展示的检查项。</p>
+          )}
+          {advisories.length > 0 && (
+            <section className="mt-4 rounded-xl bg-amber-50/60 p-3" aria-labelledby="opening-quality-advisories-title">
+              <h3 id="opening-quality-advisories-title" className="font-black text-[#3b2511]">非阻断建议</h3>
+              <p className="manuscript mt-1 text-xs ink-muted">以下提示仅供修订参考，不影响首章质量硬门禁或审批。</p>
+              <ul className="mt-3 space-y-3">
+                {advisories.map((advisory, index) => (
+                  <li key={`${advisory.check}-${index}`} className="rounded-lg bg-white/50 p-3">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <strong>{advisory.label}</strong>
+                      <span className="text-sm font-bold text-[#80501f]">状态：{advisory.state}</span>
+                    </div>
+                    {advisory.message && <p className="manuscript mt-1 text-sm">{advisory.message}</p>}
+                    {advisory.unglossed_terms && advisory.unglossed_terms.length > 0 && <p className="manuscript mt-1 text-xs ink-muted">术语样本：{advisory.unglossed_terms.join('、')}</p>}
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
         </>
       )}

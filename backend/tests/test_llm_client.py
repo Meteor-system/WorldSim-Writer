@@ -1,4 +1,6 @@
 import json
+import logging
+import re
 
 import httpx
 import pytest
@@ -7,7 +9,18 @@ from app.character.models import Character
 from app.core.config import Settings
 from app.foreshadow.models import Foreshadow
 from app.llm.client import LLMClient
-from app.llm.schemas import parse_chapter_generation, parse_paragraph_revision, parse_world_creation_draft
+from app.llm.schemas import (
+    _DIAGNOSTIC_SNIPPET_LIMIT,
+    _shape_snippet,
+    parse_chapter_generation,
+    parse_chapter_outline,
+    parse_character_arc_report,
+    parse_critique_report,
+    parse_literary_critic_report,
+    parse_paragraph_revision,
+    parse_story_arc,
+    parse_world_creation_draft,
+)
 from app.narrative.models import Chapter, ChapterDraft
 from app.narrative.service import (
     build_character_arc_report_messages,
@@ -188,6 +201,81 @@ def test_parse_chapter_generation_accepts_valid_json():
 def test_parse_chapter_generation_rejects_non_json():
     with pytest.raises(ValueError, match='MODEL_RESPONSE_INVALID'):
         parse_chapter_generation('not json')
+
+
+@pytest.mark.parametrize(
+    "raw_text",
+    [
+        '{"message":"ordinary benign prose 你好世界 123"}',
+        '{"password":"p@ssw0rd", "token":"tok_live_abc", "client_secret":"secret-value", "cookie":"session=abc"}',
+        "https://user:password@example.test/path?access_token=abc123&query=private",
+        "!@#$%^&*()_+-=[]{};:'\\\",.<>/?|~`",
+        "sk-!@#$%^&*()_+-=",
+        "https://user:password@example.test/path?access_token=abc123&query=private",
+        "\u2605\u2728\u2764\ufe0f\U0001f680",
+        "\x00\x01\x1f\x7f",
+        "\t\n\r   ",
+    ],
+)
+def test_shape_snippet_is_irreversible_and_uses_only_safe_markers(raw_text):
+    snippet = _shape_snippet(raw_text)
+
+    assert len(snippet) <= _DIAGNOSTIC_SNIPPET_LIMIT
+    assert raw_text not in snippet
+    assert re.fullmatch(r"(?:\[(?:WS|ASCII|DIGIT|CJK|PUNCT|SYMBOL|CTRL|TEXT|OMITTED):\d+\]){0,}", snippet)
+
+
+@pytest.mark.parametrize("raw_text", ["", "a!" * 1000, "a一\x00!\t🙂" * 200])
+def test_shape_snippet_truncates_only_complete_markers(raw_text):
+    snippet = _shape_snippet(raw_text)
+
+    assert len(snippet) <= _DIAGNOSTIC_SNIPPET_LIMIT
+    assert re.fullmatch(r"(?:\[(?:WS|ASCII|DIGIT|CJK|PUNCT|SYMBOL|CTRL|TEXT|OMITTED):\d+\]){0,}", snippet)
+
+
+def test_shape_snippet_ends_and_starts_are_never_partial_markers():
+    for text in ("a!" * 1000, "", "\x00\t🙂一"):
+        for boundary in (text[:1], text[-1:]):
+            shaped = _shape_snippet(boundary)
+            assert re.fullmatch(r"(?:\[(?:WS|ASCII|DIGIT|CJK|PUNCT|SYMBOL|CTRL|TEXT|OMITTED):\d+\]){0,}", shaped)
+
+
+@pytest.mark.parametrize(
+    ("parser", "stage"),
+    [
+        (parse_chapter_generation, "chapter_generation"),
+        (parse_chapter_outline, "chapter_outline"),
+        (parse_world_creation_draft, "world_creation_draft"),
+        (parse_paragraph_revision, "paragraph_revision"),
+        (parse_story_arc, "story_arc"),
+        (parse_critique_report, "critique_report"),
+        (parse_literary_critic_report, "literary_critic_report"),
+        (parse_character_arc_report, "character_arc_report"),
+    ],
+)
+def test_every_parser_logs_once_with_irreversible_shape_and_error_contract(caplog, parser, stage):
+    raw_text = '{"password":"p@ssw0rd", "note":"ordinary benign prose 你好世界", "url":"https://user:password@example.test/?access_token=abc123"}'
+
+    with caplog.at_level(logging.WARNING, logger="worldsim.llm.parse"):
+        with pytest.raises(ValueError) as exc_info:
+            parser(raw_text)
+
+    assert exc_info.value.args == ("MODEL_RESPONSE_INVALID",)
+    records = [record for record in caplog.records if record.name == "worldsim.llm.parse"]
+    assert len(records) == 1
+    payload = json.loads(records[0].message)
+    assert payload["event"] == "llm.parse_failed"
+    assert payload["stage"] == stage
+    assert payload["raw_length"] == len(raw_text)
+    assert payload["fence_count"] == 0
+    marker_pattern = r"(?:\[(?:WS|ASCII|DIGIT|CJK|PUNCT|SYMBOL|CTRL|TEXT|OMITTED):\d+\])+"
+    assert re.fullmatch(marker_pattern, payload["starts_with"])
+    assert re.fullmatch(marker_pattern, payload["ends_with"])
+    assert re.fullmatch(marker_pattern, payload["snippet"])
+    assert all(value not in caplog.text for value in (
+        "password", "p@ssw0rd", "ordinary", "benign", "你好世界", "user",
+        "example", "access_token", "abc123",
+    ))
 
 
 def test_parse_chapter_generation_rejects_missing_fields():
@@ -1255,6 +1343,10 @@ def test_mock_outline_and_chapter_support_opening_quality_validation(monkeypatch
         'personality_evidence_plan',
         'conflict_goal',
         'locked_pov',
+        # 零认知锚点：可选字段，只进质量报告的 advisories，不参与硬门禁。
+        'inciting_incident',
+        'prior_state',
+        'grounded_emotion',
     }
     assert len(chapter.opening_evidence) == 6
     assert {evidence.check for evidence in chapter.opening_evidence} == {

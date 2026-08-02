@@ -126,6 +126,19 @@ OPENING_CHECK_LABELS = {
     'locked_pov': '锁定 POV 证据定位',
 }
 
+# 零认知开篇锚点：只做提示，不参与 status 判定，也不进入 checks。
+# 单独成列是为了保持 OPENING_CHECKS 的项数与顺序稳定——审批门禁与前端都依赖它。
+OPENING_ADVISORY_CHECKS = (
+    'inciting_incident',
+    'prior_state',
+    'grounded_emotion',
+)
+OPENING_ADVISORY_CHECK_LABELS = {
+    'inciting_incident': '触发事件',
+    'prior_state': '起点状态',
+    'grounded_emotion': '情感锚点',
+}
+
 
 def _is_opening_context(execution_context: dict | None) -> bool:
     return bool(execution_context and execution_context.get('next_chapter_number') == 1)
@@ -632,20 +645,24 @@ def _opening_anchor_content_length(value: str) -> int:
     return sum(character not in OPENING_ANCHOR_STOP_CHARACTERS for character in content)
 
 
+def _opening_sentence_at(paragraph: str, span_start: int, span_end: int) -> str:
+    """Return the sentence of `paragraph` containing the [span_start, span_end) range."""
+    sentence_start = 0
+    sentence_end = len(paragraph)
+    for boundary in OPENING_SENTENCE_BOUNDARIES:
+        boundary_start = paragraph.rfind(boundary, 0, span_start)
+        sentence_start = max(sentence_start, boundary_start + 1)
+        boundary_end = paragraph.find(boundary, span_end)
+        if boundary_end >= 0:
+            sentence_end = min(sentence_end, boundary_end + 1)
+    return paragraph[sentence_start:sentence_end].strip()
+
+
 def _opening_evidence_sentence(paragraph: str, quote: str) -> str:
     quote_start = paragraph.find(quote)
     if quote_start < 0:
         return ''
-    quote_end = quote_start + len(quote)
-    sentence_start = 0
-    sentence_end = len(paragraph)
-    for boundary in OPENING_SENTENCE_BOUNDARIES:
-        boundary_start = paragraph.rfind(boundary, 0, quote_start)
-        sentence_start = max(sentence_start, boundary_start + 1)
-        boundary_end = paragraph.find(boundary, quote_end)
-        if boundary_end >= 0:
-            sentence_end = min(sentence_end, boundary_end + 1)
-    return paragraph[sentence_start:sentence_end].strip()
+    return _opening_sentence_at(paragraph, quote_start, quote_start + len(quote))
 
 
 def _opening_anchor_scores(
@@ -717,6 +734,155 @@ def _opening_contract_evidence_matches(
     return False
 
 
+OPENING_TRIGGER_SIGNALS = (
+    '今天', '今晚', '今夜', '此刻', '刚才', '突然', '忽然', '终于', '决定', '收到', '听说', '发现',
+)
+OPENING_PRIOR_STATE_SIGNALS = (
+    '原本', '原该', '本该', '过去', '一直', '曾经', '三年前', '半年前', '昨天', '之前', '从前', '往日',
+)
+OPENING_GROUNDED_EMOTION_SIGNALS = (
+    '担心', '害怕', '恐惧', '渴望', '希望', '困惑', '焦虑', '解脱', '压抑', '欠债', '不安', '愧疚',
+)
+
+OPENING_ADVISORY_SIGNALS = {
+    'inciting_incident': OPENING_TRIGGER_SIGNALS,
+    'prior_state': OPENING_PRIOR_STATE_SIGNALS,
+    'grounded_emotion': OPENING_GROUNDED_EMOTION_SIGNALS,
+}
+
+OPENING_ADVISORY_HINTS = {
+    'inciting_incident': '建议交代“今天为何不同”的具体触发事件，让读者无需背景知识即可进入。',
+    'prior_state': '建议用一两句交代触发事件之前的日常状态，为对比提供锚点。',
+    'grounded_emotion': '建议给出现实读者可直接共情的核心情绪，不要依赖未交代的世界观。',
+}
+
+
+def _evaluate_opening_advisories(content: str, opening_contract: dict | None) -> list[dict]:
+    """Return non-blocking zero-cognition hints for the opening chapter."""
+    contract = opening_contract if isinstance(opening_contract, dict) else {}
+    advisories = []
+    for check in OPENING_ADVISORY_CHECKS:
+        contract_text = (contract.get(check) or '').strip()
+        if not contract_text:
+            state, message = 'missing', f'opening contract 未提供 {OPENING_ADVISORY_CHECK_LABELS[check]}。'
+        elif any(signal in content for signal in OPENING_ADVISORY_SIGNALS[check]):
+            state, message = 'present', f'正文已体现{OPENING_ADVISORY_CHECK_LABELS[check]}。'
+        else:
+            state, message = 'weak', OPENING_ADVISORY_HINTS[check]
+        advisories.append({
+            'check': check,
+            'label': OPENING_ADVISORY_CHECK_LABELS[check],
+            'state': state,
+            'message': message,
+            'blocking': False,
+        })
+    return advisories
+
+
+# 术语密度提示：首章正文首次出现的世界专有名词是否就地给出解释。
+# 与上方三项锚点分列，因为判据来自世界实体名单而非 opening contract，
+# 且 OPENING_ADVISORY_CHECKS 的项数与顺序被按位断言，不能塞入第四项。
+OPENING_TERM_ADVISORY_CHECK = 'jargon_density'
+OPENING_TERM_ADVISORY_LABEL = '术语密度'
+
+# 就地解释有两类结构判据，都不写入具体世界观词汇，避免检测器与某部作品耦合：
+# 1) 专名紧跟系动词或命名词——“林砚是外门弟子”这类同位语式交代；
+# 2) 句中出现多字释义标记——“也就是”“意味着”。
+# 刻意不用裸单字“是”“为”做全句匹配：中文里“为何”“不是”几乎句句都有，
+# 那样任何正文都会被判为已解释，检测器等于失效。
+OPENING_TERM_COPULA_MARKERS = ('是', '为', '乃', '系', '叫', '称')
+OPENING_TERM_GLOSS_PHRASES = (
+    '也就是', '意味着', '所谓', '指的是', '称为', '叫作', '叫做', '名为', '出身', '身份',
+)
+
+# 单条提示中最多点名的未解释术语数量，避免提示信息本身变成长列表。
+OPENING_TERM_ADVISORY_SAMPLE_LIMIT = 3
+
+
+def _opening_term_first_sentence(paragraphs: list[str], term: str) -> str:
+    """Return the sentence where `term` first appears, or '' when it never appears."""
+    for paragraph in paragraphs:
+        if term in paragraph:
+            return _opening_evidence_sentence(paragraph, term)
+    return ''
+
+
+def _opening_term_is_glossed(sentence: str, term: str) -> bool:
+    """Decide whether `term` is explained in place within its first sentence.
+
+    Two structural judgments, neither tied to a specific setting's vocabulary:
+    an appositive right after the term ('林砚是外门弟子'), or a multi-character
+    gloss marker anywhere in the sentence. A bare single-character '是'/'为' match
+    over the whole sentence is deliberately rejected: '为何' and '不是' appear in
+    almost every Chinese sentence, which would mark every draft as explained.
+    """
+    if any(phrase in sentence for phrase in OPENING_TERM_GLOSS_PHRASES):
+        return True
+    term_end = sentence.find(term)
+    if term_end < 0:
+        return False
+    # 只看紧跟专名的一个字，构成同位语式交代；隔字出现的“是”不算。
+    tail = sentence[term_end + len(term):]
+    return tail[:1] in OPENING_TERM_COPULA_MARKERS
+
+
+def _evaluate_opening_term_advisory(content: str, known_terms: set[str] | None) -> dict:
+    """Non-blocking hint on whether proper nouns are glossed where they first appear.
+
+    Mirrors the writer prompt's zero-cognition rule: a first-time proper noun should
+    carry an observable explanation or consequence in place. Only confirmed world
+    entities are treated as terms — the backend has no tokenizer, so guessing proper
+    nouns from raw Chinese text would produce noise. Like the anchor advisories this
+    never touches `status` or the `checks` list.
+    """
+    paragraphs = [paragraph for paragraph in _split_paragraphs(content) if paragraph]
+    # 长名优先，避免"沈微霜"被"沈微"这类前缀名遮蔽首次出现位置。
+    terms = sorted(
+        {term.strip() for term in (known_terms or set()) if term and term.strip()},
+        key=lambda term: (-len(term), term),
+    )
+
+    present_terms = []
+    unglossed_terms = []
+    for term in terms:
+        sentence = _opening_term_first_sentence(paragraphs, term)
+        if not sentence:
+            continue
+        # 只作为更长登记名一部分出现的短名不单独计数：正文写的是“沈微霜”时，
+        # “沈微”并未真正登场，否则它会因右邻是“霜”而被误报为未解释。
+        if any(term != longer and term in longer for longer in present_terms):
+            continue
+        present_terms.append(term)
+        if not _opening_term_is_glossed(sentence, term):
+            unglossed_terms.append(term)
+
+    if not present_terms:
+        state = 'missing'
+        message = '正文未出现任何已登记的世界专有名词，无法评估术语密度。'
+    elif not unglossed_terms:
+        state = 'present'
+        message = f'{len(present_terms)} 个专有名词首次出现时均已就地交代。'
+    else:
+        state = 'weak'
+        sample = '、'.join(unglossed_terms[:OPENING_TERM_ADVISORY_SAMPLE_LIMIT])
+        overflow = len(unglossed_terms) - OPENING_TERM_ADVISORY_SAMPLE_LIMIT
+        suffix = f' 等 {len(unglossed_terms)} 个' if overflow > 0 else ''
+        message = (
+            f'{sample}{suffix}首次出现时缺少就地解释，'
+            '建议在同一句交代可观察的身份、关系或后果，不要依赖读者预先掌握世界观。'
+        )
+
+    return {
+        'check': OPENING_TERM_ADVISORY_CHECK,
+        'label': OPENING_TERM_ADVISORY_LABEL,
+        'state': state,
+        'message': message,
+        'blocking': False,
+        'term_count': len(present_terms),
+        'unglossed_terms': unglossed_terms,
+    }
+
+
 def _opening_quote_spans(paragraph: str, quote: str) -> list[tuple[int, int]]:
     spans = []
     search_start = 0
@@ -746,12 +912,28 @@ def _evaluate_opening_quality(
 
     evidence_spans = {}
     ambiguous_quote_checks = set()
+    corrected_indices = {}  # track auto-corrected paragraph indices
     for check, evidence in evidence_by_check.items():
         if not 0 <= evidence.paragraph_index < len(paragraphs) or not evidence.quote.strip():
             continue
+
+        # Try exact match first
         spans = _opening_quote_spans(paragraphs[evidence.paragraph_index], evidence.quote)
+        actual_index = evidence.paragraph_index
+
+        # If no exact match, try ±1 tolerance for model drift in long chapters
+        if not spans:
+            for offset in (-1, +1):
+                candidate = evidence.paragraph_index + offset
+                if 0 <= candidate < len(paragraphs):
+                    spans = _opening_quote_spans(paragraphs[candidate], evidence.quote)
+                    if spans:
+                        actual_index = candidate
+                        corrected_indices[check] = candidate
+                        break
+
         if len(spans) == 1:
-            evidence_spans[check] = (evidence.paragraph_index, *spans[0])
+            evidence_spans[check] = (actual_index, *spans[0])
         elif len(spans) > 1:
             ambiguous_quote_checks.add(check)
 
@@ -842,7 +1024,7 @@ def _evaluate_opening_quality(
             message = '证据引文本身与 opening contract 对应项缺少确定性内容锚点。'
         else:
             message = '模型提供的可定位证据有效。'
-        checks.append({
+        result = {
             'check': check,
             'label': OPENING_CHECK_LABELS[check],
             'status': 'pass' if passed else 'fail',
@@ -850,7 +1032,12 @@ def _evaluate_opening_quality(
             'expected': locked_pov_character_name if check == 'locked_pov' else None,
             'paragraph_index': evidence.paragraph_index if evidence is not None else None,
             'quote': evidence.quote if evidence is not None else None,
-        })
+        }
+        if check in corrected_indices:
+            result['corrected_index'] = corrected_indices[check]
+            if passed:
+                result['message'] = f"证据已自动校正至段落 {corrected_indices[check]}（模型报告为 {evidence.paragraph_index}）。"
+        checks.append(result)
     structural_pass = len(paragraphs) >= 6 and len(content) >= 300
     if not structural_pass:
         for check in checks:
@@ -865,6 +1052,11 @@ def _evaluate_opening_quality(
         'paragraph_count': len(paragraphs),
         'character_count': len(content),
         'checks': checks,
+        # 只读提示，不参与上方 status 判定，也不参与审批门禁。
+        'advisories': [
+            *_evaluate_opening_advisories(content, opening_contract),
+            _evaluate_opening_term_advisory(content, known_character_names),
+        ],
     }
 
 def _stale_quality_report(report: dict, draft_version: int) -> dict:
@@ -1027,8 +1219,13 @@ def build_outline_messages(
                 '"beats":[{"beat_id":"beat-1","summary":"节拍摘要","pov_character":"角色名",'
                 '"location":"地点","emotional_arc":"情绪弧线","key_dialogue_hints":["对白提示"]}],'
                 '"opening_contract":{"background":"...","protagonist_identity":"...","motivation":"...",'
-                '"personality_evidence_plan":"...","conflict_goal":"...","locked_pov":"..."}}。'
+                '"personality_evidence_plan":"...","conflict_goal":"...","locked_pov":"...",'
+                '"inciting_incident":"...","prior_state":"...","grounded_emotion":"..."}}。'
                 '当执行上下文的章节序号为 1 时，opening_contract 必填，且 locked_pov 必须指定固定第三人称限知视角；其他章节可省略。'
+                '首章请一并给出后三项零认知锚点，让读者无需任何世界观前置知识即可进入：'
+                'inciting_incident 说明“今天/今晚为何不同”的具体触发事件（收到信、听说消息、发现异常、做出决定），不要写成背景铺陈；'
+                'prior_state 用一两句交代触发事件之前的日常状态，为对比提供锚点；'
+                'grounded_emotion 给出现实读者可直接共情的核心情绪（欠债的恐惧、复仇的渴望、身份的困惑、考核的焦虑），不得依赖未交代的设定。'
                 'pov_suggestion 和每个 beat.pov_character 只能填写同一位现有角色的完整姓名，不要附加任何描述。'
                 'locked_pov 必须明确该角色的第三人称限知视角，不要通过列举其他角色来表达视角锁定。'
             ),
@@ -1086,7 +1283,11 @@ def build_generation_messages(
          '"opening_evidence": [{"check":"background|protagonist_identity|motivation|personality_evidence_plan|conflict_goal|locked_pov", "paragraph_index":0, "quote":"正文原文片段"}]}。'
          '\nproposed_character_changes 和 proposed_foreshadow_changes 可以为空数组 []，'
          '但如果包含元素则必须严格包含上述必填字段。首章必须返回全部六项唯一 opening_evidence，且正文不得使用摘要式写法。'
-         '首章若有 opening_contract，locked_pov 的 evidence.quote 必须逐字来自正文，显式包含 contract 锁定角色的全名，并体现该角色的主观感知、判断、情绪、意图或知识边界；纯外部动作不算有效证据。'},
+         '首章若有 opening_contract，locked_pov 的 evidence.quote 必须逐字来自正文，显式包含 contract 锁定角色的全名，并体现该角色的主观感知、判断、情绪、意图或知识边界；纯外部动作不算有效证据。'
+         '\n首章零认知写法要求（不额外增加 opening_evidence 条数，仍为六项）：'
+         '若 opening_contract 提供了 inciting_incident / prior_state / grounded_emotion，正文必须让它们各自可读地落地——'
+         '交代“今天/今晚为何不同”的具体触发事件、触发前的日常状态、以及现实读者可直接共情的核心情绪；'
+         '首次出现的专有名词必须就地给出可观察的解释或后果，不得依赖读者预先掌握世界观。'},
         {
             'role': 'user',
             'content': (

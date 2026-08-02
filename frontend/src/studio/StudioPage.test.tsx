@@ -518,6 +518,32 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(approvalRegion).toContainElement(screen.getByRole('button', { name: '写入正史并更新世界' }));
   });
 
+  it('shows non-blocking missing and weak advisories, terminology samples, and corrected check paragraphs', () => {
+    const resumedDraft = {
+      ...openingPovDraft(),
+      quality_report: {
+        ...openingPovDraft().quality_report,
+        checks: [
+          { label: '背景建立', status: 'pass', paragraph_index: 0, corrected_index: 1, quote: '雨巷口' },
+        ],
+        advisories: [
+          { check: 'inciting_incident', label: '触发事件', state: 'missing', message: 'opening contract 未提供触发事件。', blocking: false },
+          { check: 'jargon_density', label: '术语密度', state: 'weak', message: '专有名词首次出现时缺少就地解释。', blocking: false, term_count: 2, unglossed_terms: ['灵脉', '城主府'] },
+        ],
+      },
+    } as DraftResponse;
+
+    renderResumedStudio(resumedDraft);
+
+    const advisorySection = screen.getByRole('region', { name: '非阻断建议' });
+    expect(advisorySection).toHaveTextContent('触发事件');
+    expect(advisorySection).toHaveTextContent('状态：missing');
+    expect(advisorySection).toHaveTextContent('术语密度');
+    expect(advisorySection).toHaveTextContent('状态：weak');
+    expect(advisorySection).toHaveTextContent('术语样本：灵脉、城主府');
+    expect(screen.getByText('自动校正：第 2 段')).toBeInTheDocument();
+  });
+
   it('requires an explicit locked-POV confirmation before a resumed passing opening draft can be approved', async () => {
     const user = userEvent.setup();
     renderResumedOpeningPovStudio();
@@ -567,9 +593,16 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(approveChapter).not.toHaveBeenCalled();
   });
 
-  it('submits the locked-POV confirmation bound to the current resumed opening draft version', async () => {
+  it('does not let non-blocking advisories prevent approval after the required POV confirmation', async () => {
     const user = userEvent.setup();
-    renderResumedOpeningPovStudio();
+    const resumedDraft = openingPovDraft();
+    resumedDraft.quality_report = {
+      ...resumedDraft.quality_report,
+      advisories: [
+        { check: 'inciting_incident', label: '触发事件', state: 'weak', message: '建议明确触发事件。', blocking: false },
+      ],
+    };
+    renderResumedOpeningPovStudio(resumedDraft);
 
     const confirmation = await screen.findByRole('checkbox', {
       name: '我确认本章锁定 POV：林砚（限知第三人称），并以当前草稿版本 v1 写入正史',

@@ -1100,6 +1100,259 @@ def test_opening_quality_evaluator_rejects_reused_evidence_across_checks():
         assert statuses[check] == 'fail'
 
 
+# Zero-cognition anchors are optional contract fields surfaced as advisories.
+# The contract fixture above deliberately omits them, so it doubles as the
+# backward-compatibility case for outlines stored before the fields existed.
+def zero_cognition_contract(**overrides) -> OpeningContract:
+    contract = opening_contract().model_dump()
+    contract.update(
+        inciting_incident='今晚城主府的文书送到，要求林砚天亮前交出玉佩。',
+        prior_state='他原本只是每日替师门送药的外门弟子。',
+        grounded_emotion='他害怕师妹被带走之后再也接不回来。',
+    )
+    contract.update(overrides)
+    return OpeningContract(**contract)
+
+
+def test_opening_advisories_report_missing_when_contract_omits_anchors():
+    advisories = narrative_service._evaluate_opening_advisories(
+        opening_body(),
+        opening_contract().model_dump(),
+    )
+
+    assert [advisory['check'] for advisory in advisories] == list(narrative_service.OPENING_ADVISORY_CHECKS)
+    assert {advisory['state'] for advisory in advisories} == {'missing'}
+    assert all(advisory['blocking'] is False for advisory in advisories)
+
+
+def test_opening_advisories_flag_weak_when_contract_declares_anchor_body_omits():
+    body = '\n\n'.join(['一段与锚点信号无关的正文。'] * 6)
+
+    advisories = narrative_service._evaluate_opening_advisories(
+        body,
+        zero_cognition_contract().model_dump(),
+    )
+
+    states = {advisory['check']: advisory['state'] for advisory in advisories}
+    assert states == {check: 'weak' for check in narrative_service.OPENING_ADVISORY_CHECKS}
+    assert all(advisory['blocking'] is False for advisory in advisories)
+
+
+# The core invariant of this feature: advisories are informational only. A draft whose
+# body lands none of the anchors must still pass, and the hard gate's check list must
+# keep its exact six items and order.
+def test_opening_advisories_never_affect_status_or_hard_gate_checks():
+    report = narrative_service._evaluate_opening_quality(
+        opening_body(),
+        opening_evidence(opening_body()),
+        zero_cognition_contract(
+            inciting_incident='与正文毫无信号重叠的触发事件描述。',
+            prior_state='与正文毫无信号重叠的起点状态描述。',
+            grounded_emotion='与正文毫无信号重叠的情感锚点描述。',
+        ).model_dump(),
+        draft_version=1,
+        locked_pov_character_name='林砚',
+    )
+
+    assert report['status'] == 'pass'
+    assert [check['check'] for check in report['checks']] == list(OPENING_CHECKS)
+    assert all(advisory['blocking'] is False for advisory in report['advisories'])
+
+
+def test_opening_advisories_report_present_when_body_lands_every_anchor():
+    advisories = narrative_service._evaluate_opening_advisories(
+        opening_body() + '\n\n林砚一直担心师妹被带走，今天终于收到城主府的文书。',
+        zero_cognition_contract().model_dump(),
+    )
+
+    assert {advisory['state'] for advisory in advisories} == {'present'}
+    assert all(advisory['blocking'] is False for advisory in advisories)
+
+
+def test_term_advisory_reports_missing_when_no_known_term_appears():
+    advisory = narrative_service._evaluate_opening_term_advisory(opening_body(), {'不在正文里的名字'})
+
+    assert advisory['check'] == narrative_service.OPENING_TERM_ADVISORY_CHECK
+    assert advisory['state'] == 'missing'
+    assert advisory['term_count'] == 0
+    assert advisory['unglossed_terms'] == []
+    assert advisory['blocking'] is False
+
+
+def test_term_advisory_accepts_apposition_right_after_the_term():
+    body = '\n\n'.join(['林砚是替师门送药的外门弟子，今夜必须赶回宗门。'] * 6)
+
+    advisory = narrative_service._evaluate_opening_term_advisory(body, {'林砚'})
+
+    assert advisory['state'] == 'present'
+    assert advisory['unglossed_terms'] == []
+
+
+# Guards the reason gloss detection is not a plain sentence-wide '是' search:
+# '为何' and '不是' occur in ordinary prose, so a naive check would call every
+# draft explained and the advisory would never fire.
+def test_term_advisory_flags_term_whose_sentence_only_has_incidental_copula_characters():
+    body = '\n\n'.join(['沈微霜问他为何不逃，这不是能算清的账。'] * 6)
+
+    advisory = narrative_service._evaluate_opening_term_advisory(body, {'沈微霜'})
+
+    assert advisory['state'] == 'weak'
+    assert advisory['unglossed_terms'] == ['沈微霜']
+    assert advisory['blocking'] is False
+
+
+def test_term_advisory_prefers_longer_name_over_its_prefix():
+    body = '\n\n'.join(['沈微霜是潜伏在青岚城的医师。'] * 6)
+
+    advisory = narrative_service._evaluate_opening_term_advisory(body, {'沈微', '沈微霜'})
+
+    # '沈微' only ever appears as a prefix of the glossed longer name, so neither is flagged.
+    assert advisory['state'] == 'present'
+    assert advisory['unglossed_terms'] == []
+
+
+def test_term_advisory_caps_named_samples_but_keeps_full_list():
+    body = '\n\n'.join(['铜铃、云纹、靴印、药箱与暗井接连出现，没有任何交代。'] * 6)
+    terms = {'铜铃', '云纹', '靴印', '药箱', '暗井'}
+
+    advisory = narrative_service._evaluate_opening_term_advisory(body, terms)
+
+    assert advisory['state'] == 'weak'
+    assert len(advisory['unglossed_terms']) == len(terms)
+    assert f'等 {len(terms)} 个' in advisory['message']
+
+
+def test_term_advisory_tolerates_absent_and_blank_term_input():
+    for terms in (None, set(), {'', '   '}):
+        advisory = narrative_service._evaluate_opening_term_advisory(opening_body(), terms)
+
+        assert advisory['state'] == 'missing'
+        assert advisory['blocking'] is False
+
+
+def test_term_advisory_rides_along_quality_report_without_touching_the_hard_gate():
+    report = narrative_service._evaluate_opening_quality(
+        opening_body(),
+        opening_evidence(opening_body()),
+        opening_contract().model_dump(),
+        draft_version=1,
+        locked_pov_character_name='林砚',
+        known_character_names={'林砚', '沈微霜'},
+    )
+
+    assert report['status'] == 'pass'
+    assert [check['check'] for check in report['checks']] == list(OPENING_CHECKS)
+    advisory_checks = [advisory['check'] for advisory in report['advisories']]
+    assert advisory_checks == [
+        *narrative_service.OPENING_ADVISORY_CHECKS,
+        narrative_service.OPENING_TERM_ADVISORY_CHECK,
+    ]
+    assert all(advisory['blocking'] is False for advisory in report['advisories'])
+
+
+# ----- 术语密度提示（jargon_density advisory）-----
+
+
+@pytest.mark.parametrize('known_terms', [None, set()])
+def test_term_advisory_reports_missing_without_a_term_list(known_terms):
+    advisory = narrative_service._evaluate_opening_term_advisory(opening_body(), known_terms)
+
+    assert advisory['state'] == 'missing'
+    assert advisory['term_count'] == 0
+    assert advisory['unglossed_terms'] == []
+    assert advisory['blocking'] is False
+
+
+# Guards the reason gloss detection is not a plain sentence-wide '是' search:
+# '为何' and '不是' occur in almost every Chinese sentence.
+def test_term_advisory_rejects_copula_not_adjacent_to_the_term():
+    body = '\n\n'.join(['林砚问他为何不逃，可师妹还在等药。'] * 6)
+
+    advisory = narrative_service._evaluate_opening_term_advisory(body, {'林砚'})
+
+    assert advisory['state'] == 'weak'
+    assert '林砚' in advisory['unglossed_terms']
+
+
+def test_term_advisory_accepts_gloss_phrase_anywhere_in_the_sentence():
+    body = '\n\n'.join(['林砚追查玉佩主人，也就是失踪的师兄。'] * 6)
+
+    advisory = narrative_service._evaluate_opening_term_advisory(body, {'林砚'})
+
+    assert advisory['state'] == 'present'
+    assert advisory['unglossed_terms'] == []
+
+
+def test_term_advisory_samples_first_three_unglossed_terms():
+    body = '\n\n'.join(['林砚、沈微霜、师兄、师妹、巡夜人一起走在雨中。'] * 6)
+
+    advisory = narrative_service._evaluate_opening_term_advisory(
+        body, {'林砚', '沈微霜', '师兄', '师妹', '巡夜人'}
+    )
+
+    assert advisory['state'] == 'weak'
+    assert advisory['term_count'] == 5
+    assert len(advisory['unglossed_terms']) == 5
+    # Message should sample only the first three, with "等 5 个" suffix
+    assert advisory['message'].count('"') <= 6  # at most 3 terms quoted
+    assert '等 5 个' in advisory['message']
+
+
+def test_term_advisory_ignores_substring_when_longer_name_is_present():
+    body = '\n\n'.join(['沈微霜在巷口停下，雨水顺着伞骨落进泥里。'] * 6)
+
+    advisory = narrative_service._evaluate_opening_term_advisory(body, {'沈微', '沈微霜'})
+
+    # '沈微' appears only as part of '沈微霜', so it should not be counted separately
+    assert advisory['term_count'] == 1
+    assert '沈微霜' in [t for t in advisory['unglossed_terms']]
+    assert '沈微' not in [t for t in advisory['unglossed_terms']]
+
+
+def test_full_opening_quality_report_includes_term_advisory():
+    report = narrative_service._evaluate_opening_quality(
+        opening_body(),
+        opening_evidence(opening_body()),
+        zero_cognition_contract().model_dump(),
+        draft_version=1,
+        locked_pov_character_name='林砚',
+    )
+
+    advisory_checks = [advisory['check'] for advisory in report['advisories']]
+    assert advisory_checks == [
+        *narrative_service.OPENING_ADVISORY_CHECKS,
+        narrative_service.OPENING_TERM_ADVISORY_CHECK,
+    ]
+    # The hard gate keeps its exact six items, and the term hint never blocks.
+    assert report['status'] == 'pass'
+    assert [check['check'] for check in report['checks']] == OPENING_CHECKS
+    assert all(advisory['blocking'] is False for advisory in report['advisories'])
+
+
+def test_opening_advisories_never_affect_quality_status_or_checks():
+    """The hard gate must stay byte-identical whether or not anchors are present."""
+    without_anchors = narrative_service._evaluate_opening_quality(
+        opening_body(),
+        opening_evidence(opening_body()),
+        opening_contract().model_dump(),
+        draft_version=1,
+        locked_pov_character_name='林砚',
+    )
+    with_anchors = narrative_service._evaluate_opening_quality(
+        opening_body(),
+        opening_evidence(opening_body()),
+        zero_cognition_contract().model_dump(),
+        draft_version=1,
+        locked_pov_character_name='林砚',
+    )
+
+    assert without_anchors['status'] == with_anchors['status'] == 'pass'
+    assert without_anchors['checks'] == with_anchors['checks']
+    # Only the advisory payload differs; the gate's item set and order are untouched.
+    assert [check['check'] for check in with_anchors['checks']] == OPENING_CHECKS
+    assert without_anchors['advisories'] != with_anchors['advisories']
+
+
 def test_reused_opening_evidence_blocks_approval_without_writing_canon(client, db_session, monkeypatch):
     token, world_id = register_and_create_world(client, 'opening-quality-reused-evidence@example.com')
     llm = OpeningQualityLLMClient(evidence=repeated_opening_evidence())

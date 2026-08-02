@@ -1080,8 +1080,19 @@ export type QualityReportCheck = {
   status?: string;
   message?: string | null;
   paragraph_index?: number | null;
+  corrected_index?: number | null;
   quote?: string | null;
   passed?: boolean;
+};
+
+export type QualityReportAdvisory = {
+  check: string;
+  label: string;
+  state: string;
+  message?: string | null;
+  blocking: false;
+  term_count?: number;
+  unglossed_terms?: string[];
 };
 
 export type QualityReport = {
@@ -1093,6 +1104,7 @@ export type QualityReport = {
   paragraph_count?: number;
   character_count?: number;
   checks?: QualityReportCheck[];
+  advisories?: QualityReportAdvisory[];
   opening_chapter?: {
     checks: QualityReportCheck[];
   };

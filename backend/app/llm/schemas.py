@@ -1,8 +1,137 @@
 import json
+import logging
 import re
+import unicodedata
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
+
+parse_logger = logging.getLogger('worldsim.llm.parse')
+
+_DIAGNOSTIC_SNIPPET_LIMIT = 400
+
+
+def _shape_snippet(text: str) -> str:
+    """Return a bounded, irreversible character-class shape for diagnostics.
+
+    Every input character is represented only by a category and run length;
+    this intentionally preserves no syntax, whitespace, Unicode symbol, or
+    control character from the input.
+    """
+    parts: list[str] = []
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char.isspace():
+            category = "WS"
+            predicate = str.isspace
+        elif unicodedata.category(char).startswith("C"):
+            category = "CTRL"
+            predicate = lambda value: unicodedata.category(value).startswith("C")
+        elif "一" <= char <= "鿿":
+            category = "CJK"
+            predicate = lambda value: "一" <= value <= "鿿"
+        elif char.isascii() and char.isalpha():
+            category = "ASCII"
+            predicate = lambda value: value.isascii() and value.isalpha()
+        elif char.isdigit():
+            category = "DIGIT"
+            predicate = str.isdigit
+        elif unicodedata.category(char).startswith("P"):
+            category = "PUNCT"
+            predicate = lambda value: unicodedata.category(value).startswith("P")
+        elif unicodedata.category(char).startswith("S"):
+            category = "SYMBOL"
+            predicate = lambda value: unicodedata.category(value).startswith("S")
+        else:
+            category = "TEXT"
+            predicate = lambda value: not (
+                value.isspace()
+                or unicodedata.category(value).startswith("C")
+                or "一" <= value <= "鿿"
+                or (value.isascii() and value.isalpha())
+                or value.isdigit()
+                or unicodedata.category(value).startswith(("P", "S"))
+            )
+        end = index + 1
+        while end < len(text) and predicate(text[end]):
+            end += 1
+        parts.append(f"[{category}:{end - index}]")
+        index = end
+
+    if not parts:
+        return ""
+    if sum(map(len, parts)) <= _DIAGNOSTIC_SNIPPET_LIMIT:
+        return "".join(parts)
+
+    omitted_count = len(parts)
+    omission = f"[OMITTED:{omitted_count}]"
+    if len(omission) > _DIAGNOSTIC_SNIPPET_LIMIT:
+        omission = "[OMITTED:0]"
+    available = _DIAGNOSTIC_SNIPPET_LIMIT - len(omission)
+
+    # Select whole tokens from both ends.  The shaped representation is never
+    # sliced, so truncation cannot expose a partial marker.
+    left: list[str] = []
+    right: list[str] = []
+    left_index = 0
+    right_index = len(parts)
+    left_budget = available // 2
+    while left_index < right_index and len(left) < len(parts):
+        token = parts[left_index]
+        if len("".join(left)) + len(token) > left_budget:
+            break
+        left.append(token)
+        left_index += 1
+    right_budget = available - len("".join(left))
+    while left_index < right_index:
+        token = parts[right_index - 1]
+        if len("".join(right)) + len(token) > right_budget:
+            break
+        right.append(token)
+        right_index -= 1
+
+    # If one side's first token is too large for its share, use any remaining
+    # capacity on the other side while keeping the two selections disjoint.
+    remaining = available - len("".join(left)) - len("".join(right))
+    while left_index < right_index:
+        token = parts[left_index]
+        if len(token) > remaining:
+            break
+        left.append(token)
+        left_index += 1
+        remaining -= len(token)
+    while left_index < right_index:
+        token = parts[right_index - 1]
+        if len(token) > remaining:
+            break
+        right.append(token)
+        right_index -= 1
+        remaining -= len(token)
+
+    return "".join(left) + omission + "".join(reversed(right))
+
+
+def _log_parse_failure(stage: str, raw_text: str, reason: str) -> None:
+    """Record an irreversible shape of an invalid model response."""
+    stripped = raw_text.strip()
+    payload = {
+        "event": "llm.parse_failed",
+        "stage": stage,
+        "reason": reason,
+        "raw_length": len(raw_text),
+        "fence_count": stripped.count("```"),
+        "starts_with": _shape_snippet(stripped[:1]),
+        "ends_with": _shape_snippet(stripped[-1:]),
+        "snippet": _shape_snippet(stripped),
+    }
+    parse_logger.warning(json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True))
+
+
+class _JsonLoadError(ValueError):
+    def __init__(self, reason: str) -> None:
+        self.reason = reason
+        super().__init__(reason)
 
 
 class BeatCard(BaseModel):
@@ -21,6 +150,12 @@ class OpeningContract(BaseModel):
     personality_evidence_plan: str
     conflict_goal: str
     locked_pov: str
+    # 零认知开篇锚点：默认空串，保持与既有大纲数据和既有 fixture 的向后兼容。
+    # 这三项只参与质量报告的 advisories，不进入 OPENING_CHECKS 硬门禁，
+    # 因此不加入下方 validate_required_text（空串在该校验器下会被拒绝）。
+    inciting_incident: str = ''
+    prior_state: str = ''
+    grounded_emotion: str = ''
 
     @field_validator(
         'background',
@@ -345,90 +480,77 @@ class ParagraphRevision(BaseModel):
 def _load_json(raw_text: str) -> Any:
     text = raw_text.strip()
     if not text:
-        raise ValueError('MODEL_RESPONSE_INVALID')
+        raise _JsonLoadError("empty_response")
 
     try:
         return json.loads(text)
     except (TypeError, json.JSONDecodeError):
-        fence_match = re.fullmatch(r'```(?:json|JSON)?\n(.+?)\n```', text, flags=re.DOTALL)
+        fence_match = re.fullmatch(r"```(?:json|JSON)?\n(.+?)\n```", text, flags=re.DOTALL)
         if not fence_match:
-            raise ValueError('MODEL_RESPONSE_INVALID') from None
+            raise _JsonLoadError("not_bare_json_and_no_single_json_fence") from None
         try:
             return json.loads(fence_match.group(1))
         except (TypeError, json.JSONDecodeError):
-            raise ValueError('MODEL_RESPONSE_INVALID') from None
+            raise _JsonLoadError("fenced_body_not_valid_json") from None
+
+
+def _parse_model_response(raw_text: str, stage: str, validator: Any) -> Any:
+    """Parse one model response, logging exactly once for every failure."""
+    try:
+        return validator(_load_json(raw_text))
+    except _JsonLoadError as error:
+        reason = error.reason
+        cause = error
+    except ValidationError as error:
+        reason = f"schema_validation: {error.error_count()} errors"
+        cause = error
+    except ValueError as error:
+        reason = "semantic_validation"
+        cause = error
+    _log_parse_failure(stage, raw_text, reason)
+    raise ValueError("MODEL_RESPONSE_INVALID") from cause
 
 
 def parse_chapter_generation(raw_text: str) -> ChapterGeneration:
-    try:
-        payload = _load_json(raw_text)
-        return ChapterGeneration.model_validate(payload)
-    except ValidationError as exc:
-        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+    return _parse_model_response(raw_text, "chapter_generation", ChapterGeneration.model_validate)
 
 
 def parse_paragraph_revision(raw_text: str) -> ParagraphRevision:
-    try:
-        payload = _load_json(raw_text)
-        return ParagraphRevision.model_validate(payload)
-    except (ValidationError, ValueError) as exc:
-        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+    return _parse_model_response(raw_text, "paragraph_revision", ParagraphRevision.model_validate)
 
 
 def parse_chapter_outline(raw_text: str) -> ChapterOutline:
-    try:
-        payload = _load_json(raw_text)
-        return ChapterOutline.model_validate(payload)
-    except ValidationError as exc:
-        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+    return _parse_model_response(raw_text, "chapter_outline", ChapterOutline.model_validate)
 
 
 def parse_world_creation_draft(raw_text: str) -> WorldCreationDraftPayload:
-    try:
-        payload = _load_json(raw_text)
-        return WorldCreationDraftPayload.model_validate(payload)
-    except ValidationError as exc:
-        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+    return _parse_model_response(raw_text, "world_creation_draft", WorldCreationDraftPayload.model_validate)
 
 
 def _validate_story_arc(chapters: list[StoryArcChapter]) -> list[StoryArcChapter]:
     if len(chapters) != 10:
-        raise ValueError('MODEL_RESPONSE_INVALID')
+        raise ValueError("MODEL_RESPONSE_INVALID")
     if [chapter.chapter_number for chapter in chapters] != list(range(1, 11)):
-        raise ValueError('MODEL_RESPONSE_INVALID')
+        raise ValueError("MODEL_RESPONSE_INVALID")
     return chapters
 
 
 def parse_story_arc(raw_text: str) -> list[StoryArcChapter]:
-    try:
-        payload = _load_json(raw_text)
+    def validate(payload: Any) -> list[StoryArcChapter]:
         if not isinstance(payload, list):
-            raise ValueError('MODEL_RESPONSE_INVALID')
-        chapters = TypeAdapter(list[StoryArcChapter]).validate_python(payload)
-        return _validate_story_arc(chapters)
-    except (ValidationError, ValueError) as exc:
-        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+            raise ValueError("MODEL_RESPONSE_INVALID")
+        return _validate_story_arc(TypeAdapter(list[StoryArcChapter]).validate_python(payload))
+
+    return _parse_model_response(raw_text, "story_arc", validate)
 
 
 def parse_critique_report(raw_text: str) -> CritiqueReport:
-    try:
-        payload = _load_json(raw_text)
-        return CritiqueReport.model_validate(payload)
-    except ValidationError as exc:
-        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+    return _parse_model_response(raw_text, "critique_report", CritiqueReport.model_validate)
 
 
 def parse_literary_critic_report(raw_text: str) -> LiteraryCriticReport:
-    try:
-        payload = _load_json(raw_text)
-        return LiteraryCriticReport.model_validate(payload)
-    except ValidationError as exc:
-        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+    return _parse_model_response(raw_text, "literary_critic_report", LiteraryCriticReport.model_validate)
 
 
 def parse_character_arc_report(raw_text: str) -> CharacterArcReport:
-    try:
-        payload = _load_json(raw_text)
-        return CharacterArcReport.model_validate(payload)
-    except ValidationError as exc:
-        raise ValueError('MODEL_RESPONSE_INVALID') from exc
+    return _parse_model_response(raw_text, "character_arc_report", CharacterArcReport.model_validate)
