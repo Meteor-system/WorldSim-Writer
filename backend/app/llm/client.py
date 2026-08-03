@@ -9,6 +9,7 @@ from app.llm.schemas import (
     ChapterGeneration,
     ChapterOutline,
     CharacterArcReport,
+    OpeningEvidence,
     CritiqueReport,
     LiteraryCriticReport,
     ParagraphRevision,
@@ -17,6 +18,7 @@ from app.llm.schemas import (
     WORLD_CREATION_DRAFT_JSON_SCHEMA,
     parse_chapter_generation,
     parse_chapter_outline,
+    parse_opening_evidence_repair,
     parse_character_arc_report,
     parse_critique_report,
     parse_literary_critic_report,
@@ -329,6 +331,109 @@ def _last_user_prompt(messages: list[dict[str, str]]) -> str:
         if message.get('role') == 'user' and isinstance(message.get('content'), str):
             return message['content']
     return ''
+
+
+_OPENING_SENTENCE_BOUNDARIES = ('，', ',', '；', ';', '。', '！', '!', '？', '?', '：', ':')
+
+
+def _opening_paragraphs(content: str) -> list[str]:
+    return [paragraph.strip() for paragraph in content.split('\n\n') if paragraph.strip()]
+
+
+def _opening_quote_spans(paragraph: str, quote: str) -> list[tuple[int, int]]:
+    spans = []
+    search_start = 0
+    while True:
+        quote_start = paragraph.find(quote, search_start)
+        if quote_start < 0:
+            return spans
+        spans.append((quote_start, quote_start + len(quote)))
+        search_start = quote_start + 1
+
+
+def _opening_sentence_at(paragraph: str, span_start: int, span_end: int) -> str:
+    sentence_start = 0
+    sentence_end = len(paragraph)
+    for boundary in _OPENING_SENTENCE_BOUNDARIES:
+        boundary_start = paragraph.rfind(boundary, 0, span_start)
+        sentence_start = max(sentence_start, boundary_start + 1)
+        boundary_end = paragraph.find(boundary, span_end)
+        if boundary_end >= 0:
+            sentence_end = min(sentence_end, boundary_end + 1)
+    return paragraph[sentence_start:sentence_end].strip()
+
+
+def _opening_evidence_needs_repair(content: str, opening_evidence: list[OpeningEvidence]) -> bool:
+    expected_checks = {
+        'background',
+        'protagonist_identity',
+        'motivation',
+        'personality_evidence_plan',
+        'conflict_goal',
+        'locked_pov',
+    }
+    if len(opening_evidence) != len(expected_checks) or {evidence.check for evidence in opening_evidence} != expected_checks:
+        return True
+
+    paragraphs = _opening_paragraphs(content)
+    positioned = []
+    seen_quotes = set()
+    for evidence in opening_evidence:
+        if evidence.quote in seen_quotes:
+            return True
+        seen_quotes.add(evidence.quote)
+        if not 0 <= evidence.paragraph_index < len(paragraphs) or not evidence.quote.strip():
+            return True
+        spans = _opening_quote_spans(paragraphs[evidence.paragraph_index], evidence.quote)
+        if len(spans) != 1:
+            return True
+        quote_start, quote_end = spans[0]
+        positioned.append((evidence.check, evidence.paragraph_index, quote_start, quote_end))
+
+    for index, (_check, paragraph_index, quote_start, quote_end) in enumerate(positioned):
+        sentence = _opening_sentence_at(paragraphs[paragraph_index], quote_start, quote_end)
+        for _other_check, other_paragraph_index, other_start, other_end in positioned[index + 1:]:
+            if paragraph_index != other_paragraph_index:
+                continue
+            if max(quote_start, other_start) < min(quote_end, other_end):
+                return True
+            if sentence == _opening_sentence_at(paragraphs[other_paragraph_index], other_start, other_end):
+                return True
+    return False
+
+
+def _looks_like_opening_prompt(messages: list[dict[str, str]]) -> bool:
+    return 'opening_contract' in _last_user_prompt(messages)
+
+
+def _opening_evidence_repair_messages(
+    messages: list[dict[str, str]],
+    content: str,
+    opening_evidence: list[OpeningEvidence],
+) -> list[dict[str, str]]:
+    evidence_payload = [evidence.model_dump() for evidence in opening_evidence]
+    return [
+        {
+            'role': 'system',
+            'content': (
+                '你是 WorldSim-Writer 的 opening_evidence 修复器。只返回合法 JSON，且根对象只能包含 '
+                'opening_evidence 一个字段：{"opening_evidence":[{"check":"background|protagonist_identity|motivation|'
+                'personality_evidence_plan|conflict_goal|locked_pov","paragraph_index":0,"quote":"正文原文片段"}]}。'
+                '你只能修复 opening_evidence，禁止输出或改写 title、draft_content、context_summary、review_hints、'
+                'proposed_character_changes 或 proposed_foreshadow_changes。paragraph_index 必须是正文非空自然段的 0-based 索引；'
+                'quote 必须是对应自然段中的连续原文子串，并为每项选择唯一、不重叠且不复用的证据。必须完整返回六项 check。'
+            ),
+        },
+        {
+            'role': 'user',
+            'content': (
+                f'原始章节请求上下文：\n{_last_user_prompt(messages)}\n'
+                f'不可修改正文：\n{content}\n'
+                f'当前 opening_evidence：{json.dumps(evidence_payload, ensure_ascii=False)}\n'
+                '请只返回修复后的 opening_evidence。正文必须保持逐字不变。'
+            ),
+        },
+    ]
 
 
 def _looks_like_contextual_prompt(prompt: str) -> bool:
@@ -1240,6 +1345,42 @@ class LLMClient:
             ),
         )
 
+    def repair_opening_evidence(
+        self,
+        messages: list[dict[str, str]],
+        content: str,
+        opening_evidence: list[OpeningEvidence],
+    ) -> list[OpeningEvidence]:
+        repaired = parse_opening_evidence_repair(
+            self._post_json(
+                _opening_evidence_repair_messages(messages, content, opening_evidence),
+                temperature=0.0,
+            )
+        )
+        return repaired.opening_evidence
+
+    def _repair_opening_evidence_once(
+        self,
+        messages: list[dict[str, str]],
+        generation: ChapterGeneration,
+    ) -> ChapterGeneration:
+        if not _looks_like_opening_prompt(messages) or not _opening_evidence_needs_repair(
+            generation.draft_content,
+            generation.opening_evidence,
+        ):
+            return generation
+        try:
+            repaired_evidence = self.repair_opening_evidence(
+                messages,
+                generation.draft_content,
+                generation.opening_evidence,
+            )
+        except (TimeoutError, ValueError, RuntimeError):
+            return generation
+        if not _opening_evidence_needs_repair(generation.draft_content, repaired_evidence):
+            return generation.model_copy(update={'opening_evidence': repaired_evidence})
+        return generation
+
     def generate_chapter(self, messages: list[dict[str, str]]) -> ChapterGeneration:
         if self.mock:
             context = _parse_mock_prompt(messages)
@@ -1268,7 +1409,9 @@ class LLMClient:
                 {"foreshadow_id": fore_id, "status": "advanced", "description_note": "玉佩与古书产生共鸣，暗示两者关联"}
             ]
             return ChapterGeneration.model_validate(mock_data)
-        return parse_chapter_generation(self._post_json(messages, temperature=0.7))
+
+        generation = parse_chapter_generation(self._post_json(messages, temperature=0.7))
+        return self._repair_opening_evidence_once(messages, generation)
 
     def revise_chapter(self, messages: list[dict[str, str]]) -> ChapterGeneration:
         if self.mock:

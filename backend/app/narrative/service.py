@@ -107,7 +107,7 @@ def _outline_context_payload(outline) -> dict:
     return payload
 
 
-OPENING_QUALITY_VALIDATION_VERSION = 5
+OPENING_QUALITY_VALIDATION_VERSION = 6
 
 OPENING_CHECKS = (
     'background',
@@ -902,7 +902,7 @@ def _evaluate_opening_quality(
     locked_pov_character_name: str | None,
     known_character_names: set[str] | None = None,
 ) -> dict:
-    paragraphs = [paragraph for paragraph in _split_paragraphs(content) if paragraph]
+    paragraphs = _split_paragraphs(content)
     evidence_by_check = {}
     duplicates = set()
     for evidence in opening_evidence:
@@ -912,28 +912,14 @@ def _evaluate_opening_quality(
 
     evidence_spans = {}
     ambiguous_quote_checks = set()
-    corrected_indices = {}  # track auto-corrected paragraph indices
+    reused_evidence_checks = set()
     for check, evidence in evidence_by_check.items():
         if not 0 <= evidence.paragraph_index < len(paragraphs) or not evidence.quote.strip():
             continue
 
-        # Try exact match first
         spans = _opening_quote_spans(paragraphs[evidence.paragraph_index], evidence.quote)
-        actual_index = evidence.paragraph_index
-
-        # If no exact match, try ±1 tolerance for model drift in long chapters
-        if not spans:
-            for offset in (-1, +1):
-                candidate = evidence.paragraph_index + offset
-                if 0 <= candidate < len(paragraphs):
-                    spans = _opening_quote_spans(paragraphs[candidate], evidence.quote)
-                    if spans:
-                        actual_index = candidate
-                        corrected_indices[check] = candidate
-                        break
-
         if len(spans) == 1:
-            evidence_spans[check] = (actual_index, *spans[0])
+            evidence_spans[check] = (evidence.paragraph_index, *spans[0])
         elif len(spans) > 1:
             ambiguous_quote_checks.add(check)
 
@@ -944,6 +930,8 @@ def _evaluate_opening_quality(
         paragraph_index, quote_start, quote_end = evidence_spans[check]
         for other_check in positioned_checks[index + 1:]:
             other_paragraph_index, other_start, other_end = evidence_spans[other_check]
+            if evidence_by_check[check].quote == evidence_by_check[other_check].quote:
+                reused_evidence_checks.update((check, other_check))
             if paragraph_index != other_paragraph_index:
                 continue
             if max(quote_start, other_start) < min(quote_end, other_end):
@@ -1000,6 +988,7 @@ def _evaluate_opening_quality(
             and check not in duplicates
             and check not in overlapping_evidence_checks
             and check not in same_sentence_evidence_checks
+            and check not in reused_evidence_checks
             and quote_is_valid
             and contract_evidence_matches
             and (locked_pov_passed if check == 'locked_pov' else True)
@@ -1010,6 +999,8 @@ def _evaluate_opening_quality(
             message = '该项证据重复，必须唯一。'
         elif check in overlapping_evidence_checks:
             message = '该证据引文与其他开篇检查的引文区间重叠，不能跨检查复用。'
+        elif check in reused_evidence_checks:
+            message = '该证据引文文本与其他开篇检查重复，不能复用。'
         elif check in same_sentence_evidence_checks:
             message = '该证据引文与其他开篇检查的引文来自同一句，不能跨检查复用。'
         elif evidence.paragraph_index < 0 or evidence.paragraph_index >= len(paragraphs):
@@ -1033,10 +1024,6 @@ def _evaluate_opening_quality(
             'paragraph_index': evidence.paragraph_index if evidence is not None else None,
             'quote': evidence.quote if evidence is not None else None,
         }
-        if check in corrected_indices:
-            result['corrected_index'] = corrected_indices[check]
-            if passed:
-                result['message'] = f"证据已自动校正至段落 {corrected_indices[check]}（模型报告为 {evidence.paragraph_index}）。"
         checks.append(result)
     structural_pass = len(paragraphs) >= 6 and len(content) >= 300
     if not structural_pass:
@@ -1337,7 +1324,7 @@ def _create_draft_version(
 
 
 def _split_paragraphs(content: str) -> list[str]:
-    return [paragraph.strip() for paragraph in content.split('\n\n')]
+    return [paragraph.strip() for paragraph in content.split('\n\n') if paragraph.strip()]
 
 
 def build_critique_messages(

@@ -4,7 +4,7 @@ import re
 import unicodedata
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, TypeAdapter, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, field_validator
 
 parse_logger = logging.getLogger('worldsim.llm.parse')
 
@@ -184,6 +184,12 @@ class OpeningEvidence(BaseModel):
     ]
     paragraph_index: int = Field(ge=0)
     quote: str = Field(min_length=1)
+
+
+class OpeningEvidenceRepair(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    opening_evidence: list[OpeningEvidence]
 
 
 class ChapterOutline(BaseModel):
@@ -513,6 +519,10 @@ def _parse_model_response(raw_text: str, stage: str, validator: Any) -> Any:
 
 def parse_chapter_generation(raw_text: str) -> ChapterGeneration:
     return _parse_model_response(raw_text, "chapter_generation", ChapterGeneration.model_validate)
+
+
+def parse_opening_evidence_repair(raw_text: str) -> OpeningEvidenceRepair:
+    return _parse_model_response(raw_text, "opening_evidence_repair", OpeningEvidenceRepair.model_validate)
 
 
 def parse_paragraph_revision(raw_text: str) -> ParagraphRevision:

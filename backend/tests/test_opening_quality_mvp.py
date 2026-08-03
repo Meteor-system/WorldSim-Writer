@@ -1399,6 +1399,27 @@ def test_reused_opening_evidence_blocks_approval_without_writing_canon(client, d
     )
 
 
+def test_opening_quality_evaluator_rejects_quote_in_adjacent_paragraph_with_wrong_zero_based_index():
+    evidence = opening_evidence(opening_body())
+    evidence[0] = OpeningEvidence(
+        check='background',
+        paragraph_index=1,
+        quote='废弃灵井却在巷尾吐出温热白雾',
+    )
+
+    report = narrative_service._evaluate_opening_quality(
+        opening_body(),
+        evidence,
+        opening_contract().model_dump(),
+        draft_version=1,
+        locked_pov_character_name='林砚',
+    )
+
+    background = next(check for check in report['checks'] if check['check'] == 'background')
+    assert background['status'] == 'fail'
+    assert 'corrected_index' not in background
+
+
 def test_opening_quality_evaluator_rejects_quote_borrowing_contract_support_from_same_sentence():
     evidence = opening_evidence(opening_body())
     evidence[2] = OpeningEvidence(

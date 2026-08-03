@@ -46,6 +46,53 @@ def valid_generation_json() -> str:
     })
 
 
+def repair_body() -> str:
+    return '\n\n'.join([
+        '雾港钟楼在雨夜忽然敲响，整座城市都听见了不该出现的第十三声钟。',
+        '林雾是修表学徒，她丢失了昨夜的记忆，却仍记得银表在雨声中倒转了一分钟。',
+        '她必须在午夜前找回记忆，否则钟楼停摆后，昨夜发生过什么将永远无人能够证明。',
+        '林雾先把停摆的秒针重新拨正，再把湿透的工具袋系紧，决定沿着钟声追到塔顶。',
+        '周砚即将封锁钟楼，林雾必须在他关上铁门前找到裂纹银表的入口。',
+        '林雾无法判断钟声来自哪一层，只能依靠表针倒转的触感决定下一步。',
+    ])
+
+
+def repair_evidence_payload(valid: bool) -> list[dict]:
+    evidence = [
+        {'check': 'background', 'paragraph_index': 0, 'quote': '雾港钟楼在雨夜忽然敲响'},
+        {'check': 'protagonist_identity', 'paragraph_index': 1, 'quote': '林雾是修表学徒'},
+        {'check': 'motivation', 'paragraph_index': 2, 'quote': '必须在午夜前找回记忆'},
+        {'check': 'personality_evidence_plan', 'paragraph_index': 3, 'quote': '先把停摆的秒针重新拨正'},
+        {'check': 'conflict_goal', 'paragraph_index': 4, 'quote': '必须在他关上铁门前找到裂纹银表的入口'},
+        {'check': 'locked_pov', 'paragraph_index': 5, 'quote': '林雾无法判断钟声来自哪一层'},
+    ]
+    if not valid:
+        evidence[0]['quote'] = '正文中不存在的背景引文'
+    return evidence
+
+
+def opening_generation_json(evidence: list[dict]) -> str:
+    return json.dumps({
+        'title': '第一章 第十三声钟',
+        'draft_content': repair_body(),
+        'context_summary': '林雾追查雨夜钟声与失去的记忆。',
+        'review_hints': [],
+        'proposed_character_changes': [],
+        'proposed_foreshadow_changes': [],
+        'opening_evidence': evidence,
+    }, ensure_ascii=False)
+
+
+def opening_generation_messages() -> list[dict[str, str]]:
+    return [
+        {'role': 'system', 'content': '你是 Writer Agent。'},
+        {
+            'role': 'user',
+            'content': "Outliner上下文：{'opening_contract': {'background': '雾港钟楼规则'}}\n请写第一章。",
+        },
+    ]
+
+
 def valid_world_creation_draft_json() -> str:
     return json.dumps({
         'draft': {
@@ -123,6 +170,14 @@ def valid_world_creation_draft_json() -> str:
 
 def responses_payload(text: str) -> dict:
     return {'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': text}]}]}
+
+
+def chat_completions_payload(text: str) -> dict:
+    return {'choices': [{'message': {'content': text}}]}
+
+
+def provider_payload(text: str, api_mode: str) -> dict:
+    return responses_payload(text) if api_mode == 'responses' else chat_completions_payload(text)
 
 
 def settings(**overrides: object) -> Settings:
@@ -347,6 +402,112 @@ def test_parse_world_creation_draft_rejects_invalid_json_code_fence(raw_text):
 def test_parse_world_creation_draft_rejects_missing_goal():
     with pytest.raises(ValueError, match='MODEL_RESPONSE_INVALID'):
         parse_world_creation_draft(json.dumps({'draft': {}}))
+
+
+@pytest.mark.parametrize('api_mode, request_key', [
+    ('responses', 'input'),
+    ('chat_completions', 'messages'),
+])
+def test_llm_client_repairs_invalid_opening_evidence_once(monkeypatch, api_mode, request_key):
+    calls = []
+    initial_evidence = repair_evidence_payload(valid=False)
+    repaired_evidence = repair_evidence_payload(valid=True)
+    initial_generation = parse_chapter_generation(opening_generation_json(initial_evidence))
+
+    def fake_post(url, **kwargs):
+        calls.append(kwargs['json'])
+        response_text = (
+            opening_generation_json(initial_evidence)
+            if len(calls) == 1
+            else json.dumps({'opening_evidence': repaired_evidence}, ensure_ascii=False)
+        )
+        return httpx.Response(
+            200,
+            request=httpx.Request('POST', url),
+            json=provider_payload(response_text, api_mode),
+        )
+
+    monkeypatch.setattr(httpx, 'post', fake_post)
+    result = LLMClient(settings(LLM_API_MODE=api_mode)).generate_chapter(opening_generation_messages())
+
+    assert len(calls) == 2
+    assert result.model_dump(exclude={'opening_evidence'}) == initial_generation.model_dump(exclude={'opening_evidence'})
+    assert result.draft_content == repair_body()
+    assert [evidence.model_dump() for evidence in result.opening_evidence] == repaired_evidence
+    assert '不可修改正文' in calls[1][request_key][-1]['content']
+
+
+def test_llm_client_keeps_original_generation_when_repair_still_fails(monkeypatch):
+    calls = []
+    initial_evidence = repair_evidence_payload(valid=False)
+    initial_generation = parse_chapter_generation(opening_generation_json(initial_evidence))
+
+    def fake_post(url, **kwargs):
+        calls.append(kwargs['json'])
+        response_text = (
+            opening_generation_json(initial_evidence)
+            if len(calls) == 1
+            else json.dumps({'opening_evidence': initial_evidence}, ensure_ascii=False)
+        )
+        return httpx.Response(200, request=httpx.Request('POST', url), json=responses_payload(response_text))
+
+    monkeypatch.setattr(httpx, 'post', fake_post)
+    result = LLMClient(settings()).generate_chapter(opening_generation_messages())
+
+    assert len(calls) == 2
+    assert result.model_dump(exclude={'opening_evidence'}) == initial_generation.model_dump(exclude={'opening_evidence'})
+    assert [evidence.model_dump() for evidence in result.opening_evidence] == initial_evidence
+
+
+def test_llm_client_rejects_repair_payload_that_reuses_evidence(monkeypatch):
+    calls = []
+    initial_evidence = repair_evidence_payload(valid=False)
+    reused_evidence = repair_evidence_payload(valid=True)
+    reused_evidence[1]['quote'] = reused_evidence[0]['quote']
+    initial_generation = parse_chapter_generation(opening_generation_json(initial_evidence))
+
+    def fake_post(url, **kwargs):
+        calls.append(kwargs['json'])
+        response_text = (
+            opening_generation_json(initial_evidence)
+            if len(calls) == 1
+            else json.dumps({'opening_evidence': reused_evidence}, ensure_ascii=False)
+        )
+        return httpx.Response(200, request=httpx.Request('POST', url), json=responses_payload(response_text))
+
+    monkeypatch.setattr(httpx, 'post', fake_post)
+    result = LLMClient(settings()).generate_chapter(opening_generation_messages())
+
+    assert len(calls) == 2
+    assert result.model_dump(exclude={'opening_evidence'}) == initial_generation.model_dump(exclude={'opening_evidence'})
+    assert [evidence.model_dump() for evidence in result.opening_evidence] == initial_evidence
+
+
+def test_llm_client_rejects_repair_payload_that_attempts_to_rewrite_body(monkeypatch):
+    calls = []
+    initial_evidence = repair_evidence_payload(valid=False)
+    initial_generation = parse_chapter_generation(opening_generation_json(initial_evidence))
+    repair_payload = {
+        'opening_evidence': repair_evidence_payload(valid=True),
+        'draft_content': '模型试图改写正文。',
+    }
+
+    def fake_post(url, **kwargs):
+        calls.append(kwargs['json'])
+        response_text = (
+            opening_generation_json(initial_evidence)
+            if len(calls) == 1
+            else json.dumps(repair_payload, ensure_ascii=False)
+        )
+        return httpx.Response(200, request=httpx.Request('POST', url), json=responses_payload(response_text))
+
+    monkeypatch.setattr(httpx, 'post', fake_post)
+    result = LLMClient(settings()).generate_chapter(opening_generation_messages())
+
+    assert len(calls) == 2
+    assert result.model_dump(exclude={'opening_evidence'}) == initial_generation.model_dump(exclude={'opening_evidence'})
+    assert result.draft_content == repair_body()
+    assert [evidence.model_dump() for evidence in result.opening_evidence] == initial_evidence
 
 
 def test_llm_client_responses_request_uses_finite_default_read_timeout(monkeypatch):
