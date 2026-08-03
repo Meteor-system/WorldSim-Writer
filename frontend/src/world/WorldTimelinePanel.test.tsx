@@ -16,10 +16,22 @@ const timeline: EventLogListResponse = {
       event_type: 'character_change',
       source_type: 'manual_edit',
       commit_id: 'commit-character',
-      payload: { action: 'updated', object_type: 'character', object_id: 1, edit_reason: '推进角色线索' },
+      payload: { change: { status: 'updated' }, object_type: 'character', object_id: 1, edit_reason: '推进角色线索' },
       world_version_before: 1,
       world_version_after: 2,
       created_at: '2026-05-31T10:00:00Z',
+    },
+    {
+      id: 3,
+      world_id: 7,
+      chapter_id: null,
+      event_type: 'foreshadow_change',
+      source_type: 'chapter_approval',
+      commit_id: 'commit-foreshadow',
+      payload: { change: { status: 'advanced' }, object_type: 'foreshadow', object_id: 2 },
+      world_version_before: 1,
+      world_version_after: 2,
+      created_at: '2026-05-31T10:30:00Z',
     },
     {
       id: 1,
@@ -34,12 +46,12 @@ const timeline: EventLogListResponse = {
       created_at: '2026-05-31T09:00:00Z',
     },
   ],
-  total: 2,
+  total: 3,
   limit: 20,
   offset: 0,
   summary: {
-    total: 3,
-    event_type_counts: { WORLD_CREATED: 1, character_change: 1, world_version_increment: 1 },
+    total: 4,
+    event_type_counts: { WORLD_CREATED: 1, character_change: 1, foreshadow_change: 1, world_version_increment: 1 },
     latest_world_version: 2,
   },
 };
@@ -49,12 +61,15 @@ describe('WorldTimelinePanel', () => {
     render(<WorldTimelinePanel worldId={7} onLoadEvents={vi.fn().mockResolvedValue(timeline)} />);
 
     expect(await screen.findByText('世界历史记录')).toBeInTheDocument();
-    expect(screen.getByText('总事件：3')).toBeInTheDocument();
+    expect(screen.getByText('总事件：4')).toBeInTheDocument();
     expect(screen.getByText('最新世界进度：第 2 版')).toBeInTheDocument();
     expect(screen.getByText('世界已创建 × 1')).toBeInTheDocument();
     expect(screen.getByText('角色变化 × 1')).toBeInTheDocument();
+    expect(screen.getByText('悬念/伏笔变化 × 1')).toBeInTheDocument();
     expect(screen.getByText('世界「群星边境」创建，题材 科幻，初始角色 2、关系 1、伏笔 1。')).toBeInTheDocument();
     expect(screen.getByText('角色已更新：#1；原因：推进角色线索')).toBeInTheDocument();
+    expect(screen.getByText('悬念/伏笔已推进中：#2')).toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent('[object Object]');
     expect(document.body).not.toHaveTextContent('WORLD_CREATED');
     expect(document.body).not.toHaveTextContent('sci_fi');
     expect(document.body).not.toHaveTextContent('character_change');

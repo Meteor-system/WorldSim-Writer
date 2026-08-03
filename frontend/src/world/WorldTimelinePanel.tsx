@@ -24,6 +24,17 @@ function compactPayload(payload: Record<string, unknown>): string {
   return JSON.stringify(payload);
 }
 
+function changeStatusToken(payload: Record<string, unknown>): string {
+  const rawChange = payload.action ?? payload.change;
+  if (typeof rawChange === 'string') return rawChange;
+  if (rawChange && typeof rawChange === 'object' && !Array.isArray(rawChange)) {
+    const change = rawChange as Record<string, unknown>;
+    if (typeof change.status === 'string') return change.status;
+    if (typeof change.action === 'string') return change.action;
+  }
+  return 'changed';
+}
+
 function describeEvent(event: EventLog): string {
   const payload = event.payload;
   if (event.event_type === 'WORLD_CREATED') {
@@ -36,7 +47,7 @@ function describeEvent(event: EventLog): string {
   }
   if (event.event_type === 'character_change' || event.event_type === 'foreshadow_change') {
     const objectType = labelObjectType(String(payload.object_type ?? event.event_type.replace('_change', '')));
-    const action = labelStatus(String(payload.action ?? payload.change ?? 'changed'));
+    const action = labelStatus(changeStatusToken(payload));
     const objectId = String(payload.object_id ?? 'unknown');
     const reason = payload.edit_reason ? `；原因：${String(payload.edit_reason)}` : '';
     return `${objectType}已${action}：#${objectId}${reason}`;
