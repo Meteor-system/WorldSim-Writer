@@ -2121,7 +2121,7 @@ def test_e2e_smoke_script_does_not_login_for_unrelated_register_conflict(monkeyp
     assert summary['ok'] is False
     assert summary['failed_step'] == 'register'
     assert summary['status_code'] == 409
-    assert summary['response_body'] == '{"detail": "ACCOUNT_LOCKED"}'
+    assert summary['response_body'] == '{"detail":"ACCOUNT_LOCKED"}'
     assert [request.url.path for request in transport.requests] == [
         '/health',
         '/auth/register',
@@ -2144,7 +2144,7 @@ def test_e2e_smoke_script_does_not_login_for_unrelated_register_bad_request(monk
     assert summary['ok'] is False
     assert summary['failed_step'] == 'register'
     assert summary['status_code'] == 400
-    assert summary['response_body'] == '{"detail": "PASSWORD_POLICY_FAILED"}'
+    assert summary['response_body'] == '{"detail":"PASSWORD_POLICY_FAILED"}'
     assert [request.url.path for request in transport.requests] == [
         '/health',
         '/auth/register',

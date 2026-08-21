@@ -4,6 +4,7 @@ export type AuthResponse = { access_token: string; token_type: string; user: Use
 export type Character = {
   id: number;
   name: string;
+  gender?: string | null;
   role_type: string;
   status: string;
   public_profile: Record<string, unknown>;
@@ -14,6 +15,7 @@ export type Character = {
 
 export type CharacterCreate = {
   name: string;
+  gender?: string | null;
   role_type: string;
   status?: string;
   public_profile?: Record<string, unknown>;
@@ -25,6 +27,7 @@ export type CharacterCreate = {
 
 export type CharacterUpdate = {
   name?: string;
+  gender?: string | null;
   role_type?: string;
   status?: string;
   public_profile?: Record<string, unknown>;
@@ -424,11 +427,48 @@ export type SerialPlanResponse = {
   convergence_guidance: SerialPlanConvergenceGuidance;
 };
 
+export type TruthLayer = {
+  id?: string;
+  title?: string;
+  content: string;
+  reveal_at_chapter?: number;
+  frozen?: boolean;
+};
+
+export type ChapterMemoryCard = {
+  facts: string[];
+  emotional_arc: string;
+  causal_links: string[];
+  characters_present: number[];
+};
+
+export type MemoryRetrieveItem = {
+  chapter_start: number;
+  chapter_end: number;
+  summary: string;
+};
+
+export type MemoryRetrieveResponse = {
+  world_id: number;
+  approved_chapters: number;
+  query: string;
+  retrieved: MemoryRetrieveItem[];
+};
+
+export type ConvergenceRatio = {
+  world_id: number;
+  opened_threads: number;
+  closed_threads: number;
+  merged_threads: number;
+  ratio: number;
+};
+
 export type WorldSummary = {
   id: number;
   title: string;
   genre_template: string;
   truth_canon: string;
+  truth_layers?: TruthLayer[] | null;
   truth_canon_version: number;
   world_version: number;
   status: string;
@@ -1131,6 +1171,7 @@ export type DraftResponse = {
   critique_report?: CritiqueReport;
   quality_report?: QualityReport;
   execution_context?: ChapterExecutionContext | null;
+  memory_card?: ChapterMemoryCard | null;
 };
 
 export type ParagraphReviseRequest = {

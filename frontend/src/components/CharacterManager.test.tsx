@@ -1,4 +1,4 @@
-﻿import '@testing-library/jest-dom/vitest';
+import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -40,6 +40,7 @@ describe('CharacterManager', () => {
     render(<CharacterManager worldId={7} />);
 
     expect(await screen.findByText('林砚')).toBeInTheDocument();
+    expect(screen.getByText('性别：未定')).toBeInTheDocument();
     expect(screen.getByText('这些编辑会正式写入世界状态，并提升世界版本。')).toBeInTheDocument();
     expect(screen.getByText('目标：')).toBeInTheDocument();
     expect(screen.getByText('调查灵脉衰退')).toBeInTheDocument();
@@ -62,6 +63,7 @@ describe('CharacterManager', () => {
     await user.click(screen.getByRole('button', { name: '编辑' }));
     expect(screen.getByText('林砚 · 主角')).toBeInTheDocument();
 
+    await user.selectOptions(screen.getByLabelText('性别'), '女');
     await user.selectOptions(screen.getByLabelText('状态'), 'inactive');
     const goals = screen.getByLabelText('当前目标');
     await user.clear(goals);
@@ -70,6 +72,7 @@ describe('CharacterManager', () => {
     await user.click(screen.getByRole('button', { name: '保存' }));
 
     await waitFor(() => expect(updateCharacter).toHaveBeenCalledWith(1, {
+      gender: '女',
       status: 'inactive',
       current_goals: ['验证沈微霜是否可信', '追查湿信来源'],
       edit_reason: '同步章节结果',

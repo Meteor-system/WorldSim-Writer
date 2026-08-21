@@ -19,6 +19,7 @@ import type {
   CharacterRelationCreate,
   CharacterRelationUpdate,
   CharacterUpdate,
+  ConvergenceRatio,
   CriticIssue,
   CriticReportResponse,
   CritiqueResponse,
@@ -58,6 +59,8 @@ import type {
   TagMergeResponse,
   TagResponse,
   TagUpdateRequest,
+  MemoryRetrieveResponse,
+  TruthLayer,
   WorldCreateRequest,
   WorldCreationDraftResponse,
   WorldCreationMaterialReference,
@@ -375,6 +378,30 @@ export function updateWorldStatus(worldId: number, data: WorldStatusUpdateReques
     method: 'PATCH',
     body: JSON.stringify({ status: data.status }),
   });
+}
+
+export function updateWorldTruthLayers(
+  worldId: number,
+  data: { truth_layers: TruthLayer[]; edit_reason?: string },
+) {
+  return apiRequest<WorldSummary>(`/worlds/${worldId}/truth-layers`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      truth_layers: data.truth_layers,
+      ...(data.edit_reason ? { edit_reason: data.edit_reason } : {}),
+    }),
+  });
+}
+
+export function retrieveWorldMemory(worldId: number, chapterGoal = '', limit = 8) {
+  const search = new URLSearchParams();
+  if (chapterGoal) search.set('chapter_goal', chapterGoal);
+  search.set('limit', String(limit));
+  return apiRequest<MemoryRetrieveResponse>(`/worlds/${worldId}/memory/retrieve?${search.toString()}`);
+}
+
+export function getConvergenceRatio(worldId: number) {
+  return apiRequest<ConvergenceRatio>(`/worlds/${worldId}/convergence/ratio`);
 }
 
 export function getWorldEvents(worldId: number, params: { event_type?: string; limit?: number; offset?: number } = {}) {
@@ -801,6 +828,7 @@ export function createCharacter(worldId: number, data: CharacterCreate) {
     method: 'POST',
     body: JSON.stringify({
       name: data.name,
+      ...(data.gender !== undefined ? { gender: data.gender } : {}),
       role_type: data.role_type,
       ...(data.status !== undefined ? { status: data.status } : {}),
       ...(data.public_profile !== undefined ? { public_profile: data.public_profile } : {}),
@@ -825,6 +853,7 @@ export function updateCharacter(characterId: number, data: CharacterUpdate) {
     method: 'PUT',
     body: JSON.stringify({
       ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.gender !== undefined ? { gender: data.gender } : {}),
       ...(data.role_type !== undefined ? { role_type: data.role_type } : {}),
       ...(data.status !== undefined ? { status: data.status } : {}),
       ...(data.public_profile !== undefined ? { public_profile: data.public_profile } : {}),

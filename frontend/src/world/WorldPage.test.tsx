@@ -42,6 +42,7 @@ vi.mock('../api/client', () => ({
   searchWorld: vi.fn(),
   unassignWorldTag: vi.fn(),
   updateWorldStatus: vi.fn(),
+  updateWorldTruthLayers: vi.fn(),
   updateWorldTag: vi.fn(),
   getCharacters: vi.fn(),
   getForeshadowLedger: vi.fn(),

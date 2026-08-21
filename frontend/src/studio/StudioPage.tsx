@@ -28,6 +28,8 @@ import { withEditedGoal } from '../world/chapterExecutionContext';
 import { ApprovalReadinessPanel } from './ApprovalReadinessPanel';
 import { ManuscriptViewer } from '../workbench/ManuscriptViewer';
 import { ConvergencePanel } from '../workbench/ConvergencePanel';
+import { MemoryCardPanel } from '../workbench/MemoryCardPanel';
+import { MemoryRetrievePanel } from '../workbench/MemoryRetrievePanel';
 import { MANAGER_PANELS, WorkbenchManagerDrawer, type ManagerPanelKey } from '../workbench/WorkbenchManagerDrawer';
 import { WorkbenchTopBar } from '../workbench/WorkbenchTopBar';
 import { CharacterArcPanel } from './CharacterArcPanel';
@@ -43,6 +45,7 @@ type Props = {
   onLogout?: () => void;
   onWorldCreated?: (world: WorldOverview) => void;
   onSwitchWorld?: (world: WorldSummary) => void;
+  hideTopBar?: boolean;
 };
 
 type AbandonConfirmState = 'idle' | 'confirming' | 'submitting';
@@ -89,7 +92,7 @@ import {
     OpeningQualityPanel,
 } from './StudioPageHelpers';
 
-export function StudioPage({ world, launchContext, onBack, onApproved, onAbandoned = onBack, userEmail = '', onLogout, onWorldCreated, onSwitchWorld }: Props) {
+export function StudioPage({ world, launchContext, onBack, onApproved, onAbandoned = onBack, userEmail = '', onLogout, onWorldCreated, onSwitchWorld, hideTopBar = false }: Props) {
   const resumedChapter = launchContext?.resumeSession?.chapter ?? null;
   const resumedDraft = launchContext?.resumeSession?.draft ?? null;
   const recentApproval = launchContext?.recentApproval ?? null;
@@ -110,7 +113,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
   const [studioStage, setStudioStage] = useState<'goal' | 'outline' | 'draft' | 'settlement'>(
     recentApproval ? 'settlement' : resumedDraft ? 'draft' : 'goal',
   );
-  const [inspectorTab, setInspectorTab] = useState<'approval' | 'quality' | 'reports' | 'convergence'>(
+  const [inspectorTab, setInspectorTab] = useState<'approval' | 'quality' | 'reports' | 'convergence' | 'memory'>(
     resumedDraft ? 'approval' : 'quality',
   );
   const [approvalPreview, setApprovalPreview] = useState<ApprovalPreviewResponse | null>(null);
@@ -1028,8 +1031,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
   }, [chapter, localWorld.id, settlementOnly]);
 
   return (
-    <section className="studio-workbench">
-      {onSwitchWorld && (
+    <section className="workbench-shell studio-workbench">
+      {onSwitchWorld && !hideTopBar && (
         <WorkbenchTopBar
           currentWorldId={localWorld.id}
           currentWorldVersion={localWorld.world_version}
@@ -1055,10 +1058,10 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
             .catch(() => {});
         }}
       />
-      <div className="studio-workbench-grid">
+      <div className="workbench-body has-nav has-inspector">
         <aside className="studio-rail studio-navigation" role="region" aria-label="世界与章节导航">
-          {!onSwitchWorld && (
-            <button type="button" className="workbench-nav-item" onClick={onBack}>返回世界页</button>
+          {(hideTopBar || !onSwitchWorld) && (
+            <button type="button" className="workbench-nav-item" onClick={onBack}>返回书架</button>
           )}
           {chapter && !settlementOnly && (
             <button
@@ -1375,6 +1378,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
                   onReviseSelection={handleReviseSelection}
                 />
               )}
+              <MemoryCardPanel card={draft.memory_card} />
               {!editMode && (
                 <section className="space-y-3 rounded-2xl bg-white/35 p-4">
                   <h3 className="font-black text-[#3b2511]">段落级修订</h3>
@@ -1433,14 +1437,27 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
             <button type="button" role="tab" aria-selected={inspectorTab === 'quality'} className={inspectorTab === 'quality' ? 'workbench-tab is-active' : 'workbench-tab'} onClick={() => setInspectorTab('quality')}>质量</button>
             <button type="button" role="tab" aria-selected={inspectorTab === 'reports'} className={inspectorTab === 'reports' ? 'workbench-tab is-active' : 'workbench-tab'} onClick={() => setInspectorTab('reports')}>报告</button>
             <button type="button" role="tab" aria-selected={inspectorTab === 'convergence'} className={inspectorTab === 'convergence' ? 'workbench-tab is-active' : 'workbench-tab'} onClick={() => setInspectorTab('convergence')}>收束</button>
+            <button type="button" role="tab" aria-selected={inspectorTab === 'memory'} className={inspectorTab === 'memory' ? 'workbench-tab is-active' : 'workbench-tab'} onClick={() => setInspectorTab('memory')}>记忆</button>
           </div>
           <OpeningQualityPanel draft={draft} />
           <div hidden={inspectorTab !== 'quality'}>
             {approvalReadiness && <ApprovalReadinessPanel readiness={approvalReadiness} />}
           </div>
           <div hidden={inspectorTab !== 'convergence'}>
-            <ConvergencePanel worldId={localWorld.id} refreshKey={convergenceRefreshKey} />
+            <ConvergencePanel
+              worldId={localWorld.id}
+              refreshKey={convergenceRefreshKey}
+              chapterGoal={goal}
+              totalPlannedChapters={Math.max(localWorld.story_arc.length, localWorld.approved_chapter_count + 5, 20)}
+              onUseGoal={(nextGoal) => {
+                setGoal(nextGoal);
+                setStudioStage('goal');
+              }}
+            />
           </div>
+          {inspectorTab === 'memory' && (
+            <MemoryRetrievePanel worldId={localWorld.id} chapterGoal={goal} refreshKey={convergenceRefreshKey} />
+          )}
           <div hidden={inspectorTab !== 'approval'}>
               {approvalPreview && (
                 <section className="space-y-3 rounded-2xl border border-amber-900/15 bg-amber-50/45 p-4">

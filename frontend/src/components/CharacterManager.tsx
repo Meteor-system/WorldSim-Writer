@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { getCharacters, updateCharacter } from '../api/client';
 import type { Character, CharacterUpdate } from '../api/types';
 
@@ -21,8 +21,17 @@ const STATUS_LABELS: Record<string, string> = {
   unknown: '未知',
 };
 
+const GENDER_OPTIONS = ['', '男', '女', '其他'] as const;
+const GENDER_LABELS: Record<string, string> = {
+  '': '未定',
+  '男': '男',
+  '女': '女',
+  '其他': '其他',
+};
+
 type FormData = {
   name: string;
+  gender: string;
   role_type: string;
   status: string;
   current_goals: string;
@@ -31,6 +40,7 @@ type FormData = {
 
 const EMPTY_FORM: FormData = {
   name: '',
+  gender: '',
   role_type: '',
   status: 'active',
   current_goals: '',
@@ -40,6 +50,7 @@ const EMPTY_FORM: FormData = {
 function formFromCharacter(c: Character): FormData {
   return {
     name: c.name,
+    gender: c.gender ?? '',
     role_type: c.role_type,
     status: c.status,
     current_goals: c.current_goals.join('、'),
@@ -49,6 +60,7 @@ function formFromCharacter(c: Character): FormData {
 
 function formToUpdatePayload(f: FormData): CharacterUpdate {
   return {
+    gender: f.gender || null,
     status: f.status,
     current_goals: f.current_goals
       .split(/[、,，]/)
@@ -140,6 +152,9 @@ export function CharacterManager({ worldId, onChanged, readOnly = false }: Props
 
               <div className="flex flex-wrap gap-2 text-xs ink-muted">
                 <span className="rounded-full border border-amber-800/20 px-2 py-0.5">
+                  性别：{GENDER_LABELS[c.gender ?? ''] ?? c.gender ?? '未定'}
+                </span>
+                <span className="rounded-full border border-amber-800/20 px-2 py-0.5">
                   状态：{STATUS_LABELS[c.status] ?? c.status}
                 </span>
                 {c.destiny_flag && (
@@ -182,6 +197,21 @@ export function CharacterManager({ worldId, onChanged, readOnly = false }: Props
               <h2 className="text-xl font-black text-[#3b2511]">编辑角色</h2>
               <p className="manuscript mt-1 text-sm">{form.name} · {ROLE_LABELS[form.role_type] ?? form.role_type}</p>
             </div>
+
+            <label className="block">
+              <span className="text-sm font-semibold text-[#4a321e]">性别</span>
+              <select
+                className="paper-input mt-1"
+                value={form.gender}
+                onChange={(e) => setForm({ ...form, gender: e.target.value })}
+              >
+                {GENDER_OPTIONS.map((option) => (
+                  <option key={option || 'unset'} value={option}>
+                    {GENDER_LABELS[option]}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             <label className="block">
               <span className="text-sm font-semibold text-[#4a321e]">状态</span>

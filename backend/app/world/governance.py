@@ -88,3 +88,81 @@ def commit_manual_world_change(
         )
     )
     db.commit()
+
+
+def _normalize_stored_truth_layer(raw: object, index: int) -> dict:
+    if not isinstance(raw, dict):
+        return {
+            'id': f'layer-{index + 1}',
+            'title': f'\u7b2c{index + 1}\u5c42',
+            'content': '',
+            'reveal_at_chapter': 0,
+            'frozen': False,
+        }
+    layer_id = str(raw.get('id') or f'layer-{index + 1}').strip() or f'layer-{index + 1}'
+    title = str(raw.get('title') or '').strip() or f'\u7b2c{index + 1}\u5c42'
+    try:
+        reveal_at = int(raw.get('reveal_at_chapter') or 0)
+    except (TypeError, ValueError):
+        reveal_at = 0
+    return {
+        'id': layer_id,
+        'title': title,
+        'content': str(raw.get('content') or ''),
+        'reveal_at_chapter': max(reveal_at, 0),
+        'frozen': bool(raw.get('frozen')),
+    }
+
+
+def update_world_truth_layers(
+    db: Session,
+    user: User,
+    world_id: int,
+    layers: list[dict],
+    edit_reason: str | None = None,
+) -> World:
+    world = require_owned_world_for_update(db, user, world_id)
+    existing = [
+        _normalize_stored_truth_layer(raw, index)
+        for index, raw in enumerate(world.truth_layers or [])
+    ]
+    existing_by_id = {layer['id']: layer for layer in existing}
+    incoming = [
+        {
+            'id': str(layer.get('id') or f'layer-{index + 1}').strip() or f'layer-{index + 1}',
+            'title': str(layer.get('title') or '').strip() or f'\u7b2c{index + 1}\u5c42',
+            'content': str(layer.get('content') or '').strip(),
+            'reveal_at_chapter': int(layer.get('reveal_at_chapter') or 0),
+            'frozen': bool(layer.get('frozen')),
+        }
+        for index, layer in enumerate(layers)
+    ]
+    incoming_ids = {layer['id'] for layer in incoming}
+
+    for layer_id, stored in existing_by_id.items():
+        if not stored['frozen']:
+            continue
+        if layer_id not in incoming_ids:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='FROZEN_TRUTH_LAYER_LOCKED')
+        updated = next(item for item in incoming if item['id'] == layer_id)
+        if (
+            updated['content'] != stored['content']
+            or updated['reveal_at_chapter'] != stored['reveal_at_chapter']
+            or updated['title'] != stored['title']
+        ):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail='FROZEN_TRUTH_LAYER_LOCKED')
+
+    before = {'truth_layers': existing}
+    world.truth_layers = incoming
+    commit_manual_world_change(
+        db,
+        world,
+        object_type='truth_layer',
+        object_id=world.id,
+        action='updated',
+        before=before,
+        after={'truth_layers': incoming},
+        edit_reason=edit_reason,
+    )
+    db.refresh(world)
+    return world

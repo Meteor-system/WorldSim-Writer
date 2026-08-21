@@ -55,6 +55,7 @@ import { WorldPulsePanel } from './WorldPulsePanel';
 import { WorldSearchPanel } from './WorldSearchPanel';
 import { WorldTagsPanel } from './WorldTagsPanel';
 import { WorldTimelinePanel } from './WorldTimelinePanel';
+import { TruthLayersPanel } from './TruthLayersPanel';
 import { WorkbenchShell } from '../workbench/WorkbenchShell';
 import { labelGenre, labelStatus, labelWorldVersion } from './displayLabels';
 
@@ -738,6 +739,9 @@ export function WorldPage({ onEnterStudio, autoFocusTitle = true, refreshKey = n
                 {labelWorldVersion(world.world_version)} · {labelGenre(world.genre_template)} · {labelStatus(world.status)}
               </p>
               <p className="manuscript mt-8 text-lg">{world.truth_canon}</p>
+              <div className="mt-8">
+                <TruthLayersPanel world={world} onChanged={loadWorld} readOnly={isArchivedWorld} />
+              </div>
               {currentActiveChapterSession?.chapter && !isArchivedWorld && (
                 <article className="mt-6 rounded-3xl border-2 border-amber-900/20 bg-amber-100/80 p-5 shadow-sm" aria-label="进行中章节入口">
                   <p className="chapter-kicker">Studio 草稿已保留</p>

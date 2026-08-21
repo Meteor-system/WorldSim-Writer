@@ -38,6 +38,27 @@ def main() -> int:
         connect_args={'check_same_thread': False} if database_url.startswith('sqlite') else {},
     )
     Base.metadata.create_all(engine)
+
+    # Stamp the latest Alembic revision so /ready reports up_to_date even
+    # though dev mode creates tables directly instead of running migrations.
+    from alembic import command
+    from alembic.config import Config
+    from app.core.migrations import ALEMBIC_INI
+
+    alembic_config = Config(str(ALEMBIC_INI))
+    alembic_config.set_main_option('script_location', str(ALEMBIC_INI.parent / 'alembic'))
+    try:
+        with engine.begin() as connection:
+            from alembic.runtime.migration import MigrationContext
+
+            context = MigrationContext.configure(connection)
+            if context.get_current_heads():
+                command.upgrade(alembic_config, 'head')
+            else:
+                command.stamp(alembic_config, 'head')
+    except Exception as exc:
+        print(f'[run_dev_sqlite] warning: could not stamp alembic head ({exc}); /ready may report MIGRATION_NOT_UP_TO_DATE')
+
     engine.dispose()
     print(f'[run_dev_sqlite] tables ready on {database_url.split("@")[-1] if "@" in database_url else database_url}')
 

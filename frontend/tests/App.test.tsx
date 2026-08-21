@@ -21,16 +21,22 @@ vi.mock('../src/studio/StudioPage', () => ({
   ),
 }));
 
-vi.mock('../src/world/WorldPage', () => ({
-  WorldPage: ({
-    onEnterStudio,
+vi.mock('../src/workbench/WorkbenchTopBar', () => ({
+  WorkbenchTopBar: ({ onLogout }: { onLogout: () => void }) => (
+    <button onClick={onLogout}>退出登录</button>
+  ),
+}));
+
+vi.mock('../src/workbench/WorkbenchBookshelf', () => ({
+  WorkbenchBookshelf: ({
+    onOpenWorld,
     refreshKey,
   }: {
-    onEnterStudio: (world: { id: number }) => void;
+    onOpenWorld: (world: { id: number }) => void;
     refreshKey?: { worldId: number; token: number } | null;
   }) => (
     <section>
-      <button onClick={() => onEnterStudio({ id: 7 })}>进入测试 Studio</button>
+      <button onClick={() => onOpenWorld({ id: 7 })}>进入测试 Studio</button>
       <output data-testid="world-refresh-key">
         {refreshKey ? `${refreshKey.worldId}:${refreshKey.token}` : 'none'}
       </output>

@@ -56,6 +56,8 @@ vi.mock('../workbench/ConvergencePanel', () => ({
 
 vi.mock('../api/client', () => ({
   apiRequest: vi.fn(async () => world),
+  retrieveWorldMemory: vi.fn(async () => ({ world_id: 7, approved_chapters: 1, query: '', retrieved: [] })),
+  getConvergenceRatio: vi.fn(async () => ({ world_id: 7, opened_threads: 0, closed_threads: 0, merged_threads: 0, ratio: 0 })),
   abandonChapter: vi.fn(async () => ({
     id: 11,
     world_id: 7,
@@ -525,6 +527,21 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     expect(screen.getByText('冲突目标')).toBeInTheDocument();
     expect(screen.getByText('稳定 POV')).toBeInTheDocument();
     expect(approvalRegion).toContainElement(screen.getByRole('button', { name: '写入正史并更新世界' }));
+  });
+
+  it('shows the chapter memory card on the draft stage', () => {
+    renderResumedStudio({
+      ...draftResponse,
+      memory_card: {
+        facts: ['林砚拿到湿信'],
+        emotional_arc: '警觉 -> 犹疑',
+        causal_links: ['湿信指向城主府'],
+        characters_present: [1],
+      },
+    });
+
+    expect(screen.getByRole('region', { name: '本章记忆卡' })).toHaveTextContent('林砚拿到湿信');
+    expect(screen.getByText('情绪弧：警觉 -> 犹疑')).toBeInTheDocument();
   });
 
   it('shows non-blocking missing and weak advisories, terminology samples, and corrected check paragraphs', () => {

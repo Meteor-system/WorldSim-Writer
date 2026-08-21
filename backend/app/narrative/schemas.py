@@ -181,6 +181,7 @@ class DraftResponse(BaseModel):
     critique_report: dict | None = None
     execution_context: dict | None = None
     quality_report: dict = Field(default_factory=dict)
+    memory_card: dict | None = None
 
 
 class OpeningPovConfirmation(BaseModel):

@@ -16,9 +16,15 @@ __pycache__/
 .venv/
 .playwright-mcp/
 .hermes/plans/*.md
-backend/worldsim-dev.db
 backend/dev_workbench.db
 backend/*.db
+backend/*_check*.txt
+backend/generated_*.txt
+backend/ch1_*.txt
+backend/ten_chapters*.txt
+backend/ten_chapters_export/
+backend/twenty_chapters_zombie.txt
+/twenty_chapters_zombie.txt
 *.dump
 *.backup
 backups/

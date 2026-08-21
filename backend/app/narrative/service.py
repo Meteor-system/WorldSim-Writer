@@ -1178,6 +1178,7 @@ def _draft_payload(chapter: Chapter, draft: ChapterDraft) -> dict:
         'critique_report': chapter.critique_report,
         'execution_context': draft.execution_context or chapter.execution_context,
         'quality_report': draft.quality_report or {},
+        'memory_card': draft.memory_card,
     }
 
 

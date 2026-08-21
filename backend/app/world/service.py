@@ -227,6 +227,7 @@ def character_projection(character: Character) -> dict:
         'hidden_traits': character.hidden_traits,
         'destiny_flag': character.destiny_flag,
         'current_goals': character.current_goals,
+        'gender': character.gender,
     }
 
 
@@ -498,6 +499,7 @@ def get_world_overview(db: Session, user: User, world_id: int) -> dict:
         'title': world.title,
         'genre_template': world.genre_template,
         'truth_canon': world.truth_canon,
+        'truth_layers': world.truth_layers,
         'truth_canon_version': world.truth_canon_version,
         'world_version': world.world_version,
         'status': world.status,

@@ -19,7 +19,9 @@ from app.world.schemas import (
     WorldSeedDetail,
     WorldSeedListResponse,
     WorldStatusUpdateRequest,
+    WorldTruthLayersUpdateRequest,
 )
+from app.world.governance import update_world_truth_layers
 from app.world.service import (
     create_sample_world,
     create_world_from_seed,
@@ -109,6 +111,24 @@ def list_worlds(current_user: User = Depends(require_user), db: Session = Depend
 @router.get('/{world_id}', response_model=WorldResponse)
 def get_world(world_id: int, current_user: User = Depends(require_user), db: Session = Depends(get_db)) -> WorldResponse:
     return WorldResponse.model_validate(require_owned_world(db, current_user, world_id))
+
+
+@router.patch('/{world_id}/truth-layers', response_model=WorldResponse)
+def update_truth_layers(
+    world_id: int,
+    data: WorldTruthLayersUpdateRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> WorldResponse:
+    return WorldResponse.model_validate(
+        update_world_truth_layers(
+            db,
+            current_user,
+            world_id,
+            [layer.model_dump() for layer in data.truth_layers],
+            data.edit_reason,
+        )
+    )
 
 
 @router.patch('/{world_id}/status', response_model=WorldResponse)

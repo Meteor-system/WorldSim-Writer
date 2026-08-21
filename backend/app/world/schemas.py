@@ -90,6 +90,36 @@ class WorldCreateRequest(BaseModel):
         return _strip_required(value)
 
 
+class WorldTruthLayer(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    id: str | None = None
+    title: str | None = None
+    content: str
+    reveal_at_chapter: int = Field(default=0, ge=0)
+    frozen: bool = False
+
+    @field_validator('content')
+    @classmethod
+    def validate_content(cls, value: str) -> str:
+        return _strip_required(value)
+
+    @field_validator('title')
+    @classmethod
+    def validate_optional_title(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
+class WorldTruthLayersUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    truth_layers: list[WorldTruthLayer]
+    edit_reason: str | None = None
+
+
 class EmptyWorldMutationRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
