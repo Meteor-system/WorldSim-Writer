@@ -67,6 +67,7 @@ def import_models() -> None:
     import app.event.models  # noqa: F401
     import app.foreshadow.models  # noqa: F401
     import app.import_node.models  # noqa: F401
+    import app.llm_usage.models  # noqa: F401
     import app.narrative.models  # noqa: F401
     import app.snapshot_export.models  # noqa: F401
     import app.tags.models  # noqa: F401

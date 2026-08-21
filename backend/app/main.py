@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -196,6 +197,23 @@ def create_app() -> FastAPI:
                 exception_type=exception_type,
                 exception_location=exception_location,
             )
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation_exception(request: Request, exc: RequestValidationError) -> JSONResponse:
+        request_id = getattr(request.state, 'request_id', uuid4().hex)
+        safe_errors = [
+            {
+                'type': error.get('type'),
+                'loc': list(error.get('loc', ())),
+                'msg': error.get('msg'),
+            }
+            for error in exc.errors()
+        ]
+        return JSONResponse(
+            status_code=422,
+            content={'detail': safe_errors, 'request_id': request_id},
+            headers={_REQUEST_ID_HEADER: request_id},
+        )
 
     @app.exception_handler(Exception)
     async def unhandled_exception(request: Request, _exc: Exception) -> JSONResponse:

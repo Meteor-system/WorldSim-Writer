@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AUTH_EXPIRED_EVENT, AUTH_TOKEN_KEY } from './api/client';
-import type { StudioLaunchContext, WorldOverview } from './api/types';
+import { apiRequest } from './api/client';
+import type { StudioLaunchContext, WorldOverview, WorldSummary } from './api/types';
 import { AuthPage } from './auth/AuthPage';
 import { StudioPage } from './studio/StudioPage';
 import { WorldPage } from './world/WorldPage';
@@ -50,10 +51,25 @@ export function App() {
 
   if (studioWorld) {
     return (
-      <main className="book-app">
+      <main className="workbench-app">
         <StudioPage
           world={studioWorld}
           launchContext={studioLaunchContext}
+          userEmail={userEmail}
+          onLogout={handleLogout}
+          onWorldCreated={(overview) => {
+            setStudioWorld(overview);
+            setStudioLaunchContext({});
+            refreshWorld(overview.id);
+          }}
+          onSwitchWorld={(summary: WorldSummary) => {
+            void apiRequest<WorldOverview>(`/worlds/${summary.id}/overview`)
+              .then((overview) => {
+                setStudioWorld(overview);
+                setStudioLaunchContext({});
+              })
+              .catch(() => {});
+          }}
           onBack={() => {
             refreshWorld(studioWorld.id);
             setStudioWorld(null);
@@ -77,16 +93,22 @@ export function App() {
   }
 
   return (
-    <main className="book-app">
-      <div className="mx-auto max-w-6xl overflow-hidden rounded-[28px] border border-amber-900/20 bg-[#fff8e8]/70 shadow-xl shadow-amber-950/10">
-        <header className="flex items-center justify-between border-b border-amber-900/15 px-6 py-4 text-sm ink-muted">
+    <main className="workbench-app">
+      <header className="workbench-topbar" role="banner">
+        <div className="workbench-topbar-start">
           <span className="font-bold text-[#4a321e]">WorldSim-Writer</span>
-          <div className="flex items-center gap-3">
-            <span>{userEmail}</span>
-            <button type="button" className="secondary-button" onClick={handleLogout}>退出登录</button>
-          </div>
-        </header>
-        {approvedWorld && <div ref={successRef} tabIndex={-1} className="paper-success px-6 py-3" role="status" aria-live="polite">章节已通过，世界版本更新为 {approvedWorld.world_version}</div>}
+        </div>
+        <div className="workbench-topbar-end text-sm ink-muted">
+          <span className="workbench-email" title={userEmail}>{userEmail}</span>
+          <button type="button" className="secondary-button" onClick={handleLogout}>退出登录</button>
+        </div>
+      </header>
+      {approvedWorld && (
+        <div ref={successRef} tabIndex={-1} className="paper-success px-6 py-3" role="status" aria-live="polite">
+          章节已通过，世界版本更新为 {approvedWorld.world_version}
+        </div>
+      )}
+      <div className="workbench-app-body">
         <WorldPage onEnterStudio={enterStudio} autoFocusTitle={!approvedWorld} refreshKey={worldRefreshKey} />
       </div>
     </main>

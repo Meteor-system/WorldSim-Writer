@@ -389,15 +389,24 @@ def test_parse_world_creation_draft_accepts_single_json_code_fence(language):
 
 
 @pytest.mark.parametrize('raw_text', [
-    f'说明如下：\n```json\n{valid_world_creation_draft_json()}\n```',
-    f'```json\n{valid_world_creation_draft_json()}\n```\n```json\n{{}}\n```',
-    f'```javascript\n{valid_world_creation_draft_json()}\n```',
     '```json\n\n```',
+    '',
+    'not json at all',
 ])
-def test_parse_world_creation_draft_rejects_invalid_json_code_fence(raw_text):
+def test_parse_world_creation_draft_rejects_invalid_json(raw_text):
     with pytest.raises(ValueError, match='MODEL_RESPONSE_INVALID'):
         parse_world_creation_draft(raw_text)
 
+
+@pytest.mark.parametrize('raw_text', [
+    f'说明如下：\n```json\n{valid_world_creation_draft_json()}\n```',
+    f'```json\n{valid_world_creation_draft_json()}\n```\n```json\n{{}}\n```',
+    f'```javascript\n{valid_world_creation_draft_json()}\n```',
+])
+def test_parse_world_creation_draft_accepts_lenient_json_fences(raw_text):
+    "The lenient parser now extracts JSON from explanatory text, multiple fences, and non-json code fences."
+    result = parse_world_creation_draft(raw_text)
+    assert result.draft['title'] == '死因王国'
 
 def test_parse_world_creation_draft_rejects_missing_goal():
     with pytest.raises(ValueError, match='MODEL_RESPONSE_INVALID'):

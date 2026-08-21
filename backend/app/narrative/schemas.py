@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -260,6 +260,7 @@ class ParagraphDraftRequest(BaseModel):
     paragraph_index: int = Field(ge=0)
     mode: Literal['rewrite', 'polish']
     instruction: str | None = None
+    selection_text: str | None = None
 
 
 class ReviseDraftRequest(BaseModel):
@@ -384,3 +385,45 @@ class ChapterResponse(BaseModel):
     execution_context: dict | None = None
 
     model_config = {'from_attributes': True}
+
+
+class OpenThreadItem(BaseModel):
+    title: str
+    kind: str
+    urgency: int
+    window: str | None = None
+    classification: str
+
+
+class ConvergenceResponse(BaseModel):
+    world_id: int
+    chapter_number: int
+    total_planned_chapters: int
+    arc_mode: str
+    arc_mode_label: str
+    entropy: float
+    entropy_level: str
+    entropy_message: str
+    entropy_breakdown: dict[str, float]
+    open_threads: list[OpenThreadItem]
+    closure_plan: list[dict[str, Any]]
+
+
+class ConvergenceRatioResponse(BaseModel):
+    world_id: int
+    opened_threads: int
+    closed_threads: int
+    merged_threads: int
+    ratio: float
+
+
+class ArcTransitionReportResponse(BaseModel):
+    chapter_range: str
+    entropy_before: float
+    entropy_after: float
+    entropy_delta: float
+    closed_foreshadows: list[str]
+    active_foreshadows: list[str]
+    active_character_goals: int
+    convergence_ratio: float
+    guidance: str

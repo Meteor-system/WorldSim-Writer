@@ -1,5 +1,6 @@
 import os
 from collections.abc import Callable, Generator
+from pathlib import Path
 
 os.environ.setdefault('DATABASE_URL', 'sqlite+pysqlite:///:memory:')
 os.environ.setdefault('SECRET_KEY', 'test-secret')
@@ -13,7 +14,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 from sqlalchemy.dialects.postgresql import JSONB
 
 from app.character.models import Character
@@ -73,9 +73,10 @@ def clear_settings_cache():
 
 
 @pytest.fixture
-def db_session() -> Generator[Session, None, None]:
+def db_session(tmp_path: Path) -> Generator[Session, None, None]:
     import_models()
-    engine = create_engine('sqlite+pysqlite:///:memory:', connect_args={'check_same_thread': False}, poolclass=StaticPool)
+    database_path = tmp_path / 'worldsim-test.sqlite3'
+    engine = create_engine(f'sqlite+pysqlite:///{database_path}', connect_args={'check_same_thread': False})
     Base.metadata.create_all(engine)
     TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     db = TestingSessionLocal()
@@ -83,6 +84,7 @@ def db_session() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+        engine.dispose()
 
 
 @pytest.fixture

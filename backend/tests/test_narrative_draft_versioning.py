@@ -283,6 +283,65 @@ def test_paragraph_rewrite_only_changes_target_paragraph_and_versions_draft(clie
     assert drafts[1].content == expected_content
 
 
+def test_paragraph_selection_text_rewrites_only_selected_span(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    fake_client = DraftVersioningLLMClient()
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch, fake_client)
+
+    original_paragraphs = draft['content'].split('\n\n')
+    target = original_paragraphs[1]
+    selection = target[:10]
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/draft/paragraph",
+        json={
+            'paragraph_index': 1,
+            'mode': 'polish',
+            'instruction': '让这个片段更克制',
+            'selection_text': selection,
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    updated_paragraphs = payload['content'].split('\n\n')
+    # Only target paragraph changed; others identical
+    assert updated_paragraphs[0] == original_paragraphs[0]
+    assert updated_paragraphs[2] == original_paragraphs[2]
+    assert updated_paragraphs[1] != target
+    # The untouched suffix of the paragraph must remain
+    assert updated_paragraphs[1].endswith(target[10:])
+    assert '选中片段' in payload['change_summary']
+    # The mock revision span should be embedded
+    assert '第二段：沈微霜没有立刻交出湿信' in updated_paragraphs[1]
+    assert '选中的片段' in fake_client.paragraph_messages[1]['content']
+    assert selection in fake_client.paragraph_messages[1]['content']
+
+
+def test_paragraph_selection_text_not_found_returns_400(client, db_session, monkeypatch):
+    token, world_id = register_and_create_world(client)
+    fake_client = DraftVersioningLLMClient()
+    draft = create_reviewing_draft(client, token, world_id, monkeypatch, fake_client)
+
+    response = client.post(
+        f"/chapters/{draft['chapter_id']}/draft/paragraph",
+        json={
+            'paragraph_index': 0,
+            'mode': 'polish',
+            'instruction': '测试',
+            'selection_text': '这段文字根本不存在',
+        },
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    assert response.status_code == 400
+    assert response.json()['detail'] == 'SELECTION_TEXT_NOT_FOUND'
+    db_session.expire_all()
+    chapter = db_session.get(Chapter, draft['chapter_id'])
+    assert chapter.draft_version == 1
+
+
 def test_mock_paragraph_rewrite_api_versions_and_preserves_non_target_paragraphs(client, db_session, monkeypatch):
     monkeypatch.setenv('LLM_MOCK', 'true')
     narrative_service.get_settings.cache_clear()

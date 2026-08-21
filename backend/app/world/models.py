@@ -23,6 +23,7 @@ class World(Base):
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     genre_template: Mapped[str] = mapped_column(String(80), nullable=False)
     truth_canon: Mapped[str] = mapped_column(Text, nullable=False)
+    truth_layers: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
     truth_canon_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     world_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default='active')

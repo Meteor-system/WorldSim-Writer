@@ -458,6 +458,42 @@ class ProposedForeshadowChange(BaseModel):
     description_note: str | None = None
 
 
+class LiteraryReviewReport(BaseModel):
+    """Independent literary second-review report."""
+    literary_score: int = Field(ge=1, le=5)
+    over_explaining: list[str] = Field(default_factory=list)
+    emotional_telling: list[str] = Field(default_factory=list)
+    functional_dialogue: list[str] = Field(default_factory=list)
+    cliche_hooks: list[str] = Field(default_factory=list)
+    voice_notes: list[str] = Field(default_factory=list)
+    rewrite_suggestions: list[str] = Field(default_factory=list)
+
+
+class ChapterQualityReport(BaseModel):
+    """Quality engine report for a chapter draft."""
+    theme_advancement: int = Field(ge=1, le=5)
+    character_arc_progress: int = Field(ge=1, le=5)
+    anti_cliche_risks: list[str] = Field(default_factory=list)
+    rhythm_score: int = Field(ge=1, le=5)
+    voice_consistency: int = Field(ge=1, le=5)
+    overall_score: int = Field(ge=1, le=5)
+
+
+class MemoryCompression(BaseModel):
+    """Compressed summary of a batch of chapter memory cards."""
+    summary: str
+    key_facts: list[str] = Field(default_factory=list)
+    open_threads: list[str] = Field(default_factory=list)
+
+
+class ChapterMemoryCard(BaseModel):
+    """Structured memory card extracted from a chapter for long-context recall."""
+    facts: list[str] = Field(default_factory=list)
+    emotional_arc: str = ''
+    causal_links: list[str] = Field(default_factory=list)
+    characters_present: list[int] = Field(default_factory=list)
+
+
 class ChapterGeneration(BaseModel):
     title: str
     draft_content: str
@@ -466,8 +502,24 @@ class ChapterGeneration(BaseModel):
     proposed_character_changes: list[ProposedCharacterChange]
     proposed_foreshadow_changes: list[ProposedForeshadowChange]
     opening_evidence: list[OpeningEvidence] = Field(default_factory=list)
+    memory_card: ChapterMemoryCard | None = None
 
 
+
+
+class ChapterExtraction(BaseModel):
+    """Lightweight schema for the extraction phase of two-phase generation.
+
+    The Writer (Phase 1) produces title + draft_content.  The Extractor
+    (Phase 2) only needs to return the structured metadata fields.  This
+    avoids requiring the extractor to regurgitate content it did not write.
+    """
+    context_summary: str
+    review_hints: list[str]
+    proposed_character_changes: list[ProposedCharacterChange]
+    proposed_foreshadow_changes: list[ProposedForeshadowChange]
+    opening_evidence: list[OpeningEvidence] = Field(default_factory=list)
+    memory_card: ChapterMemoryCard | None = None
 class ParagraphRevision(BaseModel):
     paragraph: str = Field(min_length=1)
     revision_note: str | None = None
@@ -483,21 +535,118 @@ class ParagraphRevision(BaseModel):
         return stripped
 
 
+def _extract_json_from_text(text: str) -> str | None:
+    """Try to extract a JSON object or array from arbitrary text.
+
+    Handles common LLM output patterns:
+    - Markdown code fences (```json ... ```) at any position
+    - JSON embedded in explanatory text (find first { to last })
+    - Multiple code fences (try each)
+    """
+    # 1. Try to find any markdown code fence with JSON
+    fence_matches = list(re.finditer(r"```(?:json|JSON)?\s*\n(.+?)\n\s*```", text, flags=re.DOTALL))
+    for match in fence_matches:
+        candidate = match.group(1).strip()
+        if candidate:
+            try:
+                json.loads(candidate)
+                return candidate
+            except (TypeError, json.JSONDecodeError):
+                continue
+
+    # 2. Try to extract JSON object between first { and last }
+    first_brace = text.find('{')
+    last_brace = text.rfind('}')
+    if first_brace >= 0 and last_brace > first_brace:
+        candidate = text[first_brace:last_brace + 1]
+        try:
+            json.loads(candidate)
+            return candidate
+        except (TypeError, json.JSONDecodeError):
+            pass
+
+    # 3. Try to extract JSON array between first [ and last ]
+    first_bracket = text.find('[')
+    last_bracket = text.rfind(']')
+    if first_bracket >= 0 and last_bracket > first_bracket:
+        candidate = text[first_bracket:last_bracket + 1]
+        try:
+            json.loads(candidate)
+            return candidate
+        except (TypeError, json.JSONDecodeError):
+            pass
+
+    return None
+
+
+def _repair_json(text: str) -> str | None:
+    """Attempt lightweight repairs on malformed JSON from LLM output.
+
+    Fixes common issues:
+    - Trailing commas before } or ]
+    - Single-quoted strings (convert to double)
+    """
+    repaired = text.strip()
+
+    # Remove trailing commas before } or ]
+    repaired = re.sub(r",(\s*[}\]])", r"\1", repaired)
+
+    if repaired == text.strip():
+        return None  # No changes made
+
+    try:
+        json.loads(repaired)
+        return repaired
+    except (TypeError, json.JSONDecodeError):
+        return None
+
+
 def _load_json(raw_text: str) -> Any:
     text = raw_text.strip()
     if not text:
         raise _JsonLoadError("empty_response")
 
+    # 1. Try bare JSON
     try:
         return json.loads(text)
     except (TypeError, json.JSONDecodeError):
-        fence_match = re.fullmatch(r"```(?:json|JSON)?\n(.+?)\n```", text, flags=re.DOTALL)
-        if not fence_match:
-            raise _JsonLoadError("not_bare_json_and_no_single_json_fence") from None
+        pass
+
+    # 2. Try exact code fence match (original behavior, most common case)
+    fence_match = re.fullmatch(r"```(?:json|JSON)?\n(.+?)\n```", text, flags=re.DOTALL)
+    if fence_match:
         try:
             return json.loads(fence_match.group(1))
         except (TypeError, json.JSONDecodeError):
-            raise _JsonLoadError("fenced_body_not_valid_json") from None
+            repaired = _repair_json(fence_match.group(1))
+            if repaired is not None:
+                try:
+                    return json.loads(repaired)
+                except (TypeError, json.JSONDecodeError):
+                    pass
+
+    # 3. Try extracting JSON from mixed text (LLM added commentary around JSON)
+    extracted = _extract_json_from_text(text)
+    if extracted is not None:
+        try:
+            return json.loads(extracted)
+        except (TypeError, json.JSONDecodeError):
+            repaired = _repair_json(extracted)
+            if repaired is not None:
+                try:
+                    return json.loads(repaired)
+                except (TypeError, json.JSONDecodeError):
+                    pass
+
+    # 4. Try repairing the bare text as a last resort
+    repaired_text = _repair_json(text)
+    if repaired_text is not None:
+        try:
+            return json.loads(repaired_text)
+        except (TypeError, json.JSONDecodeError):
+            pass
+
+    raise _JsonLoadError("not_bare_json_and_no_single_json_fence") from None
 
 
 def _parse_model_response(raw_text: str, stage: str, validator: Any) -> Any:
@@ -519,6 +668,21 @@ def _parse_model_response(raw_text: str, stage: str, validator: Any) -> Any:
 
 def parse_chapter_generation(raw_text: str) -> ChapterGeneration:
     return _parse_model_response(raw_text, "chapter_generation", ChapterGeneration.model_validate)
+
+def parse_literary_review(raw_text: str) -> LiteraryReviewReport:
+    return _parse_model_response(raw_text, "literary_review", LiteraryReviewReport.model_validate)
+
+
+def parse_quality_report(raw_text: str) -> ChapterQualityReport:
+    return _parse_model_response(raw_text, "quality_report", ChapterQualityReport.model_validate)
+
+
+def parse_memory_compression(raw_text: str) -> MemoryCompression:
+    return _parse_model_response(raw_text, "memory_compression", MemoryCompression.model_validate)
+
+
+def parse_chapter_extraction(raw_text: str) -> ChapterExtraction:
+    return _parse_model_response(raw_text, "chapter_extraction", ChapterExtraction.model_validate)
 
 
 def parse_opening_evidence_repair(raw_text: str) -> OpeningEvidenceRepair:

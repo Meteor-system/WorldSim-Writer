@@ -14,6 +14,7 @@ from app.tags.models import ObjectTag, Tag
 from app.world.models import World
 from app.core.config import get_settings
 from app.llm.client import LLMClient
+from app.llm.usage import AuditSessionFactory, audit_session_factory_from_db
 from app.world.schemas import WorldCreateRequest
 from app.world.seed_library import WORLD_SEEDS, seed_detail, seed_summary
 from app.world.templates import SAMPLE_WORLD
@@ -22,11 +23,32 @@ FORESHADOW_STATUSES = {'planted', 'advanced', 'resolved', 'expired'}
 SAFE_MODEL_RUNTIME_ERRORS = {'MODEL_REQUEST_FAILED', 'MODEL_AUTH_FAILED', 'MODEL_RATE_LIMITED'}
 
 
-def _model_client(llm_client: LLMClient | None = None) -> LLMClient:
+def _model_client(
+    llm_client: LLMClient | None = None,
+    *,
+    db: Session | None = None,
+    audit_session_factory: AuditSessionFactory | None = None,
+    request_id: str | None = None,
+    world_id: int | None = None,
+    chapter_id: int | None = None,
+    draft_id: int | None = None,
+) -> LLMClient:
     settings = get_settings()
     client = llm_client or LLMClient()
     if hasattr(client, 'mock'):
         client.mock = settings.llm_mock
+    if audit_session_factory is None:
+        audit_session_factory = audit_session_factory_from_db(db)
+    configure_usage_context = getattr(client, 'configure_usage_context', None)
+    if callable(configure_usage_context):
+        configure_usage_context(
+            db=db,
+            audit_session_factory=audit_session_factory,
+            request_id=request_id,
+            world_id=world_id,
+            chapter_id=chapter_id,
+            draft_id=draft_id,
+        )
     return client
 
 
@@ -247,8 +269,16 @@ def generate_world_creation_draft(
     style_handbook_reference: dict | None = None,
     variant_count: int = 1,
     material_references: list[dict] | None = None,
+    db: Session | None = None,
+    audit_session_factory: AuditSessionFactory | None = None,
+    request_id: str | None = None,
 ) -> dict:
-    client = _model_client(llm_client)
+    client = _model_client(
+        llm_client,
+        db=db,
+        audit_session_factory=audit_session_factory,
+        request_id=request_id,
+    )
     count = min(max(variant_count, 1), 3)
     normalized_material_references = _normalize_material_references(material_references)
     variant_labels = ['主线高张力版', '角色关系驱动版', '世界规则悬疑版']

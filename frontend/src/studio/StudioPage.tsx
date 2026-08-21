@@ -11,6 +11,7 @@ import {
   generateOutline,
   getApprovalPreview,
   getApprovalReadiness,
+  getChapterHistory,
   getChapterHistoryDetail,
   getDraftDiff,
   getDraftVersion,
@@ -22,9 +23,13 @@ import {
   suggestGoal,
   writeChapter,
 } from '../api/client';
-import type { ApprovalPreviewResponse, ApprovalReadinessResponse, BeatCard, ChapterExecutionContext, ChapterPipelineResponse, CharacterArcReportResponse, ConsistencySummary, ConsistencyWarning, CriticReportResponse, DraftDiffResponse, DraftResponse, StudioLaunchContext, WorldOverview } from '../api/types';
+import type { ApprovalPreviewResponse, ApprovalReadinessResponse, BeatCard, ChapterExecutionContext, ChapterHistoryDetailResponse, ChapterPipelineResponse, CharacterArcReportResponse, ConsistencySummary, ConsistencyWarning, CriticReportResponse, DraftDiffResponse, DraftResponse, StudioLaunchContext, WorldOverview, WorldSummary } from '../api/types';
 import { withEditedGoal } from '../world/chapterExecutionContext';
 import { ApprovalReadinessPanel } from './ApprovalReadinessPanel';
+import { ManuscriptViewer } from '../workbench/ManuscriptViewer';
+import { ConvergencePanel } from '../workbench/ConvergencePanel';
+import { MANAGER_PANELS, WorkbenchManagerDrawer, type ManagerPanelKey } from '../workbench/WorkbenchManagerDrawer';
+import { WorkbenchTopBar } from '../workbench/WorkbenchTopBar';
 import { CharacterArcPanel } from './CharacterArcPanel';
 import { CriticReportPanel } from './CriticReportPanel';
 
@@ -34,6 +39,10 @@ type Props = {
   onBack: () => void;
   onApproved: (world: WorldOverview) => void;
   onAbandoned?: (worldId: number) => void;
+  userEmail?: string;
+  onLogout?: () => void;
+  onWorldCreated?: (world: WorldOverview) => void;
+  onSwitchWorld?: (world: WorldSummary) => void;
 };
 
 type AbandonConfirmState = 'idle' | 'confirming' | 'submitting';
@@ -57,197 +66,30 @@ type WorldSettlement = {
   exportError?: string;
 };
 
-function dialogueToText(beat: BeatCard): string {
-  return beat.key_dialogue_hints.join('\n');
-}
+import {
+    dialogueToText,
+    textToDialogue,
+    sourceLabel,
+    names,
+    ACTIVE_CHAPTER_RECOVERY_MESSAGE,
+    OPENING_QUALITY_VALIDATION_VERSION,
+    isActiveChapterConflict,
+    autoDraftFailureMessage,
+    apiErrorStatus,
+    openingQualityStatus,
+    openingQualityIsCurrent,
+    paragraphList,
+    resolveDraftVersion,
+    normalizeDraft,
+    previewIndex,
+    toggleIndex,
+    consistencyLabel,
+    ExecutionContextSummary,
+    ExecutionContextSnapshot,
+    OpeningQualityPanel,
+} from './StudioPageHelpers';
 
-function textToDialogue(value: string): string[] {
-  return value
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-function sourceLabel(source: ChapterExecutionContext['source']): string {
-  return source === 'next_chapter_prep' ? '下一章准备台' : '手动';
-}
-
-function names(values: Array<{ name?: string; title?: string }>): string {
-  return values.map((value) => value.name ?? value.title).filter(Boolean).join('、') || '无';
-}
-
-const ACTIVE_CHAPTER_RECOVERY_MESSAGE = '这个世界已有进行中的章节。请返回世界页恢复该章节，完成审阅或处理后再开始下一章。';
-const OPENING_QUALITY_VALIDATION_VERSION = 5;
-
-function isActiveChapterConflict(error: unknown): boolean {
-  return error instanceof Error && error.message === 'ACTIVE_CHAPTER_EXISTS';
-}
-
-function autoDraftFailureMessage(error: unknown): string {
-  if (isActiveChapterConflict(error)) return ACTIVE_CHAPTER_RECOVERY_MESSAGE;
-  const recoveryMessage = '第一章草稿暂未生成。已创建的世界和当前创作进度都已保留，可以直接重试。';
-  const detail = error instanceof Error ? error.message.trim() : '';
-  if (!detail || /^[A-Z][A-Z0-9_]+$/.test(detail)) return recoveryMessage;
-  return `${recoveryMessage} 原因：${detail}`;
-}
-
-function ExecutionContextSummary({ context, frozen }: { context?: ChapterExecutionContext | null; frozen?: boolean }) {
-  if (!context) {
-    return (
-      <div className="book-card p-5">
-        <h2 className="font-black text-[#3b2511]">本章设定（本章要写什么）</h2>
-        <p className="mt-3 ink-muted">本章暂无来自下一章准备台的设定。创建章节时会根据当前目标生成手动设定快照。</p>
-      </div>
-    );
-  }
-  return (
-    <div className="book-card p-5">
-      <h2 className="font-black text-[#3b2511]">本章设定（本章要写什么）</h2>
-      {frozen && <p className="mt-2 text-sm font-bold text-[#5e3b1c]">已冻结本章设定：{context.source} · v{context.source_world_version}</p>}
-      <p className="mt-3 ink-muted">来源：{sourceLabel(context.source)}</p>
-      <p className="mt-2 ink-muted">源世界版本：v{context.source_world_version}</p>
-      <p className="mt-2 ink-muted">建议章节：第 {context.next_chapter_number ?? '?'} 章</p>
-      <p className="mt-2 ink-muted">推荐 POV：{context.recommended_pov.name ?? '暂无'}</p>
-      <p className="mt-2 ink-muted">优先角色：{names(context.priority_characters)}</p>
-      <p className="mt-2 ink-muted">优先伏笔：{names(context.priority_foreshadows)}</p>
-      <p className="mt-2 ink-muted">推进提示：{context.progression_hints.length} 条</p>
-      <p className="mt-2 ink-muted">连续性提醒：{context.continuity_warnings.length} 条</p>
-      {context.continuity_warnings.length > 0 && (
-        <ul className="mt-3 space-y-2 rounded-xl bg-amber-50/70 p-3 text-sm text-[#5e3b1c]" aria-label="连续性提醒列表">
-          {context.continuity_warnings.map((warning, index) => (
-            <li key={`${warning.category}-${index}`}>{warning.message}</li>
-          ))}
-        </ul>
-      )}
-      {context.style_handbook_reference && (
-        <p className="mt-2 ink-muted">写作风格参考：{context.style_handbook_reference.source_title}（仅抽象风格维度，不写入正史）</p>
-      )}
-    </div>
-  );
-}
-
-function ExecutionContextSnapshot({ context }: { context?: ChapterExecutionContext | null }) {
-  if (!context) return null;
-  return (
-    <section className="space-y-3 rounded-2xl bg-white/35 p-4">
-      <h3 className="font-black text-[#3b2511]">本章设定快照</h3>
-      <p className="manuscript text-sm">来源：{sourceLabel(context.source)} · v{context.source_world_version}</p>
-      <p className="manuscript text-sm">目标：{context.goal}</p>
-      <p className="manuscript text-sm">推荐 POV：{context.recommended_pov.name ?? '暂无'}</p>
-      <p className="manuscript text-sm">优先角色：{names(context.priority_characters)}</p>
-      <p className="manuscript text-sm">优先伏笔：{names(context.priority_foreshadows)}</p>
-      {context.progression_hints.map((hint) => (
-        <p key={hint.title} className="manuscript text-sm">推进提示：{hint.title}</p>
-      ))}
-      {context.continuity_warnings.map((warning, index) => (
-        <p key={`${warning.category}-${index}`} className="manuscript text-sm">连续性提醒：{warning.message}</p>
-      ))}
-      {context.style_handbook_reference && (
-        <div className="rounded-xl bg-amber-50/60 p-3" data-testid="execution-style-handbook">
-          <p className="manuscript text-sm font-bold">写作风格参考：{context.style_handbook_reference.source_title}</p>
-          <p className="manuscript text-xs ink-muted">仅参考抽象风格维度（节奏/语言密度/对白比例等），不写入正史，禁止照搬原文。</p>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function openingQualityStatus(status?: string, passed?: boolean, stale = false): string {
-  if (stale) return '已过期';
-  if (typeof passed === 'boolean') return passed ? '通过' : '需修订';
-  if (status === 'pass' || status === 'passed' || status === 'ok') return '通过';
-  if (status === 'warning' || status === 'needs_review') return '需复核';
-  if (status === 'fail' || status === 'failed' || status === 'blocked') return '需修订';
-  return status ?? '未标注';
-}
-
-function openingQualityIsCurrent(draft: DraftResponse | null): boolean {
-  const report = draft?.quality_report;
-  if (!draft || report?.profile !== 'opening_chapter') return true;
-  return report.status === 'pass'
-    && report.evaluated_draft_version === draft.draft_version
-    && report.validation_version === OPENING_QUALITY_VALIDATION_VERSION;
-}
-
-function OpeningQualityPanel({ draft }: { draft: DraftResponse | null }) {
-  const report = draft?.quality_report;
-  const checks = report?.checks ?? report?.opening_chapter?.checks ?? [];
-  const advisories = report?.advisories ?? [];
-  const currentDraftVersion = draft?.draft_version;
-  const validationVersionOutdated = report?.profile === 'opening_chapter'
-    && report.validation_version !== OPENING_QUALITY_VALIDATION_VERSION;
-  const stale = Boolean(
-    report?.profile === 'opening_chapter'
-    && (report.status === 'stale' || report.evaluated_draft_version !== currentDraftVersion || validationVersionOutdated),
-  );
-
-  return (
-    <section className="studio-quality-panel" aria-labelledby="opening-quality-title">
-      <div className="studio-panel-heading">
-        <p className="chapter-kicker">Opening Quality</p>
-        <h2 id="opening-quality-title" className="text-2xl font-black text-[#34210f]">首章质量</h2>
-      </div>
-      {!report ? (
-        <p className="manuscript text-sm">尚未评估首章质量。生成或载入草稿后，质量报告会在此显示。</p>
-      ) : (
-        <>
-          <p className="manuscript text-sm">状态：{openingQualityStatus(report.status, undefined, stale)}{report.profile ? ` · ${report.profile}` : ''}</p>
-          {stale && (
-            <div className="paper-error mt-3">
-              <p className="font-bold">{validationVersionOutdated ? '验证规则已更新，需重新评估' : '当前草稿未验证'}</p>
-              {validationVersionOutdated ? (
-                <p className="mt-1 text-sm">当前审批要求验证规则 v{OPENING_QUALITY_VALIDATION_VERSION}；该报告的规则版本缺失或不匹配。</p>
-              ) : typeof report.evaluated_draft_version === 'number' && typeof currentDraftVersion === 'number' && (
-                <p className="mt-1 text-sm">基于 v{report.evaluated_draft_version}，不适用于当前 v{currentDraftVersion}</p>
-              )}
-            </div>
-          )}
-          {(typeof report.character_count === 'number' || typeof report.paragraph_count === 'number') && (
-            <p className="manuscript text-sm">字数：{report.character_count ?? '未提供'} · 段落：{report.paragraph_count ?? '未提供'}</p>
-          )}
-          {typeof report.evaluated_draft_version === 'number' && <p className="manuscript text-sm">评估草稿：v{report.evaluated_draft_version}</p>}
-          {checks.length > 0 ? (
-            <ul className="studio-quality-checks">
-              {checks.map((check, index) => (
-                <li key={`${check.check ?? check.label}-${index}`}>
-                  <div className="flex items-baseline justify-between gap-3">
-                    <strong>{check.label}</strong>
-                    <span className="text-sm font-bold text-[#80501f]">{openingQualityStatus(check.status, check.passed, stale)}</span>
-                  </div>
-                  {check.message && <p className="manuscript mt-1 text-sm">{check.message}</p>}
-                  {(typeof check.paragraph_index === 'number' || check.quote) && <p className="manuscript mt-1 text-xs ink-muted">{typeof check.paragraph_index === 'number' ? `第 ${check.paragraph_index + 1} 段` : ''}{typeof check.paragraph_index === 'number' && check.quote ? ' · ' : ''}{check.quote ? `证据：${check.quote}` : ''}</p>}
-                  {typeof check.corrected_index === 'number' && <p className="manuscript mt-1 text-xs ink-muted">自动校正：第 {check.corrected_index + 1} 段</p>}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="manuscript text-sm">报告未包含可展示的检查项。</p>
-          )}
-          {advisories.length > 0 && (
-            <section className="mt-4 rounded-xl bg-amber-50/60 p-3" aria-labelledby="opening-quality-advisories-title">
-              <h3 id="opening-quality-advisories-title" className="font-black text-[#3b2511]">非阻断建议</h3>
-              <p className="manuscript mt-1 text-xs ink-muted">以下提示仅供修订参考，不影响首章质量硬门禁或审批。</p>
-              <ul className="mt-3 space-y-3">
-                {advisories.map((advisory, index) => (
-                  <li key={`${advisory.check}-${index}`} className="rounded-lg bg-white/50 p-3">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <strong>{advisory.label}</strong>
-                      <span className="text-sm font-bold text-[#80501f]">状态：{advisory.state}</span>
-                    </div>
-                    {advisory.message && <p className="manuscript mt-1 text-sm">{advisory.message}</p>}
-                    {advisory.unglossed_terms && advisory.unglossed_terms.length > 0 && <p className="manuscript mt-1 text-xs ink-muted">术语样本：{advisory.unglossed_terms.join('、')}</p>}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-        </>
-      )}
-    </section>
-  );
-}
-
-export function StudioPage({ world, launchContext, onBack, onApproved, onAbandoned = onBack }: Props) {
+export function StudioPage({ world, launchContext, onBack, onApproved, onAbandoned = onBack, userEmail = '', onLogout, onWorldCreated, onSwitchWorld }: Props) {
   const resumedChapter = launchContext?.resumeSession?.chapter ?? null;
   const resumedDraft = launchContext?.resumeSession?.draft ?? null;
   const recentApproval = launchContext?.recentApproval ?? null;
@@ -260,6 +102,17 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
   const [draft, setDraft] = useState<DraftResponse | null>(resumedDraft);
   const [draftVersions, setDraftVersions] = useState<number[]>(launchContext?.resumeSession?.draft_versions ?? (resumedDraft ? [resumedDraft.draft_version] : []));
   const [draftDiff, setDraftDiff] = useState<DraftDiffResponse | null>(null);
+  const [highlightedText, setHighlightedText] = useState<string | null>(null);
+  const [convergenceRefreshKey, setConvergenceRefreshKey] = useState(0);
+  const [approvedReader, setApprovedReader] = useState<ChapterHistoryDetailResponse | null>(null);
+  const [approvedReaderLoading, setApprovedReaderLoading] = useState(false);
+  const [managerPanel, setManagerPanel] = useState<ManagerPanelKey | null>(null);
+  const [studioStage, setStudioStage] = useState<'goal' | 'outline' | 'draft' | 'settlement'>(
+    recentApproval ? 'settlement' : resumedDraft ? 'draft' : 'goal',
+  );
+  const [inspectorTab, setInspectorTab] = useState<'approval' | 'quality' | 'reports' | 'convergence'>(
+    resumedDraft ? 'approval' : 'quality',
+  );
   const [approvalPreview, setApprovalPreview] = useState<ApprovalPreviewResponse | null>(null);
   const [selectedCharacterChangeIndexes, setSelectedCharacterChangeIndexes] = useState<number[]>([]);
   const [selectedForeshadowChangeIndexes, setSelectedForeshadowChangeIndexes] = useState<number[]>([]);
@@ -312,6 +165,16 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
   useEffect(() => {
     setLocalWorld(world);
   }, [world]);
+
+  useEffect(() => {
+    if (settlement) setStudioStage('settlement');
+    else if (draft) {
+      setStudioStage('draft');
+      setInspectorTab('approval');
+    } else if (outlineBeats.length > 0) setStudioStage('outline');
+    else setStudioStage('goal');
+  }, [settlement, draft, outlineBeats.length]);
+
 
   useEffect(() => {
     if (launchContext?.initialChapterGoal || chapter || goal.trim().length > 0) return;
@@ -827,6 +690,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
     try {
       const overview = await apiRequest<WorldOverview>(`/worlds/${localWorld.id}/overview`);
       setLocalWorld(overview);
+      setConvergenceRefreshKey((current) => current + 1);
       setSettlement({
         worldBefore: approvalPreview.world_version_before,
         worldAfter: approvalPreview.world_version_after ?? overview.world_version,
@@ -1038,13 +902,19 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
     }
   }
 
-  async function reviseDraftParagraph(index: number, mode: 'rewrite' | 'polish') {
+  async function reviseDraftParagraph(index: number, mode: 'rewrite' | 'polish', instruction?: string, selectionText?: string) {
     if (approvalCommitState !== 'idle' || !draft || !isViewingLatestDraft()) return;
     setWorking(true);
     setError('');
     try {
-      const updated = normalizeDraft(await reviseParagraph(draft.chapter_id, { paragraph_index: index, mode }));
+      const updated = normalizeDraft(await reviseParagraph(draft.chapter_id, {
+        paragraph_index: index,
+        mode,
+        ...(instruction !== undefined ? { instruction } : {}),
+        ...(selectionText !== undefined ? { selection_text: selectionText } : {}),
+      }));
       setDraft(updated);
+      if (selectionText) setHighlightedText(selectionText);
       await refreshReviewStudioPanels(updated);
       setCritique(null);
       setCharacterArcReport(null);
@@ -1053,6 +923,10 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
     } finally {
       setWorking(false);
     }
+  }
+
+  function handleReviseSelection(paragraphIndex: number, mode: 'rewrite' | 'polish', instruction: string | undefined, selectionText: string) {
+    void reviseDraftParagraph(paragraphIndex, mode, instruction, selectionText);
   }
 
   async function runFullDraftRevision() {
@@ -1131,16 +1005,66 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
   const approvalResultLocked = approvalCommitState !== 'idle';
   const settlementOnly = Boolean(recentApproval && settlement);
 
+  useEffect(() => {
+    if (chapter || settlementOnly) return;
+    let cancelled = false;
+    setApprovedReaderLoading(true);
+    getChapterHistory(localWorld.id)
+      .then(async (history) => {
+        if (cancelled || !history.chapters.length) return;
+        const latest = history.chapters[0];
+        const detail = await getChapterHistoryDetail(latest.id);
+        if (!cancelled) setApprovedReader(detail);
+      })
+      .catch(() => {
+        if (!cancelled) setApprovedReader(null);
+      })
+      .finally(() => {
+        if (!cancelled) setApprovedReaderLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [chapter, localWorld.id, settlementOnly]);
+
   return (
     <section className="studio-workbench">
+      {onSwitchWorld && (
+        <WorkbenchTopBar
+          currentWorldId={localWorld.id}
+          currentWorldVersion={localWorld.world_version}
+          currentWorldStatus={localWorld.status}
+          onSwitchWorld={onSwitchWorld}
+          onCreated={onWorldCreated ?? (() => {})}
+          onLogout={onLogout ?? onBack}
+          userEmail={userEmail}
+          onOpenWorld={onBack}
+        />
+      )}
+      <WorkbenchManagerDrawer
+        world={localWorld}
+        panel={managerPanel}
+        onClose={() => setManagerPanel(null)}
+        onWorldChanged={() => {
+          setManagerPanel(null);
+          apiRequest<WorldOverview>(`/worlds/${localWorld.id}/overview`)
+            .then((overview) => {
+              setLocalWorld(overview);
+              setConvergenceRefreshKey((current) => current + 1);
+            })
+            .catch(() => {});
+        }}
+      />
       <div className="studio-workbench-grid">
         <aside className="studio-rail studio-navigation" role="region" aria-label="世界与章节导航">
-          <button className="ghost-button -ml-4" onClick={onBack}>← 返回世界页</button>
+          {!onSwitchWorld && (
+            <button type="button" className="workbench-nav-item" onClick={onBack}>返回世界页</button>
+          )}
           {chapter && !settlementOnly && (
             <button
               ref={abandonTriggerRef}
               type="button"
-              className="ghost-button -ml-4 text-red-800"
+              className="workbench-nav-item text-red-800"
               disabled={working || approvalResultLocked || abandonConfirmState === 'submitting'}
               onClick={() => {
                 setError('');
@@ -1156,7 +1080,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
             <p className="ink-muted text-sm">世界版本 v{localWorld.world_version}</p>
           </div>
           {!settlementOnly && (
-            <div className="book-card p-5">
+            <div className="studio-navigation-section">
               <h2 className="font-black text-[#3b2511]">创作流程</h2>
               <ol className="mt-3 space-y-2 text-sm ink-muted">
                 <li className={chapter ? 'font-bold text-[#3b2511]' : ''}>1. 创建章节</li>
@@ -1178,21 +1102,91 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
           <section className="studio-navigation-section">
             <h2 className="font-black text-[#3b2511]">角色</h2>
             <ul className="studio-compact-list">
-              {localWorld.characters.map((character) => <li key={character.id}><strong>{character.name}</strong> · {character.role_type}{character.role_type === 'protagonist' ? '（主角 / 推荐 POV）' : ''}</li>)}
+              {localWorld.characters.slice(0, 5).map((character) => <li key={character.id}><strong>{character.name}</strong> · {character.role_type}{character.role_type === 'protagonist' ? '（主角 / 推荐 POV）' : ''}</li>)}
+              {localWorld.characters.length > 5 && <li className="ink-muted">还有 {localWorld.characters.length - 5} 名角色</li>}
             </ul>
           </section>
           {!settlementOnly && <ExecutionContextSummary context={chapter?.execution_context ?? executionContext} frozen={Boolean(chapter?.execution_context)} />}
           <section className="studio-navigation-section">
             <h2 className="font-black text-[#3b2511]">开放伏笔</h2>
             <ul className="studio-compact-list">
-              {localWorld.foreshadows.filter((item) => item.status !== 'resolved' && item.status !== 'expired').map((item) => <li key={item.id}>{item.title} · {item.status}</li>)}
+              {localWorld.foreshadows.filter((item) => item.status !== 'resolved' && item.status !== 'expired').slice(0, 5).map((item) => <li key={item.id}>{item.title} · {item.status}</li>)}
             </ul>
           </section>
+          {!settlementOnly && (
+            <section className="studio-navigation-section" aria-label="世界管理">
+              <h2 className="font-black text-[#3b2511]">世界管理</h2>
+              <div className="workbench-stack-nav mt-2">
+                {MANAGER_PANELS.map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={managerPanel === item.key ? 'workbench-nav-item is-active' : 'workbench-nav-item'}
+                    onClick={() => setManagerPanel(item.key)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
         </aside>
         <main className="studio-main" role="region" aria-label="大纲与正文编辑">
           {!settlementOnly && (
-          <div className="book-card p-5">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="workbench-stage-tabs" role="tablist" aria-label="创作阶段">
+              <button type="button" role="tab" aria-selected={studioStage === 'goal'} className={studioStage === 'goal' ? 'workbench-tab is-active' : 'workbench-tab'} onClick={() => setStudioStage('goal')}>目标</button>
+              <button type="button" role="tab" aria-selected={studioStage === 'outline'} className={studioStage === 'outline' ? 'workbench-tab is-active' : 'workbench-tab'} disabled={outlineBeats.length === 0} onClick={() => setStudioStage('outline')}>大纲</button>
+              <button type="button" role="tab" aria-selected={studioStage === 'draft'} className={studioStage === 'draft' ? 'workbench-tab is-active' : 'workbench-tab'} disabled={!draft} onClick={() => setStudioStage('draft')}>正文</button>
+              <button type="button" role="tab" aria-selected={studioStage === 'settlement'} className={studioStage === 'settlement' ? 'workbench-tab is-active' : 'workbench-tab'} disabled={!settlement} onClick={() => setStudioStage('settlement')}>结算</button>
+            </div>
+          )}
+          {!chapter && !settlementOnly && studioStage === 'goal' && (
+            <div className="space-y-3" role="region" aria-label="已批准章节阅读">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="font-black text-[#3b2511]">正史正文</h2>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  disabled={approvedReaderLoading}
+                  onClick={() => {
+                    setApprovedReaderLoading(true);
+                    getChapterHistory(localWorld.id)
+                      .then(async (history) => {
+                        if (!history.chapters.length) {
+                          setApprovedReader(null);
+                          return;
+                        }
+                        const detail = await getChapterHistoryDetail(history.chapters[0].id);
+                        setApprovedReader(detail);
+                      })
+                      .catch(() => setApprovedReader(null))
+                      .finally(() => setApprovedReaderLoading(false));
+                  }}
+                >
+                  {approvedReaderLoading ? '加载中…' : '刷新正史'}
+                </button>
+              </div>
+              {approvedReaderLoading && !approvedReader && <p className="manuscript">正史加载中…</p>}
+              {!approvedReaderLoading && !approvedReader && <p className="manuscript">还没有已批准章节。创建并批准第一章后，正文会出现在这里。</p>}
+              {approvedReader && (
+                <article>
+                  <div className="mb-3 flex items-baseline gap-3">
+                    <h3 className="text-xl font-black text-[#34210f]">{approvedReader.title}</h3>
+                    <span className="ink-muted text-sm">世界版本 v{approvedReader.world_version_after}</span>
+                  </div>
+                  <ManuscriptViewer
+                    content={approvedReader.approved_content}
+                    editable={false}
+                    busy={false}
+                    onReviseSelection={() => {}}
+                  />
+                </article>
+              )}
+            </div>
+          )}
+          {!settlementOnly && (
+          <div className="workbench-command-bar">
+            <div className="mb-0 flex items-center justify-between">
               <label className="text-sm font-bold text-[#5e3b1c]" htmlFor="chapter-goal">章节目标</label>
               <button
                 className="inline-flex items-center gap-1.5 rounded-lg border border-amber-700/25 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 disabled:opacity-40"
@@ -1203,8 +1197,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
                 {suggestingGoal ? '⏳ 生成中…' : '✨ 自动生成'}
               </button>
             </div>
-            <textarea id="chapter-goal" className="paper-input min-h-28" value={goal} onChange={(event) => setGoal(event.target.value)} aria-label="章节目标" disabled={Boolean(chapter)} placeholder="输入本章要讲什么故事……或者点击「✨ 自动生成」让 AI 帮你写" />
-            <div className="mt-4 flex flex-wrap gap-3">
+            <textarea id="chapter-goal" className="paper-input min-h-20" value={goal} onChange={(event) => setGoal(event.target.value)} aria-label="章节目标" disabled={Boolean(chapter)} placeholder="输入本章要讲什么故事……或者点击「✨ 自动生成」让 AI 帮你写" />
+            <div className="workbench-command-actions">
               <button className="primary-button" disabled={working || Boolean(chapter)} onClick={createChapterSession}>{chapter ? '章节已创建' : '创建章节'}</button>
               <button className="secondary-button" disabled={working || approvalResultLocked || !chapter || Boolean(draft && !isViewingLatestDraft())} onClick={runOutliner}>{operationHint === '编剧室正在排布章节骨架…' ? operationHint : '生成大纲'}</button>
               <button className="secondary-button" disabled={working || approvalResultLocked || !chapter || outlineBeats.length === 0 || Boolean(draft && !isViewingLatestDraft())} onClick={runWriter}>{operationHint === '导演正在拆场景…' ? operationHint : '基于大纲生成正文'}</button>
@@ -1251,7 +1245,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
             <p className="paper-success px-4 py-2 text-sm" role="status" aria-live="polite">草稿已进入 Studio，确认后再写入正史。</p>
           )}
 
-          {settlement && (
+          {settlement && studioStage === 'settlement' && (
             <section className="book-card space-y-4 border-2 border-emerald-500/35 bg-emerald-50/70 p-5" role="status" aria-live="polite">
               <div>
                 <p className="chapter-kicker">正史结算</p>
@@ -1284,7 +1278,7 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
             </section>
           )}
 
-          {outlineBeats.length > 0 && (
+          {outlineBeats.length > 0 && studioStage === 'outline' && (
             <section className="book-card space-y-4 p-5">
               <div>
                 <p className="chapter-kicker">Outliner Beats</p>
@@ -1320,8 +1314,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
             </section>
           )}
 
-          {draft && (
-            <article className="book-card space-y-5 p-6">
+          {draft && studioStage === 'draft' && (
+            <article className="space-y-5">
               <div>
                 <p className="chapter-kicker">Writer Draft</p>
                 <h2 ref={draftTitleRef} tabIndex={-1} className="mt-2 text-3xl font-black text-[#34210f]">{draft.title}</h2>
@@ -1373,7 +1367,13 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
                   </div>
                 </div>
               ) : (
-                <p className="manuscript whitespace-pre-wrap text-lg">{draft.content}</p>
+                <ManuscriptViewer
+                  content={draft.content}
+                  editable={isViewingLatestDraft() && approvalCommitState === 'idle'}
+                  busy={working}
+                  highlightedText={highlightedText}
+                  onReviseSelection={handleReviseSelection}
+                />
               )}
               {!editMode && (
                 <section className="space-y-3 rounded-2xl bg-white/35 p-4">
@@ -1428,8 +1428,20 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
           )}
         </main>
         <aside className="studio-rail studio-inspector" role="region" aria-label="质量与 Canon 审批">
+          <div className="workbench-inspector-tabs" role="tablist" aria-label="检查器分组">
+            <button type="button" role="tab" aria-selected={inspectorTab === 'approval'} className={inspectorTab === 'approval' ? 'workbench-tab is-active' : 'workbench-tab'} onClick={() => setInspectorTab('approval')}>审批</button>
+            <button type="button" role="tab" aria-selected={inspectorTab === 'quality'} className={inspectorTab === 'quality' ? 'workbench-tab is-active' : 'workbench-tab'} onClick={() => setInspectorTab('quality')}>质量</button>
+            <button type="button" role="tab" aria-selected={inspectorTab === 'reports'} className={inspectorTab === 'reports' ? 'workbench-tab is-active' : 'workbench-tab'} onClick={() => setInspectorTab('reports')}>报告</button>
+            <button type="button" role="tab" aria-selected={inspectorTab === 'convergence'} className={inspectorTab === 'convergence' ? 'workbench-tab is-active' : 'workbench-tab'} onClick={() => setInspectorTab('convergence')}>收束</button>
+          </div>
           <OpeningQualityPanel draft={draft} />
-          {approvalReadiness && <ApprovalReadinessPanel readiness={approvalReadiness} />}
+          <div hidden={inspectorTab !== 'quality'}>
+            {approvalReadiness && <ApprovalReadinessPanel readiness={approvalReadiness} />}
+          </div>
+          <div hidden={inspectorTab !== 'convergence'}>
+            <ConvergencePanel worldId={localWorld.id} refreshKey={convergenceRefreshKey} />
+          </div>
+          <div hidden={inspectorTab !== 'approval'}>
               {approvalPreview && (
                 <section className="space-y-3 rounded-2xl border border-amber-900/15 bg-amber-50/45 p-4">
                   <h3 className="font-black text-[#3b2511]">写入正史前确认</h3>
@@ -1513,6 +1525,8 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
                   })}
                 </section>
               )}
+          </div>
+          <div hidden={inspectorTab !== 'reports'}>
           {critique && (
             <CriticReportPanel report={critique} working={working || !isViewingLatestDraft()} onReviseParagraph={reviseDraftParagraph} />
           )}
@@ -1520,9 +1534,10 @@ export function StudioPage({ world, launchContext, onBack, onApproved, onAbandon
           {characterArcReport && (
             <CharacterArcPanel report={characterArcReport} working={working || !isViewingLatestDraft()} onUseHintAsGoal={isViewingLatestDraft() ? useHintAsGoal : undefined} />
           )}
+          </div>
 
           {draft && (
-            <div className="flex flex-wrap gap-3">
+            <div className="workbench-inspector-footer workbench-command-actions">
               <button className="primary-button" disabled={working || approvalResultLocked || reviewPanelsLoading || consistencyChecking || !consistencyValidated || !isViewingLatestDraft() || approvalBlockedByConsistency || approvalBlockedByReview || approvalBlockedByOpeningPov} onClick={approveDraft}>{operationHint === '正在写入正史…' ? operationHint : '写入正史并更新世界'}</button>
               <button className="secondary-button" aria-label="驳回" disabled={working || approvalResultLocked || editMode || !isViewingLatestDraft()} onClick={rejectDraft}>驳回当前草稿</button>
               <button className="secondary-button" aria-label="编辑正文" disabled={working || approvalResultLocked || editMode || !isViewingLatestDraft()} onClick={startEdit}>编辑当前正文</button>

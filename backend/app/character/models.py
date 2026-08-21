@@ -17,6 +17,7 @@ class Character(Base):
     world_id: Mapped[int] = mapped_column(ForeignKey('worlds.id', ondelete='CASCADE'), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     role_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    gender: Mapped[str | None] = mapped_column(String(20), nullable=True)
     status: Mapped[str] = mapped_column(String(60), nullable=False, default='active')
     public_profile: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     hidden_traits: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)

@@ -23,17 +23,12 @@ export function AuthPage({ onAuth }: Props) {
   }
 
   return (
-    <main className="book-app flex items-center justify-center">
-      <section className="paper-panel w-full max-w-4xl overflow-hidden p-8 md:grid md:grid-cols-[1.05fr_0.95fr] md:p-0">
-        <div className="border-b border-amber-900/15 p-8 md:border-b-0 md:border-r md:p-12">
-          <p className="chapter-kicker">WorldSim Archive</p>
-          <h1 className="mt-4 text-5xl font-black tracking-tight text-[#34210f]">WorldSim-Writer</h1>
-          <p className="manuscript mt-6 text-lg">翻开世界手稿，创建样本世界，并让第一章草稿落到纸面。</p>
-          <div className="mt-10 rounded-2xl border border-amber-900/15 bg-white/30 p-5 text-sm ink-muted">
-            <p>当前 MVP 会在你审批后更新世界版本、角色目标、伏笔状态与事件日志。</p>
-          </div>
-        </div>
-        <form className="space-y-5 p-8 md:p-12" onSubmit={(event) => submit(event, 'login')}>
+    <main className="workbench-auth">
+      <section className="paper-panel workbench-auth-card">
+        <p className="chapter-kicker">WorldSim Archive</p>
+        <h1 className="mt-3 text-4xl font-black tracking-tight text-[#34210f]">WorldSim-Writer</h1>
+        <p className="manuscript mt-4">翻开世界手稿，创建样本世界，并让第一章草稿落到纸面。</p>
+        <form className="mt-8 space-y-5" onSubmit={(event) => submit(event, 'login')}>
           <div>
             <label className="mb-2 block text-sm font-bold text-[#5e3b1c]" htmlFor="email">邮箱</label>
             <input id="email" className="paper-input" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" />
@@ -43,7 +38,7 @@ export function AuthPage({ onAuth }: Props) {
             <input id="password" className="paper-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" />
           </div>
           {error && <p className="paper-error" role="alert">{error}</p>}
-          <div className="flex gap-3 pt-2">
+          <div className="workbench-auth-actions pt-1">
             <button type="submit" className="primary-button">登录</button>
             <button type="button" className="secondary-button" onClick={(event) => submit(event, 'register')}>注册</button>
           </div>

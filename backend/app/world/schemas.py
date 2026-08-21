@@ -20,6 +20,7 @@ class StarterCharacterCreate(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     name: str
+    gender: str | None = None
     role_type: str
     status: str | None = None
     public_profile: dict[str, Any] | None = None
@@ -79,6 +80,7 @@ class WorldCreateRequest(BaseModel):
     title: str
     genre_template: str
     truth_canon: str
+    truth_layers: list[dict[str, Any]] | None = None
     tone_profile: dict[str, Any] = Field(default_factory=dict)
     starter_assets: StarterAssetsCreate
 
@@ -163,6 +165,7 @@ class WorldResponse(BaseModel):
     title: str
     genre_template: str
     truth_canon: str
+    truth_layers: list[dict[str, Any]] | None = None
     truth_canon_version: int
     world_version: int
     status: str

@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { StyleHandbookReference, WorldCreateRequest, WorldCreationDraftResponse, WorldCreationMaterialReference, WorldSeedSummary } from '../api/types';
@@ -203,7 +203,7 @@ describe('WorldCreationForm', () => {
 
     await user.selectOptions(screen.getByLabelText('题材'), 'custom');
     const customGenre = screen.getByLabelText('自定义题材名称');
-    expect(customGenre).toHaveFocus();
+    await waitFor(() => expect(customGenre).toHaveFocus());
     expect(customGenre).toHaveValue('');
     await user.type(customGenre, '玄幻修真');
     await user.click(screen.getByRole('button', { name: '创建自定义世界' }));
@@ -376,6 +376,42 @@ describe('WorldCreationForm', () => {
     expect(onDraftFromBrief).toHaveBeenCalledTimes(2);
     expect(await screen.findByDisplayValue('第二次死因王国')).toBeInTheDocument();
     expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it('preserves edited form values after draft failure and only applies a retry success', async () => {
+    const user = userEvent.setup();
+    const onDraftFromBrief = vi.fn()
+      .mockRejectedValueOnce(new Error('模型暂时不可用'))
+      .mockResolvedValueOnce({
+        source_brief: '一个所有人出生时都会被分配死因的王国',
+        draft: draftPayload,
+        first_chapter_goal: '让伊莱发现自己的死因记录被烧穿。',
+        generation_notes: ['重试后生成可编辑草稿。'],
+        safety_notes: ['确认前不会创建世界、写入正史或推进世界进度。'],
+      } satisfies WorldCreationDraftResponse);
+    render(
+      <WorldCreationForm
+        creating={false}
+        onCreate={vi.fn()}
+        onCreateSample={vi.fn()}
+        onDraftFromBrief={onDraftFromBrief}
+      />,
+    );
+
+    await user.clear(screen.getByLabelText('世界标题'));
+    await user.type(screen.getByLabelText('世界标题'), '我的手工标题');
+    await user.type(screen.getByLabelText('一句话故事想法'), '一个所有人出生时都会被分配死因的王国');
+    await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('模型暂时不可用');
+    expect(screen.getByLabelText('世界标题')).toHaveValue('我的手工标题');
+    expect(screen.getByRole('button', { name: '生成世界创建草稿' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: '生成世界创建草稿' }));
+
+    expect(await screen.findByText('世界创建草稿已填入下方表单')).toBeInTheDocument();
+    expect(screen.getByLabelText('世界标题')).toHaveValue('死因王国');
+    expect(onDraftFromBrief).toHaveBeenCalledTimes(2);
   });
 
   it('preserves an unknown brief genre through the custom genre input and submission', async () => {

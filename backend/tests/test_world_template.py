@@ -1,10 +1,18 @@
 import re
 
+import pytest
 from sqlalchemy import func, select
+from sqlalchemy.orm import sessionmaker
 
+from app.character.models import Character, CharacterRelation
+from app.core.config import get_settings
 from app.event.models import EventLog
+from app.foreshadow.models import Foreshadow
+from app.llm.client import LLMClient
 from app.llm.schemas import BeatCard, ChapterGeneration, ChapterOutline, OpeningEvidence, OpeningContract, WorldCreationDraftPayload
+from app.llm_usage.models import LLMUsageAudit
 from app.narrative import service as narrative_service
+from app.narrative.models import Chapter
 from app.world import service as world_service
 from app.world.models import World
 
@@ -14,6 +22,10 @@ class DraftWorldLLMClient:
         self.captured_messages = None
         self.captured_message_batches = []
         self.calls = 0
+        self.usage_context = None
+
+    def configure_usage_context(self, **kwargs):
+        self.usage_context = kwargs
 
     def generate_world_creation_draft(self, messages):
         self.calls += 1
@@ -26,6 +38,16 @@ class DraftWorldLLMClient:
             safety_notes=['确认前不会创建世界、写入正史或推进世界进度。'],
             followup_questions=['第一章更偏向灯塔事故现场，还是企业封锁冲突？'],
         )
+
+
+class ErrorWorldLLMClient(DraftWorldLLMClient):
+    def __init__(self, error: Exception):
+        super().__init__()
+        self.error = error
+
+    def generate_world_creation_draft(self, messages):
+        self.calls += 1
+        raise self.error
 
 
 def style_handbook_reference_payload():
@@ -53,7 +75,7 @@ def style_handbook_reference_payload():
 
 class CustomWorldLLMClient:
     def generate_outline(self, messages):
-        character_names = re.findall(r'- \d+: ([^,]+), role=', messages[-1]['content'])
+        character_names = re.findall(r'- \d+: ([^,]+), gender=[^,]*, role=', messages[-1]['content'])
         protagonist = character_names[0]
         return ChapterOutline(
             core_conflict=f'{protagonist}必须在企业封锁前查明跃迁灯塔异常。',
@@ -565,8 +587,92 @@ def test_draft_world_from_brief_returns_editable_variants_without_creating_world
     assert '本次请生成“角色关系驱动版”方向的候选草稿。' in prompts[1]
     assert '本次请生成“世界规则悬疑版”方向的候选草稿。' in prompts[2]
     assert 'followup_questions 用 1-3 个简短问题' in prompts[0]
+    assert callable(llm.usage_context['audit_session_factory'])
+    response_request_id = response.headers['X-Request-ID']
+    assert re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,127}', response_request_id)
     assert db_session.scalar(select(func.count()).select_from(World)) == 0
     assert db_session.scalar(select(func.count()).select_from(EventLog)) == 0
+
+
+def test_draft_world_from_brief_persists_mock_audit_after_response(client, db_session, monkeypatch):
+    token = register(client, 'brief-audit@example.com')
+    request_id = 'brief-audit-request-1'
+    monkeypatch.setenv('LLM_MOCK', 'true')
+    get_settings.cache_clear()
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: LLMClient())
+    domain_models = (World, Chapter, Character, CharacterRelation, Foreshadow, EventLog)
+    before_counts = {
+        model: db_session.scalar(select(func.count()).select_from(model))
+        for model in domain_models
+    }
+
+    response = client.post(
+        '/worlds/draft-from-brief',
+        headers={**auth(token), 'X-Request-ID': request_id},
+        json={'brief': '一个所有人出生时都会被分配死因的王国'},
+    )
+
+    assert response.status_code == 200
+    assert response.headers['X-Request-ID'] == request_id
+    reader = sessionmaker(bind=db_session.get_bind(), autoflush=False, expire_on_commit=False)()
+    try:
+        audit = reader.scalar(select(LLMUsageAudit).where(LLMUsageAudit.request_id == request_id))
+        assert audit is not None
+        assert audit.operation == 'world_creation_draft'
+        assert audit.status == 'success'
+        assert audit.is_mock is True
+        assert audit.world_id is None
+        assert audit.chapter_id is None
+        assert audit.draft_id is None
+    finally:
+        reader.close()
+
+    after_counts = {
+        model: db_session.scalar(select(func.count()).select_from(model))
+        for model in domain_models
+    }
+    assert after_counts == before_counts
+
+
+@pytest.mark.parametrize(
+    ('error', 'expected_status', 'expected_detail'),
+    [
+        (TimeoutError('provider timeout detail'), 504, 'MODEL_TIMEOUT'),
+        (RuntimeError('MODEL_AUTH_FAILED'), 502, 'MODEL_AUTH_FAILED'),
+        (RuntimeError('MODEL_RATE_LIMITED'), 502, 'MODEL_RATE_LIMITED'),
+        (RuntimeError('MODEL_REQUEST_FAILED'), 502, 'MODEL_REQUEST_FAILED'),
+        (ValueError('provider response detail'), 502, 'MODEL_RESPONSE_INVALID'),
+    ],
+    ids=['timeout', 'auth', 'rate-limit', 'request', 'invalid-response'],
+)
+def test_draft_world_from_brief_maps_model_errors_without_domain_writes(
+    client, db_session, monkeypatch, error, expected_status, expected_detail
+):
+    token = register(client, f'brief-error-{expected_detail.lower()}@example.com')
+    llm = ErrorWorldLLMClient(error)
+    monkeypatch.setattr(world_service, 'LLMClient', lambda: llm)
+    before_counts = {
+        model: db_session.scalar(select(func.count()).select_from(model))
+        for model in (World, Chapter, Character, CharacterRelation, Foreshadow, EventLog)
+    }
+    request_id = 'brief-error-request-1'
+
+    response = client.post(
+        '/worlds/draft-from-brief',
+        headers={**auth(token), 'X-Request-ID': request_id},
+        json={'brief': '一个所有人出生时都会被分配死因的王国'},
+    )
+
+    assert response.status_code == expected_status
+    assert response.json()['detail'] == expected_detail
+    assert response.headers['X-Request-ID'] == request_id
+    assert 'provider response detail' not in response.text
+    assert llm.calls == 1
+    after_counts = {
+        model: db_session.scalar(select(func.count()).select_from(model))
+        for model in (World, Chapter, Character, CharacterRelation, Foreshadow, EventLog)
+    }
+    assert after_counts == before_counts
 
 
 def test_brief_to_first_chapter_requires_confirmation_and_studio_approval(
@@ -656,6 +762,9 @@ def test_draft_world_from_brief_rejects_extra_root_field_without_side_effects(cl
     )
 
     assert response.status_code == 422
+    assert response.headers['X-Request-ID']
+    assert response.json()['request_id'] == response.headers['X-Request-ID']
+    assert '不应进入一句话开书草稿请求。' not in response.text
     assert any(
         error['type'] == 'extra_forbidden'
         and error['loc'] == ['body', 'raw_text']
@@ -676,6 +785,7 @@ def test_draft_world_from_brief_requires_login(client):
 
     assert response.status_code == 401
     assert response.json()['detail'] == 'UNAUTHORIZED'
+    assert response.headers['X-Request-ID']
 
 
 def test_world_endpoints_require_login(client):

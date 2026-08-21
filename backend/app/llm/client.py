@@ -1,27 +1,44 @@
 import ast
+import inspect
 import json
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
+from functools import wraps
+from time import perf_counter
+from urllib.parse import urlsplit
+from typing import Any
 
 import httpx
+from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
+from app.llm.usage import AuditSessionFactory, extract_provider_usage, record_llm_usage, safe_error_code
 from app.llm.schemas import (
+    ChapterExtraction,
     ChapterGeneration,
     ChapterOutline,
+    ChapterQualityReport,
+    MemoryCompression,
     CharacterArcReport,
     OpeningEvidence,
     CritiqueReport,
     LiteraryCriticReport,
+    LiteraryReviewReport,
     ParagraphRevision,
     StoryArcChapter,
     WorldCreationDraftPayload,
     WORLD_CREATION_DRAFT_JSON_SCHEMA,
+    parse_chapter_extraction,
     parse_chapter_generation,
     parse_chapter_outline,
+    parse_memory_compression,
+    parse_quality_report,
     parse_opening_evidence_repair,
     parse_character_arc_report,
     parse_critique_report,
     parse_literary_critic_report,
+    parse_literary_review,
     parse_paragraph_revision,
     parse_story_arc,
     parse_world_creation_draft,
@@ -404,6 +421,27 @@ def _opening_evidence_needs_repair(content: str, opening_evidence: list[OpeningE
 
 def _looks_like_opening_prompt(messages: list[dict[str, str]]) -> bool:
     return 'opening_contract' in _last_user_prompt(messages)
+
+
+def _mock_opening_evidence_repair(
+    content: str,
+    opening_evidence: list[OpeningEvidence],
+) -> list[OpeningEvidence]:
+    paragraphs = _opening_paragraphs(content)
+    checks = (
+        'background',
+        'protagonist_identity',
+        'motivation',
+        'personality_evidence_plan',
+        'conflict_goal',
+        'locked_pov',
+    )
+    if len(paragraphs) < len(checks):
+        return opening_evidence
+    return [
+        OpeningEvidence(check=check, paragraph_index=index, quote=paragraphs[index])
+        for index, check in enumerate(checks)
+    ]
 
 
 def _opening_evidence_repair_messages(
@@ -1131,10 +1169,225 @@ def _contextual_mock_character_arc(messages: list[dict[str, str]]) -> CharacterA
     })
 
 
+@dataclass(frozen=True)
+class LLMUsageContext:
+    db: Session | None = None
+    audit_session_factory: AuditSessionFactory | None = None
+    request_id: str | None = None
+    world_id: int | None = None
+    chapter_id: int | None = None
+    draft_id: int | None = None
+
+
+def _serialized_output_chars(value: Any) -> int:
+    model_dump = getattr(value, 'model_dump', None)
+    if callable(model_dump):
+        value = model_dump(mode='json')
+    try:
+        return len(json.dumps(value, ensure_ascii=False, separators=(',', ':'), default=str))
+    except (TypeError, ValueError):
+        return len(str(value))
+
+
+def _audit_mock_call(
+    operation: str,
+    messages_builder: Callable[..., list[dict[str, str]]] | None = None,
+):
+    def decorator(method):
+        @wraps(method)
+        def wrapped(self, messages, *args, **kwargs):
+            if not self.mock:
+                return method(self, messages, *args, **kwargs)
+            audit_messages = messages
+            if messages_builder is not None:
+                audit_messages = messages_builder(messages, *args, **kwargs)
+            started_at = perf_counter()
+            try:
+                result = method(self, messages, *args, **kwargs)
+            except Exception as exc:
+                self._record_usage(
+                    operation=operation,
+                    messages=audit_messages,
+                    started_at=started_at,
+                    status='failed',
+                    attempt_count=1,
+                    error_code=safe_error_code(exc),
+                )
+                raise
+            self._record_usage(
+                operation=operation,
+                messages=audit_messages,
+                started_at=started_at,
+                status='success',
+                attempt_count=1,
+                output_chars=_serialized_output_chars(result),
+            )
+            return result
+
+        return wrapped
+
+    return decorator
+
+
 class LLMClient:
     def __init__(self, settings: Settings | None = None, mock: bool | None = None) -> None:
         self.settings = settings or get_settings()
         self.mock = self.settings.llm_mock if mock is None else mock
+        self._usage_context = LLMUsageContext()
+
+    def configure_usage_context(
+        self,
+        *,
+        db: Session | None = None,
+        audit_session_factory: AuditSessionFactory | None = None,
+        request_id: str | None = None,
+        world_id: int | None = None,
+        chapter_id: int | None = None,
+        draft_id: int | None = None,
+    ) -> None:
+        self._usage_context = LLMUsageContext(
+            db=db,
+            audit_session_factory=audit_session_factory,
+            request_id=request_id,
+            world_id=world_id,
+            chapter_id=chapter_id,
+            draft_id=draft_id,
+        )
+
+    def _provider_name(self) -> str:
+        if self.mock:
+            return 'mock'
+        return urlsplit(str(self.settings.llm_base_url)).hostname or 'unknown'
+
+    @staticmethod
+    def _input_chars(messages: list[dict[str, str]]) -> int:
+        return sum(
+            len(message.get('content', ''))
+            for message in messages
+            if isinstance(message.get('content'), str)
+        )
+
+    def _response_provenance(
+        self,
+        url: str,
+        response: Any = None,
+        payload: Any = None,
+        *,
+        json_object: bool,
+        json_schema: dict | None,
+        use_json_object: bool,
+        retry_reason: str | None,
+    ) -> dict[str, Any]:
+        if json_schema is not None and not use_json_object:
+            response_format = 'json_schema'
+        elif json_object or use_json_object:
+            response_format = 'json_object'
+        else:
+            response_format = 'none'
+        provenance: dict[str, Any] = {
+            'endpoint': urlsplit(url).path or '/',
+            'schema_mode': response_format,
+            'response_format': response_format,
+        }
+        if json_schema is not None:
+            provenance['schema_name'] = 'world_creation_draft_v1'
+        if retry_reason:
+            provenance['retry_reason'] = retry_reason
+
+        headers = getattr(response, 'headers', None)
+        if headers is not None:
+            provider_request_id = headers.get('x-request-id') or headers.get('request-id')
+            if isinstance(provider_request_id, str) and provider_request_id:
+                provenance['provider_request_id'] = provider_request_id
+        if isinstance(payload, dict):
+            response_id = payload.get('id') or payload.get('response_id')
+            if isinstance(response_id, str) and response_id:
+                provenance['response_id'] = response_id
+            if 'provider_request_id' not in provenance:
+                provider_request_id = payload.get('provider_request_id') or payload.get('request_id')
+                if isinstance(provider_request_id, str) and provider_request_id:
+                    provenance['provider_request_id'] = provider_request_id
+            finish_reason = payload.get('finish_reason')
+            choices = payload.get('choices')
+            if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+                finish_reason = choices[0].get('finish_reason') or finish_reason
+            if isinstance(finish_reason, str) and finish_reason:
+                provenance['finish_reason'] = finish_reason
+        return provenance
+
+    def _record_usage(
+        self,
+        *,
+        operation: str,
+        messages: list[dict[str, str]],
+        started_at: float,
+        status: str,
+        attempt_count: int,
+        schema_fallback_used: bool = False,
+        http_status: int | None = None,
+        output_chars: int = 0,
+        usage: dict[str, int | None] | None = None,
+        error_code: str | None = None,
+        provenance: dict[str, Any] | None = None,
+    ) -> None:
+        context = self._usage_context
+        if context.db is None and context.audit_session_factory is None:
+            return
+        token_usage = usage or {}
+        try:
+            record_llm_usage(
+                context.db,
+                session_factory=context.audit_session_factory,
+                operation=operation,
+                provider=self._provider_name(),
+                api_mode=self.settings.llm_api_mode,
+                model=self.settings.llm_model,
+                is_mock=bool(self.mock),
+                status=status,
+                duration_ms=max(0, int(round((perf_counter() - started_at) * 1000))),
+                attempt_count=attempt_count,
+                schema_fallback_used=schema_fallback_used,
+                world_id=context.world_id,
+                chapter_id=context.chapter_id,
+                draft_id=context.draft_id,
+                http_status=http_status,
+                input_message_count=len(messages),
+                input_chars=self._input_chars(messages),
+                output_chars=max(0, output_chars),
+                input_tokens=token_usage.get('input_tokens'),
+                output_tokens=token_usage.get('output_tokens'),
+                total_tokens=token_usage.get('total_tokens'),
+                error_code=error_code,
+                request_id=context.request_id,
+                provenance=provenance,
+            )
+        except Exception:
+            return
+
+    def _post_json_for_operation(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        operation: str,
+        success_validator: Callable[[str], Any] | None = None,
+        **kwargs: Any,
+    ) -> str:
+        post_json = self._post_json
+        call_kwargs: dict[str, Any] = {
+            **kwargs,
+            'operation': operation,
+            'success_validator': success_validator,
+        }
+        try:
+            parameters = inspect.signature(post_json).parameters
+        except (TypeError, ValueError):
+            return post_json(messages, **call_kwargs)
+        if any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()):
+            return post_json(messages, **call_kwargs)
+        supported_kwargs = {
+            name: value for name, value in call_kwargs.items() if name in parameters
+        }
+        return post_json(messages, **supported_kwargs)
 
     def _post_json(
         self,
@@ -1143,7 +1396,10 @@ class LLMClient:
         json_object: bool = True,
         json_schema: dict | None = None,
         allow_json_object_fallback: bool = False,
+        operation: str = 'llm_request',
+        success_validator: Callable[[str], Any] | None = None,
     ) -> str:
+        started_at = perf_counter()
         base_url = str(self.settings.llm_base_url).rstrip('/')
         is_responses = self.settings.llm_api_mode == 'responses'
         url = f'{base_url}/responses' if is_responses else f'{base_url}/chat/completions'
@@ -1153,6 +1409,15 @@ class LLMClient:
             write=self.settings.llm_timeout_seconds,
             pool=self.settings.llm_timeout_seconds,
         )
+        use_json_object = False
+        schema_fallback_used = False
+        retry_reason = None
+        attempt_count = 0
+        http_status = None
+        response = None
+        payload = None
+        usage = None
+        content: str | None = None
 
         def build_request_payload(use_json_object: bool) -> dict:
             if is_responses:
@@ -1193,128 +1458,211 @@ class LLMClient:
                 payload['response_format'] = {'type': 'json_object'}
             return payload
 
-        use_json_object = False
-        for attempt in range(2):
-            try:
-                response = httpx.post(
-                    url,
-                    headers={'Authorization': f'Bearer {self.settings.llm_api_key}'},
-                    json=build_request_payload(use_json_object),
-                    timeout=timeout,
-                )
-                response.raise_for_status()
-                break
-            except httpx.TimeoutException as exc:
-                raise TimeoutError('MODEL_TIMEOUT') from exc
-            except httpx.HTTPStatusError as exc:
-                error_text = exc.response.text[:2000].casefold()
-                schema_format_mentioned = any(
-                    marker in error_text
-                    for marker in ('json_schema', 'strict', 'response_format', 'text.format')
-                )
-                invalid_schema_mentioned = any(
-                    marker in error_text
-                    for marker in (
-                        'invalid schema',
-                        'invalid json schema',
-                        'invalid_json_schema',
-                        'schema is invalid',
-                        'schema invalid',
-                        'schema validation',
-                        'malformed schema',
-                        'malformed response_format',
-                        'unsupported keyword',
-                        'invalid parameter',
-                        'unknown property',
-                        'unrecognized property',
-                    )
-                )
-                unsupported_mentioned = any(
-                    marker in error_text
-                    for marker in ('not supported', 'unsupported')
-                ) or any(
-                    marker in error_text
-                    for marker in (
-                        'unknown parameter',
-                        'unrecognized parameter',
-                        'unknown field',
-                        'unrecognized field',
-                        'unknown response_format',
-                        'unrecognized response_format',
-                        'unknown json_schema',
-                        'unrecognized json_schema',
-                    )
-                )
-                if (
-                    attempt == 0
-                    and allow_json_object_fallback
-                    and json_schema is not None
-                    and exc.response.status_code == 400
-                    and schema_format_mentioned
-                    and unsupported_mentioned
-                    and not invalid_schema_mentioned
-                ):
-                    use_json_object = True
-                    continue
-                if exc.response.status_code in {401, 403}:
-                    raise RuntimeError('MODEL_AUTH_FAILED') from exc
-                if exc.response.status_code == 429:
-                    raise RuntimeError('MODEL_RATE_LIMITED') from exc
-                raise RuntimeError('MODEL_REQUEST_FAILED') from exc
-            except httpx.HTTPError as exc:
-                raise RuntimeError('MODEL_REQUEST_FAILED') from exc
-
+        import time
+        import random as _random
         try:
-            payload = response.json()
-        except ValueError as exc:
-            raise ValueError('MODEL_RESPONSE_INVALID') from exc
-        if not isinstance(payload, dict):
+            for attempt in range(3):
+                attempt_count = attempt + 1
+                try:
+                    response = httpx.post(
+                        url,
+                        headers={'Authorization': f'Bearer {self.settings.llm_api_key}'},
+                        json=build_request_payload(use_json_object),
+                        timeout=timeout,
+                    )
+                    response_status = getattr(response, 'status_code', None)
+                    http_status = response_status if isinstance(response_status, int) else None
+                    response.raise_for_status()
+                    break
+                except httpx.TimeoutException as exc:
+                    raise TimeoutError('MODEL_TIMEOUT') from exc
+                except httpx.HTTPStatusError as exc:
+                    response = exc.response
+                    http_status = exc.response.status_code
+                    # Exponential backoff for rate limits (429) and server errors (5xx)
+                    if attempt < 2 and http_status in (429, 502, 503, 504):
+                        wait = (2 ** attempt) + _random.uniform(0, 1)
+                        _retry_logger = __import__('logging').getLogger('worldsim.llm')
+                        _retry_logger.info(
+                            'llm_retry_backoff',
+                            extra={
+                                'event': 'llm.retry',
+                                'attempt': attempt_count,
+                                'status': http_status,
+                                'wait_seconds': round(wait, 2),
+                            },
+                        )
+                        time.sleep(wait)
+                        continue
+                    error_text = exc.response.text[:2000].casefold()
+                    schema_format_mentioned = any(
+                        marker in error_text
+                        for marker in ('json_schema', 'strict', 'response_format', 'text.format')
+                    )
+                    invalid_schema_mentioned = any(
+                        marker in error_text
+                        for marker in (
+                            'invalid schema',
+                            'invalid json schema',
+                            'invalid_json_schema',
+                            'schema is invalid',
+                            'schema invalid',
+                            'schema validation',
+                            'malformed schema',
+                            'malformed response_format',
+                            'unsupported keyword',
+                            'invalid parameter',
+                            'unknown property',
+                            'unrecognized property',
+                        )
+                    )
+                    unsupported_mentioned = any(
+                        marker in error_text
+                        for marker in ('not supported', 'unsupported')
+                    ) or any(
+                        marker in error_text
+                        for marker in (
+                            'unknown parameter',
+                            'unrecognized parameter',
+                            'unknown field',
+                            'unrecognized field',
+                            'unknown response_format',
+                            'unrecognized response_format',
+                            'unknown json_schema',
+                            'unrecognized json_schema',
+                        )
+                    )
+                    if (
+                        attempt == 0
+                        and allow_json_object_fallback
+                        and json_schema is not None
+                        and exc.response.status_code == 400
+                        and schema_format_mentioned
+                        and unsupported_mentioned
+                        and not invalid_schema_mentioned
+                    ):
+                        schema_fallback_used = True
+                        retry_reason = 'schema_unsupported'
+                        use_json_object = True
+                        continue
+                    if exc.response.status_code in {401, 403}:
+                        raise RuntimeError('MODEL_AUTH_FAILED') from exc
+                    if exc.response.status_code == 429:
+                        raise RuntimeError('MODEL_RATE_LIMITED') from exc
+                    raise RuntimeError('MODEL_REQUEST_FAILED') from exc
+                except httpx.HTTPError as exc:
+                    response = getattr(exc, 'response', None)
+                    response_status = getattr(response, 'status_code', None)
+                    http_status = response_status if isinstance(response_status, int) else None
+                    raise RuntimeError('MODEL_REQUEST_FAILED') from exc
+
+            if response is None:
+                raise RuntimeError('MODEL_REQUEST_FAILED')
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise ValueError('MODEL_RESPONSE_INVALID') from exc
+            if not isinstance(payload, dict):
+                raise ValueError('MODEL_RESPONSE_INVALID')
+            usage = extract_provider_usage(payload)
+            provenance = self._response_provenance(
+                url,
+                response,
+                payload,
+                json_object=json_object,
+                json_schema=json_schema,
+                use_json_object=use_json_object,
+                retry_reason=retry_reason,
+            )
+
+            def finish_content(value: str) -> str:
+                if success_validator is not None:
+                    success_validator(value)
+                self._record_usage(
+                    operation=operation,
+                    messages=messages,
+                    started_at=started_at,
+                    status='success',
+                    attempt_count=attempt_count,
+                    schema_fallback_used=schema_fallback_used,
+                    http_status=http_status,
+                    output_chars=len(value),
+                    usage=usage,
+                    provenance=provenance,
+                )
+                return value
+
+            if self.settings.llm_api_mode == 'chat_completions':
+                choices = payload.get('choices')
+                if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+                    raise ValueError('MODEL_RESPONSE_INVALID')
+                message = choices[0].get('message')
+                if not isinstance(message, dict):
+                    raise ValueError('MODEL_RESPONSE_INVALID')
+                if message.get('refusal'):
+                    raise ValueError('MODEL_RESPONSE_INVALID')
+                content = message.get('content')
+                if not isinstance(content, str) or not content:
+                    raise ValueError('MODEL_RESPONSE_INVALID')
+                return finish_content(content)
+
+            output_texts: list[str] = []
+            refusal_present = False
+            output = payload.get('output')
+            if isinstance(output, list):
+                for item in output:
+                    if not isinstance(item, dict) or item.get('type') != 'message':
+                        continue
+                    content = item.get('content')
+                    if not isinstance(content, list):
+                        continue
+                    for part in content:
+                        if not isinstance(part, dict):
+                            continue
+                        if part.get('type') == 'refusal':
+                            refusal_present = True
+                            continue
+                        if part.get('type') != 'output_text':
+                            continue
+                        text = part.get('text')
+                        if isinstance(text, str) and text:
+                            output_texts.append(text)
+            if refusal_present:
+                raise ValueError('MODEL_RESPONSE_INVALID')
+            if output_texts:
+                content = ''.join(output_texts)
+                return finish_content(content)
+
+            fallback_output_text = payload.get('output_text')
+            if isinstance(fallback_output_text, str) and fallback_output_text:
+                content = fallback_output_text
+                return finish_content(content)
             raise ValueError('MODEL_RESPONSE_INVALID')
-        if self.settings.llm_api_mode == 'chat_completions':
-            choices = payload.get('choices')
-            if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-                raise ValueError('MODEL_RESPONSE_INVALID')
-            message = choices[0].get('message')
-            if not isinstance(message, dict):
-                raise ValueError('MODEL_RESPONSE_INVALID')
-            if message.get('refusal'):
-                raise ValueError('MODEL_RESPONSE_INVALID')
-            content = message.get('content')
-            if not isinstance(content, str) or not content:
-                raise ValueError('MODEL_RESPONSE_INVALID')
-            return content
+        except Exception as exc:
+            self._record_usage(
+                operation=operation,
+                messages=messages,
+                started_at=started_at,
+                status='failed',
+                attempt_count=max(1, attempt_count),
+                schema_fallback_used=schema_fallback_used,
+                http_status=http_status,
+                output_chars=len(content) if isinstance(content, str) else 0,
+                usage=usage,
+                error_code=safe_error_code(exc),
+                provenance=self._response_provenance(
+                    url,
+                    response,
+                    payload,
+                    json_object=json_object,
+                    json_schema=json_schema,
+                    use_json_object=use_json_object,
+                    retry_reason=retry_reason,
+                ),
+            )
+            raise
 
-        output_texts: list[str] = []
-        refusal_present = False
-        output = payload.get('output')
-        if isinstance(output, list):
-            for item in output:
-                if not isinstance(item, dict) or item.get('type') != 'message':
-                    continue
-                content = item.get('content')
-                if not isinstance(content, list):
-                    continue
-                for part in content:
-                    if not isinstance(part, dict):
-                        continue
-                    if part.get('type') == 'refusal':
-                        refusal_present = True
-                        continue
-                    if part.get('type') != 'output_text':
-                        continue
-                    text = part.get('text')
-                    if isinstance(text, str) and text:
-                        output_texts.append(text)
-        if refusal_present:
-            raise ValueError('MODEL_RESPONSE_INVALID')
-        if output_texts:
-            return ''.join(output_texts)
-
-        fallback_output_text = payload.get('output_text')
-        if isinstance(fallback_output_text, str) and fallback_output_text:
-            return fallback_output_text
-        raise ValueError('MODEL_RESPONSE_INVALID')
-
+    @_audit_mock_call('story_arc')
     def generate_story_arc(self, messages: list[dict[str, str]]) -> list[StoryArcChapter]:
         if self.mock:
             contextual = _contextual_mock_story_arc(messages)
@@ -1322,8 +1670,17 @@ class LLMClient:
                 return contextual
             _raise_for_unparseable_context(messages)
             return parse_story_arc(json.dumps(MOCK_STORY_ARC, ensure_ascii=False))
-        return parse_story_arc(self._post_json(messages, temperature=0.4, json_object=False))
+        return parse_story_arc(
+            self._post_json_for_operation(
+                messages,
+                temperature=0.4,
+                json_object=False,
+                operation='story_arc',
+                success_validator=parse_story_arc,
+            )
+        )
 
+    @_audit_mock_call('chapter_outline')
     def generate_outline(self, messages: list[dict[str, str]]) -> ChapterOutline:
         if self.mock:
             context = _parse_mock_prompt(messages)
@@ -1331,30 +1688,103 @@ class LLMClient:
                 return _contextual_mock_outline(context)
             _raise_for_unparseable_context(messages)
             return ChapterOutline.model_validate(MOCK_OUTLINE)
-        return parse_chapter_outline(self._post_json(messages, temperature=0.4))
+        return parse_chapter_outline(
+            self._post_json_for_operation(
+                messages,
+                temperature=0.4,
+                operation='chapter_outline',
+                success_validator=parse_chapter_outline,
+            )
+        )
 
+    @_audit_mock_call('literary_review')
+    def generate_literary_review(self, messages: list[dict[str, str]]) -> LiteraryReviewReport:
+        if self.mock:
+            return LiteraryReviewReport(
+                literary_score=3,
+                over_explaining=['（mock）解释过度占位'],
+                emotional_telling=[],
+                functional_dialogue=[],
+                cliche_hooks=[],
+                voice_notes=[],
+                rewrite_suggestions=[],
+            )
+        return parse_literary_review(
+            self._post_json_for_operation(
+                messages,
+                temperature=0.1,
+                operation='literary_review',
+                success_validator=parse_literary_review,
+            )
+        )
+
+    @_audit_mock_call('quality_engine')
+    def generate_quality_report(self, messages: list[dict[str, str]]) -> ChapterQualityReport:
+        if self.mock:
+            return ChapterQualityReport(
+                theme_advancement=3,
+                character_arc_progress=3,
+                anti_cliche_risks=['（mock）俗套风险占位'],
+                rhythm_score=3,
+                voice_consistency=3,
+                overall_score=3,
+            )
+        return parse_quality_report(
+            self._post_json_for_operation(
+                messages,
+                temperature=0.2,
+                operation='quality_engine',
+                success_validator=parse_quality_report,
+            )
+        )
+
+    @_audit_mock_call('memory_compression')
+    def compress_memories(self, messages: list[dict[str, str]]) -> MemoryCompression:
+        if self.mock:
+            return MemoryCompression(
+                summary='（mock）前情摘要：角色们在安全区周边活动，关系与伏笔持续发展。',
+                key_facts=['（mock）关键事实占位'],
+                open_threads=['（mock）开放线索占位'],
+            )
+        return parse_memory_compression(
+            self._post_json_for_operation(
+                messages,
+                temperature=0.3,
+                operation='memory_compression',
+                success_validator=parse_memory_compression,
+            )
+        )
+
+    @_audit_mock_call('world_creation_draft')
     def generate_world_creation_draft(self, messages: list[dict[str, str]]) -> WorldCreationDraftPayload:
         if self.mock:
             return _contextual_mock_world_creation(messages)
         return parse_world_creation_draft(
-            self._post_json(
+            self._post_json_for_operation(
                 messages,
                 temperature=0.5,
                 json_schema=WORLD_CREATION_DRAFT_JSON_SCHEMA,
                 allow_json_object_fallback=True,
+                operation='world_creation_draft',
+                success_validator=parse_world_creation_draft,
             ),
         )
 
+    @_audit_mock_call('opening_evidence_repair', _opening_evidence_repair_messages)
     def repair_opening_evidence(
         self,
         messages: list[dict[str, str]],
         content: str,
         opening_evidence: list[OpeningEvidence],
     ) -> list[OpeningEvidence]:
+        if self.mock:
+            return _mock_opening_evidence_repair(content, opening_evidence)
         repaired = parse_opening_evidence_repair(
-            self._post_json(
+            self._post_json_for_operation(
                 _opening_evidence_repair_messages(messages, content, opening_evidence),
                 temperature=0.0,
+                operation='opening_evidence_repair',
+                success_validator=parse_opening_evidence_repair,
             )
         )
         return repaired.opening_evidence
@@ -1381,6 +1811,87 @@ class LLMClient:
             return generation.model_copy(update={'opening_evidence': repaired_evidence})
         return generation
 
+    DRAFT_CONTENT_PLACEHOLDER = '<<<DRAFT_CONTENT_PLACEHOLDER>>>'
+
+    def generate_chapter_two_phase(
+        self,
+        writer_messages: list[dict[str, str]],
+        extractor_messages: list[dict[str, str]],
+    ) -> ChapterGeneration:
+        """Generate a chapter in two phases: prose first, then structured extraction.
+
+        Phase 1: Generate pure narrative prose (no JSON constraint).
+        Phase 2: Feed the prose to an extractor that returns structured metadata.
+
+        The extractor_messages should contain DRAFT_CONTENT_PLACEHOLDER where the
+        generated prose should be inserted. This placeholder is replaced after
+        phase 1 completes.
+
+        This separation improves reliability because:
+        - The Writer can focus on literary quality without JSON formatting pressure.
+        - The Extractor sees the final text and can produce accurate quotes/evidence.
+        - If one phase fails, we can retry just that phase.
+        """
+        if self.mock:
+            context = _parse_mock_prompt(writer_messages)
+            if context is not None:
+                return _contextual_mock_chapter(context)
+            _raise_for_unparseable_context(writer_messages)
+            return ChapterGeneration.model_validate(dict(MOCK_CHAPTER))
+
+        # Phase 1: Generate prose only
+        prose_response = self._post_json_for_operation(
+            writer_messages,
+            temperature=0.7,
+            json_object=False,
+            operation='chapter_generation_prose',
+        )
+
+        # Substitute the generated prose into the extraction messages
+        populated_extraction_messages = [
+            {
+                **msg,
+                'content': msg['content'].replace(
+                    self.DRAFT_CONTENT_PLACEHOLDER, prose_response
+                ),
+            }
+            for msg in extractor_messages
+        ]
+
+        # Phase 2: Extract structured metadata from the prose
+        try:
+            extraction = parse_chapter_extraction(
+                self._post_json_for_operation(
+                    populated_extraction_messages,
+                    temperature=0.2,
+                    operation='chapter_generation_extraction',
+                    success_validator=parse_chapter_extraction,
+                )
+            )
+            return ChapterGeneration.model_validate({
+                **extraction.model_dump(),
+                'title': f'第{context.get("chapter_number", "?")}章' if (
+                    context := _parse_mock_prompt(writer_messages)
+                ) else '未命名章节',
+                'draft_content': prose_response,
+            })
+        except ValueError:
+            import logging
+            _extraction_logger = logging.getLogger('worldsim.llm')
+            _extraction_logger.warning(
+                'chapter_generation_extraction_failed: prose saved, metadata empty'
+            )
+            return ChapterGeneration.model_validate({
+                'title': '未命名章节',
+                'draft_content': prose_response,
+                'context_summary': '（自动提取失败，请手动填写摘要）',
+                'review_hints': ['自动提取失败：正文已保留，请手动审核并编辑元数据。'],
+                'proposed_character_changes': [],
+                'proposed_foreshadow_changes': [],
+                'opening_evidence': [],
+            })
+
+    @_audit_mock_call('chapter_generation')
     def generate_chapter(self, messages: list[dict[str, str]]) -> ChapterGeneration:
         if self.mock:
             context = _parse_mock_prompt(messages)
@@ -1410,9 +1921,17 @@ class LLMClient:
             ]
             return ChapterGeneration.model_validate(mock_data)
 
-        generation = parse_chapter_generation(self._post_json(messages, temperature=0.7))
+        generation = parse_chapter_generation(
+            self._post_json_for_operation(
+                messages,
+                temperature=0.7,
+                operation='chapter_generation',
+                success_validator=parse_chapter_generation,
+            )
+        )
         return self._repair_opening_evidence_once(messages, generation)
 
+    @_audit_mock_call('chapter_revision')
     def revise_chapter(self, messages: list[dict[str, str]]) -> ChapterGeneration:
         if self.mock:
             contextual = _contextual_mock_revision(messages)
@@ -1425,13 +1944,29 @@ class LLMClient:
             mock_data['context_summary'] = '根据审稿意见和人工指令完成整稿修订。'
             mock_data['review_hints'] = ['重新生成 Critic 报告确认修订效果']
             return ChapterGeneration.model_validate(mock_data)
-        return parse_chapter_generation(self._post_json(messages, temperature=0.6))
+        return parse_chapter_generation(
+            self._post_json_for_operation(
+                messages,
+                temperature=0.6,
+                operation='chapter_revision',
+                success_validator=parse_chapter_generation,
+            )
+        )
 
+    @_audit_mock_call('paragraph_revision')
     def revise_paragraph(self, messages: list[dict[str, str]]) -> ParagraphRevision:
         if self.mock:
             return _mock_paragraph_revision(messages)
-        return parse_paragraph_revision(self._post_json(messages, temperature=0.6))
+        return parse_paragraph_revision(
+            self._post_json_for_operation(
+                messages,
+                temperature=0.6,
+                operation='paragraph_revision',
+                success_validator=parse_paragraph_revision,
+            )
+        )
 
+    @_audit_mock_call('chapter_goal_suggestion')
     def suggest_goal(self, messages: list[dict[str, str]]) -> dict:
         if self.mock:
             contextual = _contextual_mock_goal(messages)
@@ -1439,13 +1974,18 @@ class LLMClient:
                 return contextual
             _raise_for_unparseable_context(messages)
             return {'goal': '主角面对当前世界的异常规则，获得新证据并决定下一步行动。'}
-        import json as _json
-        raw = self._post_json(messages, temperature=0.6)
-        parsed = _json.loads(raw)
+        raw = self._post_json_for_operation(
+            messages,
+            temperature=0.6,
+            operation='chapter_goal_suggestion',
+            success_validator=json.loads,
+        )
+        parsed = json.loads(raw)
         if isinstance(parsed, dict) and 'goal' in parsed:
             return {'goal': parsed['goal']}
         return {'goal': raw}
 
+    @_audit_mock_call('chapter_critique')
     def critique_chapter(self, messages: list[dict[str, str]]) -> CritiqueReport:
         if self.mock:
             contextual = _contextual_mock_critique(messages)
@@ -1453,8 +1993,16 @@ class LLMClient:
                 return contextual
             _raise_for_unparseable_context(messages)
             return CritiqueReport.model_validate(MOCK_CRITIQUE)
-        return parse_critique_report(self._post_json(messages, temperature=0.2))
+        return parse_critique_report(
+            self._post_json_for_operation(
+                messages,
+                temperature=0.2,
+                operation='chapter_critique',
+                success_validator=parse_critique_report,
+            )
+        )
 
+    @_audit_mock_call('literary_critic_report')
     def generate_critic_report(self, messages: list[dict[str, str]]) -> LiteraryCriticReport:
         if self.mock:
             contextual = _contextual_mock_literary_critic(messages)
@@ -1462,8 +2010,16 @@ class LLMClient:
                 return contextual
             _raise_for_unparseable_context(messages)
             return LiteraryCriticReport.model_validate(MOCK_LITERARY_CRITIC)
-        return parse_literary_critic_report(self._post_json(messages, temperature=0.2))
+        return parse_literary_critic_report(
+            self._post_json_for_operation(
+                messages,
+                temperature=0.2,
+                operation='literary_critic_report',
+                success_validator=parse_literary_critic_report,
+            )
+        )
 
+    @_audit_mock_call('character_arc_report')
     def generate_character_arc_report(self, messages: list[dict[str, str]]) -> CharacterArcReport:
         if self.mock:
             contextual = _contextual_mock_character_arc(messages)
@@ -1471,4 +2027,11 @@ class LLMClient:
                 return contextual
             _raise_for_unparseable_context(messages)
             return CharacterArcReport.model_validate(MOCK_CHARACTER_ARC_REPORT)
-        return parse_character_arc_report(self._post_json(messages, temperature=0.2))
+        return parse_character_arc_report(
+            self._post_json_for_operation(
+                messages,
+                temperature=0.2,
+                operation='character_arc_report',
+                success_validator=parse_character_arc_report,
+            )
+        )

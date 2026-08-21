@@ -1,4 +1,4 @@
-﻿from fastapi import HTTPException, status
+from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -14,11 +14,28 @@ from app.world.models import World
 from app.world.service import count_approved_chapters, require_owned_world
 
 
-def _model_client(llm_client: LLMClient | None = None) -> LLMClient:
+def _model_client(
+    llm_client: LLMClient | None = None,
+    *,
+    db: Session | None = None,
+    request_id: str | None = None,
+    world_id: int | None = None,
+    chapter_id: int | None = None,
+    draft_id: int | None = None,
+) -> LLMClient:
     settings = get_settings()
     client = llm_client or LLMClient()
     if hasattr(client, 'mock'):
         client.mock = settings.llm_mock
+    configure_usage_context = getattr(client, 'configure_usage_context', None)
+    if callable(configure_usage_context):
+        configure_usage_context(
+            db=db,
+            request_id=request_id,
+            world_id=world_id,
+            chapter_id=chapter_id,
+            draft_id=draft_id,
+        )
     return client
 
 
@@ -144,11 +161,22 @@ def build_suggest_goal_messages(
     ]
 
 
-def suggest_chapter_goal(db: Session, user: User, world_id: int, llm_client: LLMClient | None = None) -> dict:
+def suggest_chapter_goal(
+    db: Session,
+    user: User,
+    world_id: int,
+    llm_client: LLMClient | None = None,
+    request_id: str | None = None,
+) -> dict:
     world = require_owned_world(db, user, world_id)
     characters, foreshadows = _load_story_arc_context(db, world)
     approved_count = count_approved_chapters(db, world.id)
-    client = _model_client(llm_client)
+    client = _model_client(
+        llm_client,
+        db=db,
+        request_id=request_id,
+        world_id=world.id,
+    )
     try:
         result = client.suggest_goal(build_suggest_goal_messages(world, characters, foreshadows, approved_count))
     except (TimeoutError, ValueError, RuntimeError) as exc:
@@ -156,11 +184,22 @@ def suggest_chapter_goal(db: Session, user: User, world_id: int, llm_client: LLM
     return result
 
 
-def generate_story_arc(db: Session, user: User, world_id: int, llm_client: LLMClient | None = None) -> dict:
+def generate_story_arc(
+    db: Session,
+    user: User,
+    world_id: int,
+    llm_client: LLMClient | None = None,
+    request_id: str | None = None,
+) -> dict:
     world = require_owned_world_for_update(db, user, world_id)
     characters, foreshadows = _load_story_arc_context(db, world)
     approved_count = count_approved_chapters(db, world.id)
-    client = _model_client(llm_client)
+    client = _model_client(
+        llm_client,
+        db=db,
+        request_id=request_id,
+        world_id=world.id,
+    )
     try:
         chapters = client.generate_story_arc(build_story_arc_messages(world, characters, foreshadows, approved_count))
     except (TimeoutError, ValueError, RuntimeError) as exc:

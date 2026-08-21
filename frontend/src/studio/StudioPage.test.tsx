@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { abandonChapter, apiRequest, approveChapter, checkApprovalConsistency, createChapter, editDraft, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalPreview, getApprovalReadiness, getChapterHistoryDetail, getDraftVersion, rejectDraft, reviseDraft, reviseParagraph, stashDraft, writeChapter } from '../api/client';
+import { abandonChapter, apiRequest, approveChapter, checkApprovalConsistency, createChapter, editDraft, exportWorldArchiveMarkdown, generateCharacterArcReport, generateCriticReport, generateOutline, getApprovalPreview, getApprovalReadiness, getChapterHistory, getChapterHistoryDetail, getDraftVersion, rejectDraft, reviseDraft, reviseParagraph, stashDraft, writeChapter } from '../api/client';
 import type { ChapterExecutionContext, DraftResponse, WorldOverview } from '../api/types';
 import { StudioPage } from './StudioPage';
 
@@ -49,6 +49,10 @@ const draftResponse: DraftResponse = {
   status: 'reviewing',
   execution_context: executionContext,
 };
+
+vi.mock('../workbench/ConvergencePanel', () => ({
+  ConvergencePanel: () => null,
+}));
 
 vi.mock('../api/client', () => ({
   apiRequest: vi.fn(async () => world),
@@ -263,6 +267,10 @@ vi.mock('../api/client', () => ({
       { change_index: 0, selected_by_default: true, foreshadow_id: 1, title: '裂纹玉佩', before: { status: 'planted' }, after: { status: 'advanced', description: '审核备注：湿信推进玉佩线索' } },
     ],
   })),
+  getChapterHistory: vi.fn(async () => ({
+    world_id: 7,
+    chapters: [{ id: 11, title: draftResponse.title, status: 'approved', approved_version: 1, base_world_version: 1 }],
+  })),
   getChapterHistoryDetail: vi.fn(async () => ({
     id: 11,
     world_id: 7,
@@ -476,6 +484,7 @@ afterEach(() => {
   vi.mocked(generateCriticReport).mockClear();
   vi.mocked(generateCharacterArcReport).mockClear();
   vi.mocked(getApprovalReadiness).mockClear();
+  vi.mocked(getChapterHistory).mockClear();
   vi.mocked(getChapterHistoryDetail).mockClear();
   vi.mocked(editDraft).mockClear();
   vi.mocked(rejectDraft).mockClear();
@@ -1073,7 +1082,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
 
     await waitFor(() => expect(getDraftVersion).toHaveBeenCalledWith(11, 1));
     expect(versionSelect).toHaveValue('1');
-    expect(screen.getByText('第一段：林砚停在雨巷口。')).toBeInTheDocument();
+    expect(screen.getAllByText('第一段：林砚停在雨巷口。').length).toBeGreaterThan(0);
     expect(screen.queryByLabelText('编辑草稿内容')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '保存修改' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '编辑正文' })).toBeDisabled();
@@ -1225,7 +1234,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
 
     await user.click(await screen.findByRole('button', { name: '重试审批检查' }));
     await user.selectOptions(screen.getByLabelText('草稿版本'), '1');
-    expect(await screen.findByText('第一段：林砚停在雨巷口。')).toBeInTheDocument();
+    expect((await screen.findAllByText('第一段：林砚停在雨巷口。')).length).toBeGreaterThan(0);
 
     resolveRetryPreview({ ...await getApprovalPreview(11), draft_version: 2 });
 
@@ -1279,7 +1288,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     );
 
     await user.selectOptions(await screen.findByLabelText('草稿版本'), '1');
-    expect(await screen.findByText('第一段：林砚停在雨巷口。')).toBeInTheDocument();
+    expect((await screen.findAllByText('第一段：林砚停在雨巷口。')).length).toBeGreaterThan(0);
 
     resolvePreview(await getApprovalPreview(11));
 
@@ -1841,7 +1850,7 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.selectOptions(versionSelect, '1');
 
     expect(getDraftVersion).toHaveBeenCalledWith(11, 1);
-    expect(await screen.findByText('第一段：林砚停在雨巷口。')).toBeInTheDocument();
+    expect((await screen.findAllByText('第一段：林砚停在雨巷口。')).length).toBeGreaterThan(0);
     expect(screen.getByText('正在查看历史版本，切回最新版本后才能批准。')).toBeInTheDocument();
     expect(screen.queryByText('写入正史前确认')).not.toBeInTheDocument();
     expect(screen.queryByText('Approval Readiness')).not.toBeInTheDocument();
@@ -2267,7 +2276,8 @@ describe('StudioPage Review Studio 2.0 controls', () => {
     await user.click(await screen.findByRole('button', { name: '继续下一章' }));
 
     expect(screen.queryByText('世界推进结算')).not.toBeInTheDocument();
-    expect(screen.queryByText('第一章 雨巷密谈')).not.toBeInTheDocument();
+    // New workbench behavior: latest approved chapter is readable behind the fresh chapter workspace
+    expect(await screen.findByText('正史正文')).toBeInTheDocument();
     expect(screen.getByLabelText('章节目标')).toHaveValue('');
     expect(screen.getByRole('button', { name: '创建章节' })).toBeEnabled();
     expect(screen.getByText('当前上下文')).toBeInTheDocument();

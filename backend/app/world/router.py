@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.api.dependencies import require_user
+from app.api.dependencies import get_request_id, require_user
 from app.auth.models import User
 from app.core.database import get_db
 from app.event.schemas import EventLogListResponse
+from app.llm.usage import audit_session_factory_from_db
 from app.world.schemas import (
     EmptyWorldMutationRequest,
     SerialPlanResponse,
@@ -60,6 +61,8 @@ def create_from_template(
 def draft_from_brief(
     data: WorldCreationDraftRequest,
     current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+    request_id: str | None = Depends(get_request_id),
 ) -> WorldCreationDraftResponse:
     style_handbook_reference = (
         data.style_handbook_reference.model_dump() if data.style_handbook_reference else None
@@ -71,6 +74,9 @@ def draft_from_brief(
             style_handbook_reference=style_handbook_reference,
             variant_count=data.variant_count,
             material_references=material_references,
+            db=db,
+            audit_session_factory=audit_session_factory_from_db(db),
+            request_id=request_id,
         )
     )
 
@@ -126,8 +132,11 @@ def story_arc(
     _payload: EmptyWorldMutationRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
+    request_id: str | None = Depends(get_request_id),
 ) -> StoryArcResponse:
-    return StoryArcResponse.model_validate(generate_story_arc(db, current_user, world_id))
+    return StoryArcResponse.model_validate(
+        generate_story_arc(db, current_user, world_id, request_id=request_id)
+    )
 
 
 @router.get('/{world_id}/serial-plan', response_model=SerialPlanResponse)
@@ -146,8 +155,9 @@ def suggest_goal(
     _payload: EmptyWorldMutationRequest | None = None,
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
+    request_id: str | None = Depends(get_request_id),
 ) -> dict:
-    return suggest_chapter_goal(db, current_user, world_id)
+    return suggest_chapter_goal(db, current_user, world_id, request_id=request_id)
 
 
 @router.get('/{world_id}/events', response_model=EventLogListResponse)

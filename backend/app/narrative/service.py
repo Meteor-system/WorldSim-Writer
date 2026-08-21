@@ -1,3 +1,4 @@
+import re
 import difflib
 from copy import deepcopy
 from datetime import UTC, datetime
@@ -1187,9 +1188,10 @@ def build_outline_messages(
     chapter_goal: str,
     chapter_context: str | None = None,
     execution_context: dict | None = None,
-) -> list[dict[str, str]]:
+
+    chapter_number: int | None = None,) -> list[dict[str, str]]:
     character_lines = '\n'.join(
-        f'- {c.id}: {c.name}, role={c.role_type}, public_profile={c.public_profile}, hidden_traits={c.hidden_traits}, goals={c.current_goals}'
+        f'- {c.id}: {c.name}, gender={c.gender}, role={c.role_type}, public_profile={c.public_profile}, hidden_traits={c.hidden_traits}, goals={c.current_goals}'
         for c in characters
     )
     foreshadow_lines = '\n'.join(
@@ -1223,7 +1225,7 @@ def build_outline_messages(
                 f'世界标题：{world.title}\n'
                 f'题材：{world.genre_template}\n'
                 f'语调：{world.tone_profile}\n'
-                f'世界设定：{world.truth_canon}\n'
+                f'世界设定：{_visible_truth_canon(world, chapter_number)}\n'
                 f'世界版本：{world.world_version}\n'
                 f'角色：\n{character_lines}\n'
                 f'紧迫伏笔：\n{foreshadow_lines}\n'
@@ -1236,6 +1238,596 @@ def build_outline_messages(
     ]
 
 
+
+def _visible_truth_canon(world, chapter_number: int | None = None) -> str:
+    """Return only the truth layers unlocked by the current chapter."""
+    layers = getattr(world, 'truth_layers', None) or []
+    if not layers:
+        return getattr(world, 'truth_canon', '')
+    if chapter_number is None:
+        return '\n'.join(str(l.get('content', '')) for l in layers)
+    visible = [
+        str(l.get('content', ''))
+        for l in layers
+        if int(l.get('reveal_at_chapter', 0)) <= chapter_number
+    ]
+    return '\n'.join(visible) if visible else getattr(world, 'truth_canon', '')
+
+
+def _foreshadow_effective_urgency(foreshadow, chapter_number: int | None = None) -> int:
+    """Auto-bump urgency as a foreshadow approaches its resolution window."""
+    urgency = int(getattr(foreshadow, 'urgency_level', 1) or 1)
+    if chapter_number is None:
+        return urgency
+    window = getattr(foreshadow, 'expected_resolution_window', None) or ''
+    m = re.match(r'第(\d+)-(\d+)章', window)
+    if not m:
+        return urgency
+    win_end = int(m.group(2))
+    remaining = win_end - chapter_number
+    if remaining <= 0:
+        return 5
+    if remaining == 1:
+        return min(5, urgency + 2)
+    if remaining == 2:
+        return min(5, urgency + 1)
+    return urgency
+
+
+def build_writer_only_messages(
+    world,
+    characters: list,
+    foreshadows: list,
+    chapter_goal: str,
+    outline_beats: list | None = None,
+    outline_context: dict | None = None,
+    execution_context: dict | None = None,
+    chapter_number: int | None = None,
+    recent_memories: list[dict] | None = None,
+    total_planned_chapters: int = 200,
+) -> list[dict[str, str]]:
+    """Build messages for prose-only generation (no JSON, no structured metadata)."""
+    character_lines = '\n'.join(
+        f'- {c.id}: {c.name}, gender={c.gender}, role={c.role_type}, public_profile={c.public_profile}, hidden_traits={c.hidden_traits}, destiny={c.destiny_flag}, goals={c.current_goals}'
+        for c in characters
+    )
+    foreshadow_lines = '\n'.join(
+        f'- {f.id}: {f.title}, status={f.status}, urgency={_foreshadow_effective_urgency(f, chapter_number)}, description={f.description}, window={f.expected_resolution_window}'
+        for f in foreshadows
+    )
+
+    # Foreshadow window reminder
+    foreshadow_window_lines = ''
+    if chapter_number is not None:
+        reminders = []
+        for f in foreshadows:
+            window = f.expected_resolution_window or ''
+            m = re.match(r'第(\d+)-(\d+)章', window)
+            if m:
+                win_start, win_end = int(m.group(1)), int(m.group(2))
+                if chapter_number < win_start:
+                    reminders.append(f'- {f.title}（第{win_start}-{win_end}章，还有{win_start - chapter_number}章进入窗口）')
+                elif win_start <= chapter_number <= win_end:
+                    reminders.append(f'- {f.title}（当前第{chapter_number}章已进入解析窗口，必须在本章内明显推进或解析）')
+                else:
+                    reminders.append(f'- {f.title}（已超出解析窗口第{win_end}章，本章应 resolved 或 expired）')
+        if reminders:
+            foreshadow_window_lines = '伏笔窗口提醒（必须执行）：\n' + '\n'.join(reminders) + '\n'
+
+    # Arc-mode guidance from narrative convergence system
+    arc_guidance_lines = ''
+    if chapter_number is not None:
+        from app.narrative.convergence import ARC_MODE_LABELS, compute_narrative_entropy, derive_arc_mode
+        _entropy_payload = compute_narrative_entropy(characters, foreshadows, chapter_number=chapter_number)
+        _arc_mode = derive_arc_mode(_entropy_payload['entropy'], chapter_number, total_planned_chapters)
+        arc_guidance_lines = (
+            f'叙事收束指引：当前篇章模式 = {_arc_mode}（{ARC_MODE_LABELS[_arc_mode]}）。'
+            f'叙事熵 = {_entropy_payload["entropy"]}（{_entropy_payload["message"]}）。'
+            '请在本章中遵守该模式的约束。\n'
+        )
+
+    outline_lines = ''
+    if outline_context:
+        core_conflict = outline_context.get('core_conflict', '')
+        pacing = outline_context.get('pacing', '')
+        if core_conflict or pacing:
+            outline_lines += f'本章核心冲突：{core_conflict}\n节奏倾向：{pacing}\n'
+    if outline_beats:
+        outline_lines += '章节节拍：\n' + '\n'.join(
+            f"- {beat.get('beat_id')}: {beat.get('summary')} | POV={beat.get('pov_character')} | location={beat.get('location')}"
+            for beat in outline_beats
+        )
+    opening_contract = (outline_context or {}).get('opening_contract') or {}
+    opening_lines = ''
+    if opening_contract:
+        parts = []
+        if opening_contract.get('backstory'):
+            parts.append(f'- 世界前史（务必在叙事中自然织入两三处）：{opening_contract["backstory"]}')
+        if opening_contract.get('inciting_incident'):
+            parts.append(f'- 触发事件：{opening_contract["inciting_incident"]}')
+        if opening_contract.get('prior_state'):
+            parts.append(f'- 触发前日常：{opening_contract["prior_state"]}')
+        if opening_contract.get('grounded_emotion'):
+            parts.append(f'- 核心情绪：{opening_contract["grounded_emotion"]}')
+        if parts:
+            opening_lines = '\n首章零认知锚点：\n' + '\n'.join(parts) + '\n'
+
+    return [
+        {
+            'role': 'system',
+            'content': (
+                '你是长篇小说创作系统的 Writer Agent。请根据提供的世界设定、角色、伏笔、章节目标和节拍卡，'
+                '创作本章的完整正文。只输出纯文本章节内容，不要输出 JSON，不要输出元数据，不要输出证据标注。'
+                '\n\n写作要求：'
+                '\n- 使用第三人称限知视角'
+                '\n- 每段之间用空行分隔'
+                '\n- 首次出现的专有名词必须就地给出可观察的解释或后果'
+                '\n- 优先满足执行上下文中的 POV、优先角色、优先伏笔和推进提示'
+                '\n- 角色代词（他/她）必须与角色性别（gender 字段）严格一致'
+                + (
+                    '\n- 首章必须通过具体场景和行动展示：背景设定、主角身份、动机、人格证据、冲突目标，以及锁定第三人称限知视角'
+                    if opening_contract else ''
+                )
+            ),
+        },
+        {
+            'role': 'user',
+            'content': (
+                f'世界标题：{world.title}\n'
+                f'题材：{world.genre_template}\n'
+                f'语调：{world.tone_profile}\n'
+                f'世界设定：{_visible_truth_canon(world, chapter_number)}\n'
+                f'世界版本：{world.world_version}\n'
+                f'角色：\n{character_lines}\n'
+                f'伏笔：\n{foreshadow_lines}\n'
+                f'{foreshadow_window_lines}'
+                f'{arc_guidance_lines}'
+                f'{_format_recent_memories(recent_memories)}'
+                f'本章目标：{chapter_goal}\n'
+                f'{format_execution_context_for_prompt(execution_context)}'
+                f'{outline_lines}'
+                f'{opening_lines}'
+                '请只输出本章正文纯文本，不要输出任何 JSON 或元数据。'
+            ),
+        },
+    ]
+
+def build_extraction_messages(
+    world,
+    characters: list,
+    foreshadows: list,
+    chapter_goal: str,
+    outline_beats: list | None = None,
+    outline_context: dict | None = None,
+    execution_context: dict | None = None,
+    draft_content_placeholder: str = '<<<DRAFT_CONTENT_PLACEHOLDER>>>',
+    chapter_number: int | None = None,
+) -> list[dict[str, str]]:
+    """Build messages for structured metadata extraction from prose."""
+    character_lines = '\n'.join(
+        f'- {c.id}: {c.name}, gender={c.gender}, role={c.role_type}, current_goals={c.current_goals}'
+        for c in characters
+    )
+    foreshadow_lines = '\n'.join(
+        f'- {f.id}: {f.title}, status={f.status}, urgency={_foreshadow_effective_urgency(f, chapter_number)}, description={f.description}, window={f.expected_resolution_window}'
+        for f in foreshadows
+    )
+    is_opening = (outline_context or {}).get('opening_contract') is not None
+
+    return [
+        {
+            'role': 'system',
+            'content': (
+                '你是长篇小说创作系统的 Extractor Agent。你的任务是从已写好的章节正文中提取结构化元数据。'
+                '\n注意：角色性别由 gender 字段指定，提取的正文内容必须与角色性别一致。'
+                '必须只返回合法 JSON，字段结构如下：\n'
+                '{"context_summary": "本章摘要（50字以内）", '
+                '"review_hints": ["审核提示1", "审核提示2"], '
+                '"proposed_character_changes": [{"character_id": 整数, "status": "新状态描述", "current_goals": ["新目标"]}], '
+                '"proposed_foreshadow_changes": [{"foreshadow_id": 整数, "status": "advanced|resolved|expired", "description_note": "变化说明"}], '
+                '"memory_card": {"facts": ["本章确立的关键事实"], "emotional_arc": "情绪走向", "causal_links": ["因果链"], "characters_present": [角色ID]}'
+                + (', "opening_evidence": [{"check":"background|protagonist_identity|motivation|personality_evidence_plan|conflict_goal|locked_pov", "paragraph_index":0, "quote":"正文原文片段"}]' if is_opening else '')
+                + '}\n'
+                'proposed_character_changes 和 proposed_foreshadow_changes 可以为空数组 []。\n'
+                '记忆卡提取规则（重要）：\n'
+                '- facts：列出本章确立的关键事实，每条一句话（3-8条）\n'
+                '- emotional_arc：一句话概括情绪走向，例如"从紧张到释然"\n'
+                '- causal_links：列出因果链，例如"发现数据被篡改→决定潜入数据中心"\n'
+                '- characters_present：出场角色ID列表\n'
+                '伏笔状态推进规则（重要）：\n'
+                '- advanced：本章推进了该伏笔，但核心谜底/冲突尚未揭晓\n'
+                '- resolved：本章中该伏笔的谜底已完全揭晓，或冲突已彻底解决，后续不必再提\n'
+                '- expired：该伏笔因角色死亡、场景离开、剧情转向等原因已不再适用\n'
+                '- 如果某个伏笔在本章中完全没有被触及，不要将其列入 proposed_foreshadow_changes\n'
+                '角色目标更新规则（重要）：\n'
+                '- current_goals 必须只包含本章结束时仍然活跃、尚未完成的目标\n'
+                '- 已在本章中完成的目标、已放弃的目标、已不可实现的目标，必须从列表中移除\n'
+                '- 如果一个角色没有发生变化，不要将其列入 proposed_character_changes\n'
+                '只提取正文中实际发生了变化的角色和伏笔。'
+                + ('\n首章必须返回全部六项 opening_evidence。每项的 quote 必须从正文中逐字复制。locked_pov 的 quote 必须显式包含锁定角色全名并体现主观感知。' if is_opening else '')
+            ),
+        },
+        {
+            'role': 'user',
+            'content': (
+                f'世界标题：{world.title}\n'
+                f'题材：{world.genre_template}\n'
+                f'世界设定：{_visible_truth_canon(world, chapter_number)}\n'
+                f'世界版本：{world.world_version}\n'
+                f'角色：\n{character_lines}\n'
+                f'伏笔：\n{foreshadow_lines}\n'
+                f'本章目标：{chapter_goal}\n'
+                f'{format_execution_context_for_prompt(execution_context)}'
+                f'当前正文：\n{draft_content_placeholder}\n\n'
+                '请从以上正文中提取结构化元数据，返回 JSON。'
+            ),
+        },
+    ]
+
+
+def _format_recent_memories(recent_memories: list[dict] | None) -> str:
+    """Format approved chapter memory cards for injection into writer prompt."""
+    if not recent_memories:
+        return ''
+    lines = ['近期已批准章节记忆：']
+    for m in recent_memories:
+        ch = m.get('chapter_number', '?')
+        facts = '；'.join(m.get('facts', []))
+        line = f'- 第{ch}章: {facts}'
+        if m.get('emotional_arc'):
+            line += f'（情绪：{m["emotional_arc"]}）'
+        lines.append(line)
+    return '\n'.join(lines) + '\n\n'
+
+
+def _build_memory_compression_messages(cards: list[dict], world_title: str) -> list[dict[str, str]]:
+    """Build messages to compress a batch of memory cards into one arc summary."""
+    card_lines = '\n'.join(
+        f"- 第{c.get('chapter_number', '?')}章: 事实={'；'.join(c.get('facts', []))}；情绪={c.get('emotional_arc', '')}"
+        for c in cards
+    )
+    return [
+        {
+            'role': 'system',
+            'content': (
+                '你是长篇小说创作系统的 Memory Compressor。'
+                '请把连续几章的章节记忆卡压缩成一段前情摘要，供后续章节写作时参考。'
+                '只返回 JSON，格式如下：\n'
+                '{"summary": "连续几章的核心情节发展（100字以内）", '
+                '"key_facts": ["必须被后续章节记住的关键事实（最多8条）"], '
+                '"open_threads": ["尚未回收的线索、悬念、承诺（最多5条）"]}'
+            ),
+        },
+        {
+            'role': 'user',
+            'content': (
+                f'世界标题：{world_title}\n'
+                f'章节记忆卡：\n{card_lines}\n\n'
+                '请压缩成一段前情摘要。'
+            ),
+        },
+    ]
+
+
+def _format_world_summaries(summaries: list) -> str:
+    """Format stored arc summaries for writer prompt injection."""
+    if not summaries:
+        return ''
+    lines = ['世界前情摘要（已压缩的早期章节）：']
+    for s in summaries:
+        lines.append(
+            f"- 第{s.chapter_start}-{s.chapter_end}章：{s.summary}"
+            + (f" 关键事实：{'；'.join(s.key_facts)}" if s.key_facts else '')
+            + (f" 未回收线索：{'；'.join(s.open_threads)}" if s.open_threads else '')
+        )
+    return '\n'.join(lines) + '\n\n'
+
+
+def _load_world_memory_summaries(db, world) -> list:
+    """Load stored arc summaries for a world."""
+    from sqlalchemy import select
+    from app.narrative.models import WorldMemorySummary
+    return list(
+        db.execute(
+            select(WorldMemorySummary)
+            .where(WorldMemorySummary.world_id == world.id)
+            .order_by(WorldMemorySummary.chapter_start)
+        ).scalars().all()
+    )
+
+
+def _build_memory_query_from_state(
+    chapter_goal: str = '',
+    characters: list | None = None,
+    foreshadows: list | None = None,
+) -> str:
+    """Build a retrieval query from the current narrative state."""
+    from app.narrative.memory_retrieval import _query_text_from_state
+    return _query_text_from_state(chapter_goal, foreshadows, characters)
+
+
+def retrieve_world_summaries_for_writing(
+    db,
+    world,
+    chapter_goal: str = '',
+    characters: list | None = None,
+    foreshadows: list | None = None,
+    current_chapter: int = 1,
+    limit: int = 8,
+    budget_chars: int = 3000,
+) -> list:
+    """Load all stored summaries then retrieve only the most relevant ones."""
+    from app.narrative.memory_retrieval import retrieve_summaries
+    summaries = _load_world_memory_summaries(db, world)
+    if not summaries:
+        return []
+    entities = {
+        'character': [getattr(c, 'name', '') for c in (characters or [])],
+        'foreshadow': [getattr(f, 'title', '') for f in (foreshadows or [])],
+    }
+    query = _build_memory_query_from_state(chapter_goal, characters, foreshadows)
+    plan = retrieve_summaries(
+        summaries,
+        query,
+        current_chapter=current_chapter,
+        limit=limit,
+        budget_chars=budget_chars,
+        entities=entities,
+    )
+    return plan['retrieved']
+
+
+def get_world_memory_retrieval(
+    db,
+    user,
+    world_id: int,
+    chapter_goal: str = '',
+    limit: int = 8,
+    budget_chars: int = 3000,
+) -> dict:
+    """Debug endpoint payload for memory retrieval."""
+    from app.narrative.memory_retrieval import retrieve_summaries
+    from app.world.service import count_approved_chapters, require_owned_world
+    world = require_owned_world(db, user, world_id)
+    characters, foreshadows = _load_world_context(db, world)
+    summaries = _load_world_memory_summaries(db, world)
+    approved = count_approved_chapters(db, world.id)
+    entities = {
+        'character': [getattr(c, 'name', '') for c in characters],
+        'foreshadow': [getattr(f, 'title', '') for f in foreshadows],
+    }
+    query = _build_memory_query_from_state(chapter_goal, characters, foreshadows)
+    plan = retrieve_summaries(
+        summaries,
+        query,
+        current_chapter=approved + 1,
+        limit=limit,
+        budget_chars=budget_chars,
+        entities=entities,
+    )
+    return {
+        'world_id': world.id,
+        'approved_chapters': approved,
+        'query': query,
+        'budget_chars': budget_chars,
+        'used_chars': plan['used_chars'],
+        'limit': plan['limit'],
+        'retrieved': [
+            {
+                'chapter_start': s.chapter_start,
+                'chapter_end': s.chapter_end,
+                'summary': s.summary,
+            }
+            for s in plan['retrieved']
+        ],
+        'cold': [
+            {
+                'chapter_start': c['summary'].chapter_start,
+                'chapter_end': c['summary'].chapter_end,
+                'score': c['score'],
+                'cold_chapters': c['cold_chapters'],
+            }
+            for c in plan['cold']
+        ],
+        'ranked': [
+            {
+                'chapter_start': r['summary'].chapter_start,
+                'chapter_end': r['summary'].chapter_end,
+                'score': r['score'],
+                'components': r['components'],
+                'covered': r['covered'],
+                'cold_chapters': r['cold_chapters'],
+            }
+            for r in plan['ranked']
+        ],
+    }
+
+
+def _summarize_old_memories_if_needed(db, world, client, recent_memories: list[dict]) -> list:
+    """Compress old memory cards into arc summaries when the backlog grows.
+
+    Simplest useful policy: when the recent window has 5 cards and their
+    chapter_start begins at chapter > 5, summarize the first batch if no
+    summary exists for those chapters.
+    """
+    from sqlalchemy import select
+    from app.narrative.models import WorldMemorySummary
+    if not recent_memories:
+        return []
+    first_ch = recent_memories[0].get('chapter_number', 0)
+    last_ch = recent_memories[-1].get('chapter_number', 0)
+    if last_ch - first_ch < 4:
+        return []
+    # Already summarized?
+    existing = db.execute(
+        select(WorldMemorySummary)
+        .where(WorldMemorySummary.world_id == world.id)
+        .order_by(WorldMemorySummary.chapter_start)
+    ).scalars().all()
+    covered = set()
+    for s in existing:
+        covered.update(range(s.chapter_start, s.chapter_end + 1))
+    unsummarized = [c for c in recent_memories if c.get('chapter_number', 0) not in covered]
+    if len(unsummarized) < 5:
+        return list(existing)
+    batch = unsummarized[:5]
+    try:
+        compression = client.compress_memories(
+            _build_memory_compression_messages(batch, world.title)
+        )
+        summary = WorldMemorySummary(
+            world_id=world.id,
+            chapter_start=batch[0]['chapter_number'],
+            chapter_end=batch[-1]['chapter_number'],
+            summary=compression.summary,
+            key_facts=compression.key_facts,
+            open_threads=compression.open_threads,
+        )
+        db.add(summary)
+        db.commit()
+    except Exception:
+        db.rollback()
+    return _load_world_memory_summaries(db, world)
+
+
+
+def build_literary_review_messages(
+    world,
+    chapter_goal: str,
+    draft_content: str,
+) -> list[dict[str, str]]:
+    """Build messages for an independent literary second review."""
+    return [
+        {
+            'role': 'system',
+            'content': (
+                '你是一位与作者独立的资深文学编辑，只负责文学性二审。'
+                '你的信条：好小说让读者自己感受，而不是被作者告知。'
+                '请从以下五个维度检查本章草稿：\n'
+                '- over_explaining：解释过度（把读者该自己体会的写明了）\n'
+                '- emotional_telling：情绪直给（直接说"他害怕"而不是让读者从动作中感到怕）\n'
+                '- functional_dialogue：对白功能化（对白只是在交代信息）\n'
+                '- cliche_hooks：结尾钩子生硬或俗套\n'
+                '- voice_notes：角色声音统一性\n'
+                '只返回 JSON，格式如下：\n'
+                '{"literary_score": 1-5, "over_explaining": ["问题句"], '
+                '"emotional_telling": ["问题句"], "functional_dialogue": ["问题句"], '
+                '"cliche_hooks": ["问题句"], "voice_notes": ["观察"], '
+                '"rewrite_suggestions": ["具体修改建议"]}'
+            ),
+        },
+        {
+            'role': 'user',
+            'content': (
+                f'世界标题：{world.title}\n'
+                f'本章目标：{chapter_goal}\n'
+                f'本章正文：\n{draft_content}\n\n'
+                '请进行文学性二审。'
+            ),
+        },
+    ]
+
+def build_quality_messages(
+    world,
+    characters: list,
+    foreshadows: list,
+    chapter_goal: str,
+    draft_content: str,
+    chapter_number: int | None = None,
+) -> list[dict[str, str]]:
+    """Build messages for the quality engine post-draft evaluation."""
+    character_lines = '\n'.join(
+        f'- {c.id}: {c.name}, role={c.role_type}, status={c.status}, goals={c.current_goals}'
+        for c in characters
+    )
+    foreshadow_lines = '\n'.join(
+        f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}, window={f.expected_resolution_window}'
+        for f in foreshadows
+    )
+    chapter_label = f'第{chapter_number}章' if chapter_number is not None else '本章'
+    return [
+        {
+            'role': 'system',
+            'content': (
+                '你是长篇创作系统的质量引擎 Agent。'
+                '请阅读本章草稿，并从以下维度打分（1-5）：\n'
+                '- theme_advancement：主题推进\n'
+                '- character_arc_progress：角色弧推进\n'
+                '- rhythm_score：节奏\n'
+                '- voice_consistency：角色声音一致性\n'
+                '- overall_score：整体质量\n'
+                '同时列出 anti_cliche_risks：本章中可能滑向俗套的风险点。\n'
+                '只返回 JSON，格式如下：\n'
+                '{"theme_advancement": 1-5, "character_arc_progress": 1-5, '
+                '"anti_cliche_risks": ["风险点"], "rhythm_score": 1-5, '
+                '"voice_consistency": 1-5, "overall_score": 1-5}'
+            ),
+        },
+        {
+            'role': 'user',
+            'content': (
+                f'世界标题：{world.title}\n'
+                f'章节：{chapter_label}\n'
+                f'角色：\n{character_lines}\n'
+                f'伏笔：\n{foreshadow_lines}\n'
+                f'本章目标：{chapter_goal}\n'
+                f'本章正文：\n{draft_content}\n\n'
+                '请进行质量评估。'
+            ),
+        },
+    ]
+
+
+def _generate_chapter_with_fallback(
+    client,
+    world,
+    characters: list,
+    foreshadows: list,
+    chapter_goal: str,
+    outline_beats: list | None,
+    outline_context: dict | None,
+    execution_context: dict | None,
+    recent_memories: list[dict] | None = None,
+    world_summaries: list | None = None,
+):
+    """Generate a chapter using two-phase generation if available, falling back to single-phase."""
+    ch_num = (execution_context or {}).get('next_chapter_number')
+    two_phase = getattr(client, 'generate_chapter_two_phase', None)
+    if callable(two_phase):
+        writer_msgs = build_writer_only_messages(
+            world, characters, foreshadows, chapter_goal,
+            outline_beats, outline_context, execution_context,
+            chapter_number=ch_num,
+        )
+        _memory_text = _format_recent_memories(recent_memories)
+        if _memory_text:
+            writer_msgs[1]['content'] = _memory_text + writer_msgs[1]['content']
+        _summary_text = _format_world_summaries(world_summaries)
+        if _summary_text:
+            writer_msgs[1]['content'] = _summary_text + writer_msgs[1]['content']
+        return two_phase(
+            writer_msgs,
+            build_extraction_messages(
+                world, characters, foreshadows, chapter_goal,
+                outline_beats, outline_context, execution_context,
+                chapter_number=ch_num,
+            ),
+        )
+    generate = getattr(client, 'generate_chapter', None)
+    if not callable(generate):
+        raise ValueError('MODEL_RESPONSE_INVALID')
+    gen_msgs = build_generation_messages(
+        world, characters, foreshadows, chapter_goal,
+        outline_beats, outline_context, execution_context,
+    )
+    _memory_text = _format_recent_memories(recent_memories)
+    if _memory_text:
+        gen_msgs[1]['content'] = _memory_text + gen_msgs[1]['content']
+    _summary_text = _format_world_summaries(world_summaries)
+    if _summary_text:
+        gen_msgs[1]['content'] = _summary_text + gen_msgs[1]['content']
+    return generate(gen_msgs)
+
 def build_generation_messages(
     world,
     characters: list[Character],
@@ -1244,9 +1836,10 @@ def build_generation_messages(
     outline_beats: list[dict] | None = None,
     outline_context: dict | None = None,
     execution_context: dict | None = None,
-) -> list[dict[str, str]]:
+
+    chapter_number: int | None = None,) -> list[dict[str, str]]:
     character_lines = '\n'.join(
-        f'- {c.id}: {c.name}, role={c.role_type}, public_profile={c.public_profile}, hidden_traits={c.hidden_traits}, destiny={c.destiny_flag}, goals={c.current_goals}'
+        f'- {c.id}: {c.name}, gender={c.gender}, role={c.role_type}, public_profile={c.public_profile}, hidden_traits={c.hidden_traits}, destiny={c.destiny_flag}, goals={c.current_goals}'
         for c in characters
     )
     foreshadow_lines = '\n'.join(
@@ -1281,7 +1874,7 @@ def build_generation_messages(
                 f'世界标题：{world.title}\n'
                 f'题材：{world.genre_template}\n'
                 f'语调：{world.tone_profile}\n'
-                f'世界设定：{world.truth_canon}\n'
+                f'世界设定：{_visible_truth_canon(world, chapter_number)}\n'
                 f'世界版本：{world.world_version}\n'
                 f'角色：\n{character_lines}\n'
                 f'伏笔：\n{foreshadow_lines}\n'
@@ -1333,8 +1926,9 @@ def build_critique_messages(
     foreshadows: list[Foreshadow],
     chapter: Chapter,
     draft: ChapterDraft,
-) -> list[dict[str, str]]:
-    character_lines = '\n'.join(f'- {c.id}: {c.name}, status={c.status}, goals={c.current_goals}, profile={c.public_profile}' for c in characters)
+
+    chapter_number: int | None = None,) -> list[dict[str, str]]:
+    character_lines = '\n'.join(f'- {c.id}: {c.name}, gender={c.gender}, status={c.status}, goals={c.current_goals}, profile={c.public_profile}' for c in characters)
     foreshadow_lines = '\n'.join(f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}, description={f.description}' for f in foreshadows)
     return [
         {
@@ -1350,7 +1944,7 @@ def build_critique_messages(
         {
             'role': 'user',
             'content': (
-                f'世界设定：{world.truth_canon}\n'
+                f'世界设定：{_visible_truth_canon(world, chapter_number)}\n'
                 f'角色：\n{character_lines}\n'
                 f'伏笔：\n{foreshadow_lines}\n'
                 f'Outliner上下文：{chapter.outline_context}\n'
@@ -1379,9 +1973,10 @@ def build_critic_report_messages(
     foreshadows: list[Foreshadow],
     chapter: Chapter,
     draft: ChapterDraft,
-) -> list[dict[str, str]]:
+
+    chapter_number: int | None = None,) -> list[dict[str, str]]:
     character_lines = '\n'.join(
-        f'- {c.id}: {c.name}, role={c.role_type}, status={c.status}, goals={c.current_goals}, profile={c.public_profile}'
+        f'- {c.id}: {c.name}, gender={c.gender}, role={c.role_type}, status={c.status}, goals={c.current_goals}, profile={c.public_profile}'
         for c in characters
     )
     foreshadow_lines = '\n'.join(
@@ -1409,7 +2004,7 @@ def build_critic_report_messages(
                 f'世界标题：{world.title}\n'
                 f'题材：{world.genre_template}\n'
                 f'语调：{world.tone_profile}\n'
-                f'世界设定：{world.truth_canon}\n'
+                f'世界设定：{_visible_truth_canon(world, chapter_number)}\n'
                 f'世界版本：{world.world_version}\n'
                 f'角色：\n{character_lines}\n'
                 f'伏笔：\n{foreshadow_lines}\n'
@@ -1432,9 +2027,10 @@ def build_character_arc_report_messages(
     recent_events: list[EventLog],
     chapter: Chapter,
     draft: ChapterDraft,
-) -> list[dict[str, str]]:
+
+    chapter_number: int | None = None,) -> list[dict[str, str]]:
     character_lines = '\n'.join(
-        f'- {c.id}: {c.name}, role={c.role_type}, status={c.status}, goals={c.current_goals}, public={c.public_profile}, hidden={c.hidden_traits}'
+        f'- {c.id}: {c.name}, gender={c.gender}, role={c.role_type}, status={c.status}, goals={c.current_goals}, public={c.public_profile}, hidden={c.hidden_traits}'
         for c in characters
     )
     relation_lines = '\n'.join(
@@ -1480,7 +2076,7 @@ def build_character_arc_report_messages(
                 f'世界标题：{world.title}\n'
                 f'题材：{world.genre_template}\n'
                 f'语调：{world.tone_profile}\n'
-                f'世界设定：{world.truth_canon}\n'
+                f'世界设定：{_visible_truth_canon(world, chapter_number)}\n'
                 f'世界版本：{world.world_version}\n'
                 f'故事弧线：{world.story_arc}\n'
                 f'角色：\n{character_lines}\n'
@@ -1870,6 +2466,26 @@ def generate_chapter_outline(
     }
 
 
+
+def _recent_approved_memories(db, world, limit: int = 5) -> list[dict]:
+    """Return memory cards of the most recently approved chapters."""
+    from sqlalchemy import select
+    from app.narrative.models import Chapter as _Ch, ChapterDraft as _D
+    rows = db.execute(
+        select(_D)
+        .join(_Ch, _D.chapter_id == _Ch.id)
+        .where(_Ch.world_id == world.id, _Ch.approved_version.is_not(None), _D.memory_card.is_not(None))
+        .order_by(_Ch.id.desc())
+        .limit(limit)
+    ).scalars().all()
+    result = []
+    for d in reversed(rows):
+        mem = d.memory_card or {}
+        mem = dict(mem)
+        mem['chapter_number'] = d.chapter_id
+        result.append(mem)
+    return result
+
 def create_chapter_draft(
     db: Session,
     user: User,
@@ -1899,9 +2515,47 @@ def create_chapter_draft(
             outline_context = _outline_context_payload(outline)
         locked_character = _locked_pov_character(characters, context, outline_context)
         _validate_locked_beat_pov(outline_beats, locked_character)
-        generation = client.generate_chapter(
-            build_generation_messages(world, characters, foreshadows, chapter_goal, outline_beats or None, outline_context or None, context)
+        recent_memories = _recent_approved_memories(db, world)
+        world_summaries = _summarize_old_memories_if_needed(db, world, client, recent_memories)
+        _next_ch_for_retrieval = context.get('next_chapter_number') or 1
+        world_summaries = retrieve_world_summaries_for_writing(
+            db,
+            world,
+            chapter_goal=chapter_goal,
+            characters=characters,
+            foreshadows=foreshadows,
+            current_chapter=_next_ch_for_retrieval,
         )
+        generation = _generate_chapter_with_fallback(
+            client, world, characters, foreshadows, chapter_goal,
+            outline_beats or None, outline_context or None, context,
+            recent_memories=recent_memories,
+            world_summaries=world_summaries,
+        )
+        quality_report = None
+        _generate_quality = getattr(client, 'generate_quality_report', None)
+        if callable(_generate_quality) and not outline_context.get('opening_contract'):
+            try:
+                quality_report = _generate_quality(
+                    build_quality_messages(
+                        world, characters, foreshadows, chapter_goal,
+                        generation.draft_content,
+                        chapter_number=context.get('next_chapter_number'),
+                    )
+                ).model_dump()
+            except (TimeoutError, ValueError, RuntimeError):
+                quality_report = None
+        _generate_literary = getattr(client, 'generate_literary_review', None)
+        if callable(_generate_literary) and not outline_context.get('opening_contract'):
+            try:
+                _lit = _generate_literary(
+                    build_literary_review_messages(world, chapter_goal, generation.draft_content)
+                ).model_dump()
+                if quality_report is None:
+                    quality_report = {}
+                quality_report['literary_review'] = _lit
+            except (TimeoutError, ValueError, RuntimeError):
+                pass
     except (TimeoutError, ValueError, RuntimeError) as exc:
         raise _map_model_error(exc) from exc
     validate_generation_ids(generation, characters, foreshadows)
@@ -1948,7 +2602,7 @@ def create_chapter_draft(
             {character.name for character in characters if character.name},
         )
         if outline_context.get('opening_contract')
-        else {}
+        else (quality_report if quality_report is not None else {})
     )
     draft = ChapterDraft(
         chapter_id=chapter.id,
@@ -1960,6 +2614,11 @@ def create_chapter_draft(
         source_world_version=world.world_version,
         execution_context=context,
         quality_report=quality_report,
+        memory_card=(
+            generation.memory_card.model_dump()
+            if generation.memory_card
+            else None
+        ),
     )
     db.add(draft)
     db.commit()
@@ -1994,16 +2653,28 @@ def write_chapter_from_outline(
     _validate_locked_beat_pov(effective_outline_beats, locked_character)
     client = _model_client(llm_client)
     try:
-        generation = client.generate_chapter(
-            build_generation_messages(
-                world,
-                characters,
-                foreshadows,
-                chapter.chapter_goal or chapter.title,
-                effective_outline_beats,
-                chapter.outline_context,
-                chapter.execution_context,
-            )
+        recent_memories = _recent_approved_memories(db, world)
+        world_summaries = _summarize_old_memories_if_needed(db, world, client, recent_memories)
+        _next_ch_for_retrieval = (chapter.execution_context or {}).get('next_chapter_number') or 1
+        world_summaries = retrieve_world_summaries_for_writing(
+            db,
+            world,
+            chapter_goal=chapter.chapter_goal or chapter.title,
+            characters=characters,
+            foreshadows=foreshadows,
+            current_chapter=_next_ch_for_retrieval,
+        )
+        generation = _generate_chapter_with_fallback(
+            client,
+            world,
+            characters,
+            foreshadows,
+            chapter.chapter_goal or chapter.title,
+            effective_outline_beats,
+            chapter.outline_context,
+            chapter.execution_context,
+            recent_memories=recent_memories,
+            world_summaries=world_summaries,
         )
     except (TimeoutError, ValueError, RuntimeError) as exc:
         raise _map_model_error(exc) from exc
@@ -2061,6 +2732,11 @@ def write_chapter_from_outline(
             )
             if (chapter.outline_context or {}).get('opening_contract')
             else {}
+        )
+        draft.memory_card = (
+            generation.memory_card.model_dump()
+            if generation.memory_card
+            else None
         )
         db.commit()
         db.refresh(chapter)
@@ -2603,6 +3279,31 @@ def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
             'locked_character_name': locked_character.name if locked_character is not None else None,
         }
 
+    convergence = None
+    try:
+        characters_ctx, foreshadows_ctx = _load_world_context(db, world)
+        from app.narrative.convergence import (
+            ARC_MODE_LABELS,
+            build_closure_plan,
+            compute_narrative_entropy,
+            derive_arc_mode,
+        )
+        _approved_count = count_approved_chapters(db, world.id)
+        _entropy = compute_narrative_entropy(
+            characters_ctx, foreshadows_ctx, chapter_number=_approved_count + 1
+        )
+        _mode = derive_arc_mode(_entropy['entropy'], _approved_count + 1, 200)
+        convergence = {
+            'entropy': _entropy['entropy'],
+            'entropy_level': _entropy['level'],
+            'entropy_message': _entropy['message'],
+            'arc_mode': _mode,
+            'arc_mode_label': ARC_MODE_LABELS[_mode],
+            'closure_plan': build_closure_plan(foreshadows_ctx, characters_ctx, _approved_count),
+        }
+    except Exception:
+        convergence = None
+
     return {
         'chapter_id': chapter.id,
         'draft_version': draft.draft_version,
@@ -2618,6 +3319,7 @@ def get_approval_preview(db: Session, user: User, chapter_id: int) -> dict:
         'warnings': ['WORLD_VERSION_MISMATCH'] if version_conflict else [],
         'consistency_summary': consistency['summary'],
         'consistency_warnings': consistency['warnings'],
+        'convergence': convergence,
     }
 
 
@@ -2888,8 +3590,9 @@ def build_revision_messages(
     draft: ChapterDraft,
     approval_readiness: dict,
     instruction: str,
-) -> list[dict[str, str]]:
-    character_lines = '\n'.join(f'- {c.id}: {c.name}, status={c.status}, goals={c.current_goals}' for c in characters)
+
+    chapter_number: int | None = None,) -> list[dict[str, str]]:
+    character_lines = '\n'.join(f'- {c.id}: {c.name}, gender={c.gender}, status={c.status}, goals={c.current_goals}' for c in characters)
     foreshadow_lines = '\n'.join(
         f'- {f.id}: {f.title}, status={f.status}, urgency={f.urgency_level}, description={f.description}' for f in foreshadows
     )
@@ -2928,7 +3631,7 @@ def build_revision_messages(
                 f'世界标题：{world.title}\n'
                 f'题材：{world.genre_template}\n'
                 f'语调：{world.tone_profile}\n'
-                f'世界设定：{world.truth_canon}\n'
+                f'世界设定：{_visible_truth_canon(world, chapter_number)}\n'
                 f'世界版本：{world.world_version}\n'
                 f'角色：\n{character_lines}\n'
                 f'伏笔：\n{foreshadow_lines}\n'
@@ -3028,14 +3731,17 @@ def get_chapter_draft_version(db: Session, user: User, chapter_id: int, draft_ve
 
 
 def revise_chapter_paragraph(
-    db: Session,
-    user: User,
+    db,
+    user,
     chapter_id: int,
     paragraph_index: int,
     mode: str,
     instruction: str | None = None,
-    llm_client: LLMClient | None = None,
+    selection_text: str | None = None,
+    llm_client=None,
+    chapter_number: int | None = None,
 ) -> dict:
+    from sqlalchemy.orm import Session
     chapter = _require_owned_chapter(db, user, chapter_id)
     _raise_if_chapter_terminal(chapter)
     world = _world_for_chapter(db, chapter)
@@ -3051,22 +3757,38 @@ def revise_chapter_paragraph(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='INVALID_PARAGRAPH_INDEX')
 
     selected = paragraphs[paragraph_index]
+    span_mode = bool(selection_text and selection_text.strip())
+    if span_mode:
+        selection_text = selection_text.strip()
+        if selection_text not in selected:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail='SELECTION_TEXT_NOT_FOUND')
+
+    span_prompt = ''
+    if span_mode:
+        span_prompt = (
+            f'待修订段落：{selected}\n'
+            f'只修订选中的片段，返回修订后的片段文本，不要改写段落其他部分：{selection_text}'
+        )
+    else:
+        span_prompt = f'待修订段落：{selected}'
+
     messages = [
         {
             'role': 'system',
             'content': (
                 '你是 WorldSim-Writer 的段落修订助手。只返回有效 JSON，格式严格为 '
-                '{"paragraph":"修订后的单段文本","revision_note":"简短修订说明或 null"}。'
+                '{"paragraph":"修订后的文本","revision_note":"简短修订说明或 null"}。'
+                '如果是选中片段修订，paragraph 字段只返回修订后的片段本身。'
             ),
         },
         {
             'role': 'user',
             'content': (
-                f'世界设定：{world.truth_canon}\n'
+                f'世界设定：{_visible_truth_canon(world, chapter_number)}\n'
                 f'章节标题：{chapter.title}\n'
                 f'修订模式：{mode}\n'
                 f'用户指令：{instruction or "无"}\n'
-                f'待修订段落：{selected}'
+                f'{span_prompt}'
             ),
         },
     ]
@@ -3085,11 +3807,17 @@ def revise_chapter_paragraph(
         source_draft_id,
         source_draft_version,
     )
-    paragraphs[paragraph_index] = revision.paragraph
+    if span_mode:
+        revised_span = revision.paragraph.strip()
+        paragraphs[paragraph_index] = selected.replace(selection_text, revised_span, 1)
+    else:
+        paragraphs[paragraph_index] = revision.paragraph
     content = '\n\n'.join(paragraphs)
     change_type = 'paragraph_rewrite' if mode == 'rewrite' else 'paragraph_polish'
     action = '重写' if mode == 'rewrite' else '润色'
     summary = f'{action}第 {paragraph_index + 1} 段'
+    if span_mode:
+        summary = f'{action}第 {paragraph_index + 1} 段选中片段'
     if getattr(revision, 'revision_note', None):
         summary = f'{summary}：{revision.revision_note}'
     new_draft = _create_draft_version(db, chapter, draft, content, change_type, summary)
@@ -3097,7 +3825,6 @@ def revise_chapter_paragraph(
     db.refresh(chapter)
     db.refresh(new_draft)
     return _draft_payload(chapter, new_draft)
-
 
 def approve_chapter(db: Session, user: User, chapter_id: int, selection=None) -> Chapter:
     try:
@@ -3286,9 +4013,126 @@ def approve_chapter(db: Session, user: User, chapter_id: int, selection=None) ->
                 world_version_after=version_after,
             )
         )
+        # Arc transition report at volume boundaries (every 10 approved chapters)
+        try:
+            _approved_total = count_approved_chapters(db, world.id)
+            if _approved_total > 0 and _approved_total % 10 == 0:
+                from app.narrative.convergence import (
+                    build_arc_transition_report,
+                    compute_narrative_entropy,
+                )
+                _chars, _fores = _load_world_context(db, world)
+                _entropy_after = compute_narrative_entropy(
+                    _chars, _fores, chapter_number=_approved_total
+                )
+                # Entropy before this volume is approximated by recomputing
+                # with the previous chapter count; good enough for a trend line.
+                _entropy_before = compute_narrative_entropy(
+                    _chars, _fores, chapter_number=max(1, _approved_total - 10)
+                )
+                _report = build_arc_transition_report(
+                    (_approved_total - 9, _approved_total),
+                    _fores,
+                    _chars,
+                    _entropy_before['entropy'],
+                    _entropy_after['entropy'],
+                )
+                db.add(
+                    EventLog(
+                        world_id=world.id,
+                        chapter_id=chapter.id,
+                        event_type='arc_transition_report',
+                        source_type='chapter_approval',
+                        commit_id=f'{commit_group_id}-arc-report',
+                        payload={
+                            'commit_group_id': commit_group_id,
+                            'chapter_id': chapter.id,
+                            'report': _report,
+                        },
+                        world_version_before=version_before,
+                        world_version_after=version_after,
+                    )
+                )
+        except Exception:
+            pass
+
         db.commit()
         db.refresh(chapter)
         return chapter
     except Exception:
         db.rollback()
         raise
+
+
+def get_world_convergence(
+    db: Session,
+    user: User,
+    world_id: int,
+    total_planned_chapters: int = 200,
+) -> dict:
+    """Compute narrative convergence for a world."""
+    from app.narrative.convergence import (
+        ARC_MODE_LABELS,
+        build_closure_plan,
+        compute_narrative_entropy,
+        derive_arc_mode,
+    )
+    from app.narrative.models import WorldMemorySummary
+    from app.world.service import count_approved_chapters, require_owned_world
+
+    world = require_owned_world(db, user, world_id)
+    characters, foreshadows = _load_world_context(db, world)
+    summaries = list(
+        db.scalars(
+            select(WorldMemorySummary)
+            .where(WorldMemorySummary.world_id == world.id)
+            .order_by(WorldMemorySummary.chapter_start)
+        )
+    )
+    chapter_number = count_approved_chapters(db, world.id) + 1
+    entropy_payload = compute_narrative_entropy(
+        characters, foreshadows, summaries, count_approved_chapters(db, world.id)
+    )
+    arc_mode = derive_arc_mode(
+        entropy_payload['entropy'],
+        chapter_number,
+        total_planned_chapters,
+    )
+    closure_plan = build_closure_plan(
+        foreshadows, characters, count_approved_chapters(db, world.id)
+    )
+    return {
+        'world_id': world.id,
+        'chapter_number': chapter_number,
+        'total_planned_chapters': total_planned_chapters,
+        'arc_mode': arc_mode,
+        'arc_mode_label': ARC_MODE_LABELS[arc_mode],
+        'entropy': entropy_payload['entropy'],
+        'entropy_level': entropy_payload['level'],
+        'entropy_message': entropy_payload['message'],
+        'entropy_breakdown': entropy_payload['breakdown'],
+        'open_threads': entropy_payload['open_threads'],
+        'closure_plan': closure_plan,
+    }
+
+
+def get_world_convergence_ratio(
+    db: Session,
+    user: User,
+    world_id: int,
+) -> dict:
+    """Compute convergence ratio from foreshadow ledger."""
+    from app.narrative.convergence import compute_convergence_ratio
+    from app.world.service import count_approved_chapters, require_owned_world
+
+    world = require_owned_world(db, user, world_id)
+    _characters, foreshadows = _load_world_context(db, world)
+    opened = sum(1 for f in foreshadows if getattr(f, 'status', '') in ('planted', 'advanced'))
+    closed = sum(1 for f in foreshadows if getattr(f, 'status', '') == 'resolved')
+    return {
+        'world_id': world.id,
+        'opened_threads': opened,
+        'closed_threads': closed,
+        'merged_threads': 0,
+        'ratio': compute_convergence_ratio(opened, closed, 0),
+    }

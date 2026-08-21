@@ -1137,6 +1137,7 @@ export type ParagraphReviseRequest = {
   paragraph_index: number;
   mode: 'rewrite' | 'polish';
   instruction?: string;
+  selection_text?: string;
 };
 
 export type ReviseDraftRequest = {

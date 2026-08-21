@@ -5,6 +5,9 @@ from app.api.dependencies import require_user
 from app.auth.models import User
 from app.core.database import get_db
 from app.narrative.schemas import (
+    ArcTransitionReportResponse,
+    ConvergenceRatioResponse,
+    ConvergenceResponse,
     ActiveChapterSessionResponse,
     ApprovalConsistencyResponse,
     ApprovalReadinessResponse,
@@ -28,6 +31,9 @@ from app.narrative.schemas import (
     WriteRequest,
 )
 from app.narrative.service import (
+    get_world_convergence,
+    get_world_convergence_ratio,
+    get_world_memory_retrieval,
     abandon_chapter,
     approve_chapter,
     create_chapter_draft,
@@ -284,5 +290,46 @@ def revise_paragraph(
             payload.paragraph_index,
             payload.mode,
             payload.instruction,
+            payload.selection_text,
         )
+    )
+
+
+@router.get('/worlds/{world_id}/convergence', response_model=ConvergenceResponse)
+def convergence(
+    world_id: int,
+    total_planned_chapters: int = Query(default=200, ge=10, le=2000),
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> ConvergenceResponse:
+    return ConvergenceResponse.model_validate(
+        get_world_convergence(db, current_user, world_id, total_planned_chapters)
+    )
+
+
+@router.get('/worlds/{world_id}/convergence/ratio', response_model=ConvergenceRatioResponse)
+def convergence_ratio(
+    world_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> ConvergenceRatioResponse:
+    return ConvergenceRatioResponse.model_validate(
+        get_world_convergence_ratio(db, current_user, world_id)
+    )
+
+
+@router.get('/worlds/{world_id}/memory/retrieve', response_model=dict)
+def memory_retrieve(
+    world_id: int,
+    chapter_goal: str = Query(default='', max_length=500),
+    limit: int = Query(default=8, ge=1, le=20),
+    budget_chars: int = Query(default=3000, ge=500, le=12000),
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    return get_world_memory_retrieval(
+        db, current_user, world_id,
+        chapter_goal=chapter_goal,
+        limit=limit,
+        budget_chars=budget_chars,
     )

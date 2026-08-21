@@ -605,6 +605,7 @@ export function reviseParagraph(chapterId: number, data: ParagraphReviseRequest)
       paragraph_index: data.paragraph_index,
       mode: data.mode,
       ...(data.instruction !== undefined ? { instruction: data.instruction } : {}),
+      ...(data.selection_text !== undefined ? { selection_text: data.selection_text } : {}),
     }),
   });
 }

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -18,6 +18,7 @@ class CharacterCreate(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     name: str
+    gender: str | None = None
     role_type: str
     status: str | None = None
     public_profile: dict[str, Any] | None = None
@@ -36,6 +37,7 @@ class CharacterUpdate(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     name: str | None = None
+    gender: str | None = None
     role_type: str | None = None
     status: str | None = None
     public_profile: dict[str, Any] | None = None
@@ -55,6 +57,7 @@ class CharacterUpdate(BaseModel):
 class CharacterResponse(BaseModel):
     id: int
     name: str
+    gender: str | None
     role_type: str
     status: str
     public_profile: dict[str, Any]
@@ -108,3 +111,25 @@ class CharacterRelationResponse(BaseModel):
     visibility: str
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CharacterBatchOperation(BaseModel):
+    """Single operation in a batch character update."""
+    character_id: int
+    action: Literal['tag', 'archive', 'activate', 'set_destiny']
+    value: str | None = None
+
+
+class CharacterBatchUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+
+    operations: list[CharacterBatchOperation] = Field(min_length=1, max_length=50)
+
+
+class WorldAnomaly(BaseModel):
+    """Detected data-governance anomaly."""
+    kind: str
+    severity: str
+    detail: str
+    object_type: str | None = None
+    object_id: int | None = None

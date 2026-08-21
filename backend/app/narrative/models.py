@@ -53,5 +53,31 @@ class ChapterDraft(Base):
     parent_draft_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     execution_context: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     quality_report: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    memory_card: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     chapter: Mapped['Chapter'] = relationship('Chapter', back_populates='drafts')
+
+class WorldMemorySummary(Base):
+    __tablename__ = 'world_memory_summaries'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    world_id: Mapped[int] = mapped_column(ForeignKey('worlds.id', ondelete='CASCADE'), nullable=False, index=True)
+    chapter_start: Mapped[int] = mapped_column(Integer, nullable=False)
+    chapter_end: Mapped[int] = mapped_column(Integer, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    key_facts: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    open_threads: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+
+    world: Mapped['World'] = relationship('World')
+    __tablename__ = 'chapter_memories'
+    __table_args__ = (UniqueConstraint('chapter_id', name='uq_chapter_memory_chapter'),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    chapter_id: Mapped[int] = mapped_column(ForeignKey('chapters.id', ondelete='CASCADE'), nullable=False, index=True)
+    world_id: Mapped[int] = mapped_column(ForeignKey('worlds.id', ondelete='CASCADE'), nullable=False, index=True)
+    facts: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    emotional_arc: Mapped[str] = mapped_column(Text, nullable=False, default='')
+    causal_links: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+    characters_present: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list)
+
+    chapter: Mapped['Chapter'] = relationship('Chapter')

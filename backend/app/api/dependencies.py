@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -8,6 +8,11 @@ from app.core.database import get_db
 from app.core.security import decode_access_token
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def get_request_id(request: Request) -> str | None:
+    request_id = getattr(request.state, 'request_id', None)
+    return request_id if isinstance(request_id, str) else None
 
 
 def require_user(

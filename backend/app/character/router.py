@@ -3,10 +3,12 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import require_user
 from app.auth.models import User
-from app.character.schemas import CharacterCreate, CharacterResponse, CharacterUpdate, EmptyCharacterDeleteRequest
+from app.character.schemas import CharacterCreate, CharacterResponse, CharacterUpdate, EmptyCharacterDeleteRequest, CharacterBatchUpdateRequest, WorldAnomaly
 from app.character.service import (
+    batch_update_characters,
     create_character,
     delete_character,
+    detect_world_anomalies,
     get_character,
     get_characters,
     update_character,
@@ -29,12 +31,18 @@ def create(
 @router.get('/worlds/{world_id}/characters', response_model=list[CharacterResponse])
 def list_characters(
     world_id: int,
+    status: str | None = Query(default=None),
+    role_type: str | None = Query(default=None),
+    destiny_flag: str | None = Query(default=None),
     current_user: User = Depends(require_user),
     db: Session = Depends(get_db),
 ) -> list[CharacterResponse]:
+    statuses = [item.strip() for item in status.split(',') if item.strip()] if status else None
+    role_types = [item.strip() for item in role_type.split(',') if item.strip()] if role_type else None
+    destiny_flags = [item.strip() for item in destiny_flag.split(',') if item.strip()] if destiny_flag else None
     return [
         CharacterResponse.model_validate(c)
-        for c in get_characters(db, current_user, world_id)
+        for c in get_characters(db, current_user, world_id, statuses, role_types, destiny_flags)
     ]
 
 
@@ -66,3 +74,25 @@ def delete(
     db: Session = Depends(get_db),
 ) -> None:
     delete_character(db, current_user, character_id, edit_reason)
+
+
+@router.post('/worlds/{world_id}/characters/batch', response_model=list[CharacterResponse])
+def batch_update(
+    world_id: int,
+    data: CharacterBatchUpdateRequest,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> list[CharacterResponse]:
+    return [
+        CharacterResponse.model_validate(ch)
+        for ch in batch_update_characters(db, current_user, world_id, data.operations)
+    ]
+
+
+@router.get('/worlds/{world_id}/anomalies', response_model=list[WorldAnomaly])
+def anomalies(
+    world_id: int,
+    current_user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+) -> list[WorldAnomaly]:
+    return [WorldAnomaly.model_validate(a) for a in detect_world_anomalies(db, current_user, world_id)]
